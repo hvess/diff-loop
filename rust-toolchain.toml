@@ -1,0 +1,8 @@
+# The compiler is part of the build recipe: `rustup` honours this file, so a
+# local build, CI and a third party reproducing a tag use one compiler.
+# Clippy's lint set changes between releases, so bumping it is a deliberate
+# commit, after which the review's lint stage may fail on untouched code.
+[toolchain]
+channel    = "1.99.0"
+profile    = "minimal"
+components = ["clippy", "rustfmt"]

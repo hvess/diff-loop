@@ -31,3 +31,9 @@ pnpm-debug.log*
 *.swp
 .DS_Store
 Thumbs.db
+
+# Private key material, which must never be committed under any name.
+*.key
+*.pem
+id_ed25519
+id_rsa
