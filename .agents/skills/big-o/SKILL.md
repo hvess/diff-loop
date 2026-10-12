@@ -148,11 +148,11 @@ It matters when either factor is unbounded:
   per update; send what changed.
 
 **A cache that must still compare everything to find what changed has not
-removed the O(n).** The lesson from aldwin-agent's transcript: caching
-rendered rows per entry still cost O(entries) per frame while every entry
-was compared to its copy. What fixed it was the data recording the lowest
-entry any change reached, so a frame looked only from there, and prefix
-sums of row counts so the visible window was found with `partition_point`
+removed the O(n).** Caching rendered rows per entry of a long list still
+costs O(entries) per frame if every entry is compared to its cached copy to
+find the stale ones. The fix is to have the data record the lowest entry
+any change reached, so a frame looks only from there, and to keep prefix
+sums of row counts so the visible window is found with `partition_point`
 in O(log n). Invalidation told, not searched for.
 
 ## Checking a change

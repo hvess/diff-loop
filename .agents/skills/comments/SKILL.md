@@ -14,7 +14,9 @@ must be true.
 ## What an LLM needs from a comment
 
 Write a comment only to give one of these. Each is something an LLM reading
-the code in front of it would otherwise get wrong.
+the code in front of it would otherwise get wrong. The examples show the
+form; the paths, ADR numbers and names in them are placeholders, not
+anchors in this repository.
 
 1. **The reason, when the code alone suggests a different choice.**
    `// Loop, not iterator: the body awaits.`
@@ -57,10 +59,12 @@ Delete or do not write:
   from the list above.
 - **Plain, declarative, present tense.** State the rule: "Must", "Never",
   "Always", "Only". No "we", no "you", no hedging.
-- **Use exact anchors:** identifiers, paths, `ADR 0013`,
-  `diff-loop-core.md Decision 4`, test names. An LLM can search for these.
+- **Use exact anchors:** identifiers, paths, ADR numbers (`ADR NNNN §N`),
+  spec Decisions (`diff-loop-<crate>.md Decision N`), test names. An LLM can
+  search for these.
   **Every anchor must resolve:** grep the test name, path or section before
-  writing it; "the spec" is not an anchor, `docs/spec/diff-loop-core.md` is.
+  writing it; "the spec" is not an anchor, `docs/spec/diff-loop-<crate>.md` with the
+  crate named is.
 - **Claim no more than holds.** "Every", "never", "all", "unreachable" and
   "only" must be true across the whole scope; otherwise name the scope
   ("the plain spellings", "except an empty file").

@@ -36,9 +36,9 @@ refuses, run the loop; never find another way to commit.
 **The judges confirm; they do not search.** A judge finding is a defect the
 author could have found, and each one costs a full round — so the loop is
 promoted to the judges only when the author's own checks come back clean.
-In aldwin-agent, a small change used all five iterations with every
-deterministic stage passing, because each round's findings were things the
-skills already stated and the author had not checked. Until clean, repeat:
+When the author skips this, a small change can use all five iterations
+with every deterministic stage passing, each round's findings being things
+the skills already state and the author did not check. Until clean, repeat:
 
 1. **Stages 1–3**, without staging. All must pass. No judge runs on a tree
    that fails one: a judge reading code that does not build reports a
