@@ -129,6 +129,10 @@ change, annotate, hand off to the agent, next round.
     desktop sizes `tauri.conf.json` lists; the others it makes are not
     kept. The design's `icon/` layers are for Icon Composer, which this
     app does not use yet. The developer's choice, 2026-10-13.
+15. **Releases are built by `.github/workflows/release.yml`** from a
+    `v<version>` tag matching `tauri.conf.json`: an AppImage and a `.deb`
+    on Ubuntu 22.04, an ad-hoc signed Apple Silicon `.dmg` on macOS
+    (ADR 0009).
 
 ## Pitfalls
 
@@ -137,6 +141,10 @@ change, annotate, hand off to the agent, next round.
   them.
 - Code rows have an integer line height (25 px); a fractional one leaves
   hairline gaps between measured rows.
+
+## Progress (2026-10-13, releases)
+
+A tag now releases installers for Linux and Apple Silicon (Decision 15).
 
 ## Progress (2026-10-13, the TypeScript audit)
 

@@ -40,3 +40,14 @@ contradicts) and the entry says so before it goes.
     writes may not reach (`docs/spec/diff-loop-review.md`, Pitfalls).
     Closes when a worktree's records are shown to be protected, or are
     kept where they are, or the developer decides the gap is fine.
+
+## Distribution
+
+12. **macOS builds are not signed with a Developer ID or notarized**
+    (ADR 0009 §4), so Gatekeeper refuses a downloaded copy until the user
+    allows it (README, Install). Closes when the Release workflow signs
+    and notarizes with a Developer ID, or the developer decides the step
+    is fine.
+13. **Releases reach only people with access to this repository**
+    (ADR 0009 §5). Closes when releases are published somewhere public,
+    or the developer decides they stay private.

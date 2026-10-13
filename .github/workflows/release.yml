@@ -1,0 +1,62 @@
+# The desktop app's installers for a version tag (ADR 0009): an AppImage and a
+# .deb for Linux, a .dmg for Apple Silicon, attached to a draft GitHub Release
+# that is published by hand once checked.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest Ubuntu Tauri supports: an AppImage runs only where glibc
+          # is at least as new as the one it was built against.
+          - os: ubuntu-22.04
+            bundles: appimage,deb
+          # An arm64 runner, so the build is Apple Silicon's.
+          - os: macos-15
+            bundles: app,dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check the tag names the app's version
+        shell: bash
+        run: |
+          version=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME but tauri.conf.json's version is $version; tag v$version."
+            exit 1
+          fi
+      # Tauri's Linux prerequisites (tauri.app, "Prerequisites", Debian), and
+      # patchelf for the AppImage.
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      # Installs the compiler rust-toolchain.toml names.
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+        working-directory: app
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: Diff Loop ${{ github.ref_name }}
+          releaseBody: How to install is in the README, under Install.
+          releaseDraft: true
+          args: --bundles ${{ matrix.bundles }}

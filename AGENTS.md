@@ -102,6 +102,10 @@ before reopening a decision they cover.
   stage runs typescript-eslint's `recommendedTypeChecked`; the store's
   actions are function-typed properties; `exactOptionalPropertyTypes` is
   on.
+- **0009 — Releases for Linux and Apple Silicon.** A `v<version>` tag
+  builds an AppImage, a `.deb` and an Apple Silicon `.dmg` into a draft
+  GitHub Release in this private repository; macOS builds are ad-hoc
+  signed, not notarized.
 
 ## Key Constraints (non-negotiable)
 
