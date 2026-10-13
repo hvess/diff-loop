@@ -4,6 +4,7 @@
 //! never contends with an agent committing in the same repository.
 
 mod command;
+mod locate;
 mod parse;
 mod untracked;
 mod watch;
@@ -36,7 +37,7 @@ impl Git {
     /// [`RepoError::NotARepository`] when `path` is in no working tree;
     /// [`RepoError::Failed`] when `git` cannot run.
     pub fn open(path: &Path) -> Result<Self, RepoError> {
-        let probe = Runner::new(path.to_path_buf());
+        let probe = Runner::new(locate::locate(), path.to_path_buf());
         let not_a_repository = || RepoError::NotARepository {
             path: path.display().to_string(),
         };
@@ -49,7 +50,7 @@ impl Git {
         }
         let root = probe.stdout(&["rev-parse", "--show-toplevel"])?;
         Ok(Self {
-            run: Runner::new(PathBuf::from(root.trim_end_matches('\n'))),
+            run: probe.in_dir(PathBuf::from(root.trim_end_matches('\n'))),
         })
     }
 

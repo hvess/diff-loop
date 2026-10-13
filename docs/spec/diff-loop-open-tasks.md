@@ -49,11 +49,6 @@ contradicts) and the entry says so before it goes.
    lines are hidden (`app/src/rows.ts`, `hiddenBefore`); the design's
    "Show 12 unchanged lines" needs a core call returning a line range of
    either side.
-6. **`git` must be on the app's `PATH`.** `crates/git/src/command.rs`
-   runs `git` by name; an app launched from the macOS Finder gets a
-   minimal `PATH` and may not find a Homebrew git. Closes when the
-   adapter resolves git as a login shell would, or the developer decides
-   against it.
 7. **A detected change rebuilds the whole diff in Rust**
    (`diff_loop_core::load`); only new or changed files cross IPC
    (`KnownFile`, `ReviewFile`). And when a watch cannot start (ADR 0002 §4,

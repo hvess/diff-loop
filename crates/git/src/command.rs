@@ -42,12 +42,19 @@ pub(crate) enum Outcome {
 /// Runs `git` in one directory.
 #[derive(Debug, Clone)]
 pub(crate) struct Runner {
+    /// The executable, from `locate::locate`.
+    program: PathBuf,
     dir: PathBuf,
 }
 
 impl Runner {
-    pub(crate) fn new(dir: PathBuf) -> Self {
-        Self { dir }
+    pub(crate) fn new(program: PathBuf, dir: PathBuf) -> Self {
+        Self { program, dir }
+    }
+
+    /// The same executable in `dir`.
+    pub(crate) fn in_dir(&self, dir: PathBuf) -> Self {
+        Self::new(self.program.clone(), dir)
     }
 
     pub(crate) fn dir(&self) -> &Path {
@@ -88,7 +95,7 @@ impl Runner {
     }
 
     fn output(&self, args: &[&str], input: &[u8]) -> Result<Output, RepoError> {
-        let mut child = Command::new("git")
+        let mut child = Command::new(&self.program)
             .arg("-C")
             .arg(&self.dir)
             .args(CONFIG)
@@ -101,7 +108,7 @@ impl Runner {
             .spawn()
             .map_err(|e| RepoError::Failed {
                 message: if e.kind() == std::io::ErrorKind::NotFound {
-                    "git is not installed, or not on PATH".to_owned()
+                    "git is not installed, or neither PATH nor the login shell finds it".to_owned()
                 } else {
                     format!("could not run git: {e}")
                 },
@@ -150,7 +157,7 @@ mod tests {
         // Regression: stdin was written in full before stdout was read, so a
         // query and answer both larger than the pipe buffer blocked both sides.
         let dir = TempDir::new().unwrap();
-        let git = Runner::new(dir.path().to_path_buf());
+        let git = Runner::new("git".into(), dir.path().to_path_buf());
         assert!(git.outcome(&["init", "-q"]).is_ok());
         let blob = git
             .stdout_with_input(&["hash-object", "-w", "--stdin"], "x")

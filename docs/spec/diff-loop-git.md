@@ -48,6 +48,11 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
    (`watch.rs`, `SETTLE`). Dropping the guard stops it and its thread.
 7. **Stdin is written on its own thread** (`command.rs`): git can fill
    its stdout pipe before it has read all its input.
+8. **Git is found as a terminal finds it** (`locate.rs`), once per
+   `Git::open`: the first `git` on `PATH`; else, on Unix, the file
+   `$SHELL -lc 'command -v git'` names, since an app opened from the
+   macOS Finder gets a minimal `PATH`; else plain `git`, which fails with
+   a message saying so. The developer's call, 2026-10-13.
 
 ## Pitfalls
 
@@ -56,6 +61,11 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 - `git diff --git` headers are ambiguous for paths with spaces; only an
   identical pair is split from the header, and renames take their paths
   from `rename from` / `rename to`.
+
+## Progress (2026-10-13, git through the login shell)
+
+Decision 8 landed: an app without `git` on its `PATH` asks the login
+shell.
 
 ## Progress (2026-10-13, first version)
 

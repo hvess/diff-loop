@@ -44,4 +44,5 @@ to a coding agent as instructions. The core also needs a way to read git.
 - Rendering depends on each platform's webview (WebKitGTK on Linux,
   WKWebView on macOS, WebView2 on Windows); each is checked before a
   release.
-- `git` must be on the app's `PATH` (open-tasks 6).
+- `git` must be on the app's `PATH`, or found by the user's login shell
+  (`docs/spec/diff-loop-git.md` Decision 8).
