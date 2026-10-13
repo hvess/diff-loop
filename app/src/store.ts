@@ -60,6 +60,8 @@ type State = {
   base: Base;
   review: LoadedReview | null;
   loading: boolean;
+  /** A check asked for while loading; it runs when the load ends. */
+  recheck: boolean;
   loadProblem: Problem | null;
   comments: Comment[];
   selected: string | null;
@@ -186,6 +188,22 @@ async function fetchReview(base: Base, comments: Comment[], held: LoadedReview |
 
 export const sameBase = (a: Base, b: Base) => JSON.stringify(a) === JSON.stringify(b);
 
+/**
+ * Whether `after` shows what `before` did: the same checkout, snapshot,
+ * files and fingerprint, which a poll compares against. O(files): a file
+ * `fetchReview` carried over is the same object.
+ */
+function showsTheSame(before: LoadedReview, after: LoadedReview): boolean {
+  const [was, now] = [before.changes, after.changes];
+  return (
+    before.fingerprint === after.fingerprint &&
+    JSON.stringify(before.checkout) === JSON.stringify(after.checkout) &&
+    JSON.stringify(was.snapshot) === JSON.stringify(now.snapshot) &&
+    was.files.length === now.files.length &&
+    now.files.every((file, i) => file === was.files[i])
+  );
+}
+
 export const useStore = create<State & Actions>()((set, get) => ({
   opening: null,
   openProblem: null,
@@ -195,6 +213,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   base: { kind: "uncommitted" },
   review: null,
   loading: false,
+  recheck: false,
   loadProblem: null,
   comments: [],
   selected: null,
@@ -283,6 +302,12 @@ export const useStore = create<State & Actions>()((set, get) => ({
         const m = moved.get(c.id);
         return m ? { ...m, text: c.text, suggestion: c.suggestion } : c;
       });
+      // A watch event often changes nothing reviewed (a build writing ignored
+      // files): then the window keeps its state, and nothing re-renders.
+      if (held && showsTheSame(held, review) && JSON.stringify(comments) === JSON.stringify(get().comments)) {
+        if (get().loadProblem) set({ loadProblem: null });
+        return;
+      }
       const viewed = new Map([...get().viewed].filter(([path, was]) => review.signatures[path] === was));
       const expanded = new Map([...get().expanded].filter(([path, e]) => review.signatures[path] === e.signature));
       const current = get().selected;
@@ -293,6 +318,11 @@ export const useStore = create<State & Actions>()((set, get) => ({
       set({ loadProblem: describe(error) });
     } finally {
       set({ loading: false });
+      // A watch event during the load: its touched paths wait in Rust.
+      if (get().recheck) {
+        set({ recheck: false });
+        void get().poll();
+      }
     }
 
     async function announceMove(before: LoadedReview | null, after: LoadedReview, comments: Comment[]) {
@@ -321,8 +351,18 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   async poll() {
-    const { review, loading, base, opening } = get();
-    if (!opening || !review || loading) return;
+    const { review, loading, base, opening, watching } = get();
+    if (!opening || !review) return;
+    if (loading) {
+      set({ recheck: true });
+      return;
+    }
+    // While watching, a load reads only what the watch saw touched, so it is
+    // the check; a fingerprint would be a full diff.
+    if (watching) {
+      await get().reload();
+      return;
+    }
     try {
       const fingerprint = await api.fingerprint(base);
       if (fingerprint !== get().review?.fingerprint && !get().loading) await get().reload();

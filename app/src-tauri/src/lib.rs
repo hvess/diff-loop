@@ -6,7 +6,7 @@
 //! place an adapter is chosen.
 
 use std::{
-    fmt,
+    fmt, mem,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
@@ -14,8 +14,8 @@ use std::{
 mod reviews;
 
 use diff_loop_core::{
-    Base, BaseRef, Comment, InstructionsRequest, KnownFile, Opening, RepoError, Repository, Review,
-    ReviewStore, SavedReview, Side, Snapshot, StoreError, WatchGuard,
+    Base, BaseRef, Comment, InstructionsRequest, KnownFile, Loaded, Opening, RepoError, Repository,
+    Review, ReviewStore, SavedReview, Side, Snapshot, StoreError, Touched, WatchGuard,
 };
 use diff_loop_git::Git;
 use serde::Serialize;
@@ -35,12 +35,26 @@ type Opener = fn(&Path) -> Result<Shared, RepoError>;
 /// The event the front end hears when the open checkout may have changed.
 const CHANGED: &str = "repository-changed";
 
-/// The checkout the window reviews, once one is open, how to open one, and
-/// the watch on it.
+/// The checkout the window reviews, once one is open, how to open one, the
+/// watch on it, and its last load.
+///
+/// Locks are taken in field order, `current` first, wherever two are held.
 struct Session {
     open: Opener,
     current: Mutex<Option<Shared>>,
-    watch: Mutex<Option<WatchGuard>>,
+    watch: Mutex<Option<Watching>>,
+    /// Kept only while a watch runs: without one, nothing says what changed.
+    loaded: Mutex<Option<Loaded>>,
+    /// Counts loads begun; only the latest may keep what it loaded, so an
+    /// older load finishing last cannot replace a newer one.
+    loads: Mutex<u64>,
+}
+
+/// A running watch, and what it has seen touched since the last load took it.
+struct Watching {
+    /// Dropping it stops the watch.
+    _guard: WatchGuard,
+    touched: Arc<Mutex<Touched>>,
 }
 
 /// Where reviews are kept between runs.
@@ -102,6 +116,8 @@ impl Session {
             open,
             current: Mutex::new(None),
             watch: Mutex::new(None),
+            loaded: Mutex::new(None),
+            loads: Mutex::new(0),
         }
     }
 
@@ -113,23 +129,64 @@ impl Session {
 
     /// Makes `repository` the open one; the old one's watch stops.
     fn replace(&self, repository: Shared) {
-        // `current`, then `watch`, as in `keep_watch`: holding both makes the
-        // swap atomic, so no guard for the old repository lands after it.
+        // Holding `current` throughout makes the swap atomic, so no guard or
+        // load for the old repository lands after it.
         let mut current = lock(&self.current);
         *lock(&self.watch) = None;
+        *lock(&self.loaded) = None;
         *current = Some(repository);
     }
 
-    /// Keeps `guard` running while `watched` is still the open repository,
+    /// Keeps `watching` running while `watched` is still the open repository,
     /// and says so; otherwise drops it, which stops it.
-    fn keep_watch(&self, watched: &Shared, guard: WatchGuard) -> bool {
+    fn keep_watch(&self, watched: &Shared, watching: Watching) -> bool {
         let current = lock(&self.current);
-        let open = current.as_ref().is_some_and(|c| Arc::ptr_eq(c, watched));
+        let open = holds(&current, watched);
         if open {
-            *lock(&self.watch) = Some(guard);
+            *lock(&self.watch) = Some(watching);
+            // What changed before the watch started is unknown: drop the last
+            // load, and keep no load begun before now.
+            *lock(&self.loaded) = None;
+            *lock(&self.loads) += 1;
         }
         open
     }
+
+    /// Begins a load of `of`: its number, and the last load with what was
+    /// touched since, while a watch runs. Takes both, so a load that fails
+    /// leaves the next to read everything.
+    fn begin_load(&self, of: &Shared) -> (u64, Option<(Loaded, Touched)>) {
+        let current = lock(&self.current);
+        let watch = lock(&self.watch);
+        let loaded = lock(&self.loaded).take();
+        let mut loads = lock(&self.loads);
+        *loads += 1;
+        let since = watch
+            .as_ref()
+            .filter(|_| holds(&current, of))
+            .and_then(|watching| {
+                // Taken even for a full read, which covers it.
+                let touched = mem::take(&mut *lock(&watching.touched));
+                Some((loaded?, touched))
+            });
+        (*loads, since)
+    }
+
+    /// Keeps `loaded` for the next load, while `of` is still open, a watch
+    /// runs, and load `number` is the latest begun.
+    fn keep_loaded(&self, of: &Shared, number: u64, loaded: Loaded) {
+        let current = lock(&self.current);
+        let watch = lock(&self.watch);
+        let mut kept = lock(&self.loaded);
+        if holds(&current, of) && watch.is_some() && *lock(&self.loads) == number {
+            *kept = Some(loaded);
+        }
+    }
+}
+
+/// Whether `open` is `repository`.
+fn holds(open: &Option<Shared>, repository: &Shared) -> bool {
+    open.as_ref().is_some_and(|c| Arc::ptr_eq(c, repository))
 }
 
 impl fmt::Debug for Session {
@@ -187,14 +244,21 @@ async fn watch_repository(
 ) -> Result<bool, CommandError> {
     let repository = session.current()?;
     let watched = Arc::clone(&repository);
+    let touched = Arc::new(Mutex::new(Touched::default()));
+    let seen = Arc::clone(&touched);
     let guard = blocking(move || {
-        repository.watch(Box::new(move || {
+        repository.watch(Box::new(move |more| {
+            lock(&seen).add(more);
             // Emitting fails only while the app shuts down.
             let _ = app.emit(CHANGED, ());
         }))
     })
     .await?;
-    Ok(session.keep_watch(&watched, guard))
+    let watching = Watching {
+        _guard: guard,
+        touched,
+    };
+    Ok(session.keep_watch(&watched, watching))
 }
 
 /// Branches and tags the open checkout can be compared with.
@@ -205,7 +269,9 @@ async fn refs(session: State<'_, Session>) -> Result<Vec<BaseRef>, CommandError>
 }
 
 /// The open checkout against `base`, with `comments` moved onto their code;
-/// files the front end already holds (`known`) are named, not sent.
+/// files the front end already holds (`known`) are named, not sent. While a
+/// watch runs, a load after the first reads again only what it saw touched,
+/// unless that needs everything (ADR 0005 §3).
 #[tauri::command]
 async fn load_review(
     base: Base,
@@ -214,7 +280,12 @@ async fn load_review(
     session: State<'_, Session>,
 ) -> Result<Review, CommandError> {
     let repository = session.current()?;
-    blocking(move || diff_loop_core::load(&*repository, base, comments, known)).await
+    let (number, since) = session.begin_load(&repository);
+    let reading = Arc::clone(&repository);
+    let (review, loaded) =
+        blocking(move || diff_loop_core::load(&*reading, base, comments, known, since)).await?;
+    session.keep_loaded(&repository, number, loaded);
+    Ok(review)
 }
 
 /// A value that changes whenever [`load_review`] for `base` would.
@@ -409,6 +480,20 @@ mod tests {
         }
     }
 
+    /// A watch that sets `stopped` when dropped.
+    fn watching(stopped: &Arc<AtomicBool>) -> Watching {
+        Watching {
+            _guard: Box::new(Stops(Arc::clone(stopped))),
+            touched: Arc::new(Mutex::new(Touched::default())),
+        }
+    }
+
+    fn loaded(repository: &Shared) -> Loaded {
+        diff_loop_core::load(&**repository, Base::Uncommitted, vec![], vec![], None)
+            .unwrap()
+            .1
+    }
+
     fn git_repository() -> (TempDir, Shared) {
         let dir = TempDir::new().unwrap();
         let init = Command::new("git")
@@ -428,7 +513,7 @@ mod tests {
         let session = Session::new(open_git);
         session.replace(Arc::clone(&first));
         let stopped = Arc::new(AtomicBool::new(false));
-        assert!(session.keep_watch(&first, Box::new(Stops(Arc::clone(&stopped)))));
+        assert!(session.keep_watch(&first, watching(&stopped)));
         assert!(!stopped.load(Ordering::SeqCst));
         session.replace(second);
         assert!(stopped.load(Ordering::SeqCst));
@@ -441,7 +526,97 @@ mod tests {
         let session = Session::new(open_git);
         session.replace(second);
         let stopped = Arc::new(AtomicBool::new(false));
-        assert!(!session.keep_watch(&first, Box::new(Stops(Arc::clone(&stopped)))));
+        assert!(!session.keep_watch(&first, watching(&stopped)));
         assert!(stopped.load(Ordering::SeqCst));
+    }
+
+    /// A load of `repository` that began and finished.
+    fn load_and_keep(session: &Session, repository: &Shared) {
+        let (number, _) = session.begin_load(repository);
+        session.keep_loaded(repository, number, loaded(repository));
+    }
+
+    #[test]
+    fn without_a_watch_no_load_is_kept() {
+        let (_dir, repository) = git_repository();
+        let session = Session::new(open_git);
+        session.replace(Arc::clone(&repository));
+        load_and_keep(&session, &repository);
+        assert!(lock(&session.loaded).is_none());
+        assert!(session.begin_load(&repository).1.is_none());
+    }
+
+    #[test]
+    fn while_watching_a_load_takes_the_last_and_what_was_touched() {
+        let (_dir, repository) = git_repository();
+        let session = Session::new(open_git);
+        session.replace(Arc::clone(&repository));
+        let stopped = Arc::new(AtomicBool::new(false));
+        let watch = watching(&stopped);
+        let touched = Arc::clone(&watch.touched);
+        assert!(session.keep_watch(&repository, watch));
+        load_and_keep(&session, &repository);
+        lock(&touched).add(Touched::Paths(["a.ts".to_owned()].into()));
+        let (_, since) = session.begin_load(&repository);
+        let (_, seen) = since.unwrap();
+        assert_eq!(seen, Touched::Paths(["a.ts".to_owned()].into()));
+        assert_eq!(*lock(&touched), Touched::default());
+        assert!(
+            session.begin_load(&repository).1.is_none(),
+            "taken, not copied"
+        );
+    }
+
+    #[test]
+    fn a_new_watch_forgets_the_last_load() {
+        let (_dir, repository) = git_repository();
+        let session = Session::new(open_git);
+        session.replace(Arc::clone(&repository));
+        let stopped = Arc::new(AtomicBool::new(false));
+        assert!(session.keep_watch(&repository, watching(&stopped)));
+        load_and_keep(&session, &repository);
+        assert!(session.keep_watch(&repository, watching(&stopped)));
+        assert!(session.begin_load(&repository).1.is_none());
+    }
+
+    /// Regression: a load begun before a watch started was kept after it.
+    #[test]
+    fn a_load_begun_before_the_watch_is_not_kept() {
+        let (_dir, repository) = git_repository();
+        let session = Session::new(open_git);
+        session.replace(Arc::clone(&repository));
+        let (before, _) = session.begin_load(&repository);
+        let stopped = Arc::new(AtomicBool::new(false));
+        assert!(session.keep_watch(&repository, watching(&stopped)));
+        session.keep_loaded(&repository, before, loaded(&repository));
+        assert!(lock(&session.loaded).is_none());
+    }
+
+    #[test]
+    fn a_load_of_a_repository_no_longer_open_is_not_kept() {
+        let (_dir, first) = git_repository();
+        let (_other, second) = git_repository();
+        let session = Session::new(open_git);
+        session.replace(Arc::clone(&second));
+        let stopped = Arc::new(AtomicBool::new(false));
+        assert!(session.keep_watch(&second, watching(&stopped)));
+        load_and_keep(&session, &first);
+        assert!(lock(&session.loaded).is_none());
+    }
+
+    /// Regression: an older load finishing last replaced a newer one.
+    #[test]
+    fn only_the_latest_load_begun_is_kept() {
+        let (_dir, repository) = git_repository();
+        let session = Session::new(open_git);
+        session.replace(Arc::clone(&repository));
+        let stopped = Arc::new(AtomicBool::new(false));
+        assert!(session.keep_watch(&repository, watching(&stopped)));
+        let (older, _) = session.begin_load(&repository);
+        let (newer, _) = session.begin_load(&repository);
+        session.keep_loaded(&repository, older, loaded(&repository));
+        assert!(lock(&session.loaded).is_none());
+        session.keep_loaded(&repository, newer, loaded(&repository));
+        assert!(lock(&session.loaded).is_some());
     }
 }

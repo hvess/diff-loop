@@ -25,7 +25,7 @@ change, annotate, hand off to the agent, next round.
 4. Hand off: comment list (N / P to jump), Copy review, preview with
    format and toggles, clear with undo — done 2026-10-13.
 5. Next round: check for changes when the watch reports one or the
-   window gains focus (ADR 0002); when `HEAD` moves, a banner: "The
+   window gains focus (ADR 0002, ADR 0005 §4); when `HEAD` moves, a banner: "The
    branch moved: N new commits", "The branch was rewritten" when the old
    commit is no longer an ancestor, or "Switched to <branch>" when another
    branch is checked out. Each says how many comments are outdated, and
@@ -70,7 +70,9 @@ change, annotate, hand off to the agent, next round.
    opens (atomically, under both locks), and drops a guard that arrives
    for a repository no longer open, answering `false`. The store trusts
    only answers for the repository still open; until one confirms a watch,
-   or if watching fails, `App` polls every 2 s.
+   or if watching fails, `App` polls every 2 s. While a watch runs,
+   `Session` keeps the last load and what the watch touched, and
+   `load_review` reads only that (ADR 0005 §4).
 8. **Limits that keep the UI responsive**, chosen by the author for the
    first version (2026-10-13), not by the design: files showing over 5000 lines,
    expanded ones included, show without highlighting (`highlight.ts`, `MAX_LINES`); the base
@@ -105,6 +107,11 @@ change, annotate, hand off to the agent, next round.
   them.
 - Code rows have an integer line height (25 px); a fractional one leaves
   hairline gaps between measured rows.
+
+## Progress (2026-10-13, reading only what was touched)
+
+A watch event loads only the touched paths, and a load that changes
+nothing keeps the window's state (`showsTheSame` in `app/src/store.ts`).
 
 ## Progress (2026-10-13, reviews kept between runs)
 

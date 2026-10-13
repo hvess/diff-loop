@@ -43,12 +43,12 @@ contradicts) and the entry says so before it goes.
 
 ## App
 
-7. **A detected change rebuilds the whole diff in Rust**
-   (`diff_loop_core::load`); only new or changed files cross IPC
-   (`KnownFile`, `ReviewFile`). And when a watch cannot start (ADR 0002 §4,
-   e.g. the inotify limit on a very large tree) the app falls back to
-   polling every 2 s (`app/src/App.tsx`, `POLL_MS`). Closes when diffs are
-   rebuilt per changed path, or the developer decides the cost is fine.
+7. **Without a watch, every check reads the whole diff.** When a watch
+   cannot start (ADR 0002 §4, e.g. the inotify limit on a very large
+   tree), focus and the 2 s poll take a full fingerprint, and a change
+   triggers a full load (`app/src/App.tsx`, `POLL_MS`; ADR 0005 §4). Closes when a
+   checkout too large to watch can be checked by less, or the developer
+   decides the cost is fine.
 8. **Design details not built:** the sidebar's "tested by" / "imported
    by" captions, the base picker's ahead/behind and file counts ("2
    behind", "1 file"), and the app icon (`app/src-tauri/icons/` are
@@ -63,3 +63,9 @@ contradicts) and the entry says so before it goes.
    entries for working trees that no longer exist are dropped, and
    saving is safe across processes, or the developer decides against
    either.
+10. **Two changes show only at the next full read** (ADR 0005,
+    Consequences): a change to the index alone (`git rm --cached`) moves
+    no snapshot and touches no working-tree path, and a rename into a
+    path the watch did not touch shows as an addition and a deletion
+    (`update`, `crates/core/src/update.rs`). Closes when a load since the
+    last notices both, or the developer decides the wait is fine.

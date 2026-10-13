@@ -2,10 +2,11 @@
 
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
-use std::{fs, path::Path, process::Command, sync::mpsc, time::Duration};
+use std::{collections::BTreeSet, fs, path::Path, process::Command, sync::mpsc, time::Duration};
 
 use diff_loop_core::{
     Base, Content, FileDiff, Head, Line, NewSide, RefKind, RepoError, Repository, Side, Status,
+    Touched,
 };
 use tempfile::TempDir;
 
@@ -348,12 +349,16 @@ fn a_watch_reports_an_edit_and_stops_when_dropped() {
     let git = Git::open(dir.path()).unwrap();
     let (changed, seen) = mpsc::channel();
     let guard = git
-        .watch(Box::new(move || {
-            let _ = changed.send(());
+        .watch(Box::new(move |touched| {
+            let _ = changed.send(touched);
         }))
         .unwrap();
     write(dir.path(), "src/handler.ts", "edited\n");
-    assert!(seen.recv_timeout(Duration::from_secs(5)).is_ok());
+    let touched = seen.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(
+        touched,
+        Touched::Paths(["src/handler.ts".to_owned()].into())
+    );
     drop(guard);
     write(dir.path(), "src/handler.ts", "edited again\n");
     assert!(seen.recv_timeout(Duration::from_secs(1)).is_err());
@@ -378,8 +383,8 @@ fn a_worktree_watch_sees_a_commit() {
     let watched = Git::open(&at).unwrap();
     let (changed, seen) = mpsc::channel();
     let _guard = watched
-        .watch(Box::new(move || {
-            let _ = changed.send(());
+        .watch(Box::new(move |touched| {
+            let _ = changed.send(touched);
         }))
         .unwrap();
     // Commit from the main checkout: only the shared git directory changes.
@@ -413,4 +418,76 @@ fn a_failed_read_names_the_file() {
         panic!("a missing file fails");
     };
     assert!(message.contains("gone.txt"), "{message}");
+}
+
+fn set(paths: &[&str]) -> BTreeSet<String> {
+    paths.iter().map(|p| (*p).to_owned()).collect()
+}
+
+fn names(files: &[FileDiff]) -> Vec<&str> {
+    files.iter().map(|f| f.path.as_str()).collect()
+}
+
+#[test]
+fn changes_in_reads_only_the_paths_given_tracked_and_untracked() {
+    let dir = repo();
+    write(dir.path(), "src/handler.ts", "a\nB\nc\n");
+    write(dir.path(), "old.txt", "changed\n");
+    write(dir.path(), "src/new/one.ts", "1\n");
+    write(dir.path(), "notes.md", "n\n");
+    let git = Git::open(dir.path()).unwrap();
+    let base = Base::Uncommitted;
+    let some = git.changes_in(&base, &set(&["src"])).unwrap();
+    assert_eq!(names(&some.files), ["src/handler.ts", "src/new/one.ts"]);
+    let all = git.changes(&base).unwrap();
+    assert_eq!(some.snapshot, all.snapshot);
+    let picked: Vec<&FileDiff> = all
+        .files
+        .iter()
+        .filter(|f| f.path.starts_with("src/"))
+        .collect();
+    assert_eq!(some.files.iter().collect::<Vec<_>>(), picked);
+}
+
+#[test]
+fn changes_in_no_paths_reads_no_files() {
+    let dir = repo();
+    write(dir.path(), "old.txt", "changed\n");
+    let git = Git::open(dir.path()).unwrap();
+    let none = git
+        .changes_in(&Base::Uncommitted, &BTreeSet::new())
+        .unwrap();
+    assert!(none.files.is_empty());
+    assert_eq!(
+        none.snapshot,
+        git.changes(&Base::Uncommitted).unwrap().snapshot
+    );
+}
+
+#[test]
+fn changes_in_finds_a_rename_given_both_paths() {
+    let dir = repo();
+    git(dir.path(), &["mv", "old.txt", "moved.txt"]);
+    let git_ = Git::open(dir.path()).unwrap();
+    let both = git_
+        .changes_in(&Base::Uncommitted, &set(&["moved.txt", "old.txt"]))
+        .unwrap();
+    assert_eq!(names(&both.files), ["moved.txt"]);
+    assert_eq!(
+        both.files[0].status,
+        Status::Renamed {
+            from: "old.txt".into()
+        }
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn changes_in_reads_a_path_literally() {
+    let dir = repo();
+    write(dir.path(), "*.ts", "glob-looking\n");
+    write(dir.path(), "x.ts", "x\n");
+    let git = Git::open(dir.path()).unwrap();
+    let only = git.changes_in(&Base::Uncommitted, &set(&["*.ts"])).unwrap();
+    assert_eq!(names(&only.files), ["*.ts"]);
 }

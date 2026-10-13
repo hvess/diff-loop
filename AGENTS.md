@@ -82,6 +82,9 @@ before reopening a decision they cover.
 - **0004 — Reviews kept between runs.** One per working tree (comments
   and note), through the core's `ReviewStore` port, in `reviews.json` in
   the app-data directory; a file it cannot read is never overwritten.
+- **0005 — Read only what the watch saw touched.** The watch names
+  touched paths; `Repository::changes_in` and the core's `update` read
+  them again; the app keeps the last load only while watching.
 
 ## Key Constraints (non-negotiable)
 

@@ -2,7 +2,7 @@
 
 **Status:** accepted, 2026-10-13
 **Amends:** ADR 0001 §2 (adds a dependency)
-**Affects:** open-tasks 7; `docs/spec/diff-loop-git.md`, `docs/spec/diff-loop-app.md`
+**Affects:** open-tasks 7 (narrowed by ADR 0005); `docs/spec/diff-loop-git.md`, `docs/spec/diff-loop-app.md`
 
 ## Context
 
@@ -30,4 +30,4 @@ and is paid even when nothing changed.
 
 - No `git` process runs while the checkout is idle.
 - A very large tree can exhaust inotify watches; the app then polls as
-  before (open-tasks 7).
+  before (ADR 0005 §4).

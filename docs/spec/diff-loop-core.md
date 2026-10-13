@@ -24,6 +24,7 @@ review as instructions. Each is a pure function tested here.
 6. `open` and `load`, composing the above over a `Repository` — done 2026-10-13.
 7. `lines`: a line range of either side of a file, for the unchanged lines a diff leaves out — done 2026-10-13.
 8. The `ReviewStore` port and `SavedReview` (ADR 0004) — done 2026-10-13.
+9. `update`, and `load` since the last load: read only what was touched (ADR 0005) — done 2026-10-13.
 
 ## Decisions
 
@@ -57,7 +58,7 @@ review as instructions. Each is a pure function tested here.
    whose signature matches one in `known` comes back as
    `ReviewFile::Unchanged`.
 9. **The port can watch** (`Repository::watch`, ADR 0002): an adapter
-   reports possible changes; the fingerprint decides.
+   reports what it touched (ADR 0005 §1).
 10. **`lines` reads through `Repository::blob`**, so the port needs no
     new method; it splits as `str::lines` does, like the diff (Pitfalls).
     A range past the file's end returns what exists.
@@ -66,11 +67,21 @@ review as instructions. Each is a pure function tested here.
     its comments and note, whatever the base. An empty `SavedReview`
     removes the entry.
 
+12. **`load` since the last load reads only what was touched**
+    (`update`, ADR 0005 §3), by their top-level directories past
+    `MOST_PATHS`, and everything when the snapshot moved or the watch lost
+    track; it then takes no fingerprint, and keeps the signatures of files
+    it did not read again. `Loaded` is opaque: only `load` makes one.
+
 ## Pitfalls
 
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-13, reading only what was touched)
+
+Step 9 landed (ADR 0005).
 
 ## Progress (2026-10-13, reviews kept between runs)
 

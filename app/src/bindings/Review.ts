@@ -19,9 +19,10 @@ checkout: Checkout,
  */
 base: Base, 
 /**
- * [`Repository::fingerprint`] for `base`, taken before `files`.
+ * [`Repository::fingerprint`] for `base`, taken before `files`; `None`
+ * for a load since the last one against `base`, which takes none.
  */
-fingerprint: string, 
+fingerprint: string | null, 
 /**
  * The two trees compared, for [`Repository::blob`].
  */

@@ -12,6 +12,7 @@ vi.mock("./api", () => ({
     savedReview: vi.fn(),
     saveReview: vi.fn(),
     loadReview: vi.fn(),
+    fingerprint: vi.fn(),
     watchRepository: vi.fn(() => Promise.resolve(true)),
   },
   describe: (error: unknown) => ({ title: "Saved comments are unavailable", detail: String(error) }),
@@ -39,7 +40,7 @@ function answerLoads(root: string) {
     Promise.resolve<Review>({
       checkout: opening(root).checkout,
       base,
-      fingerprint: "f",
+      fingerprint: null,
       snapshot: { old: null, new: { kind: "workingTree" } },
       files: [],
       groups: [],
@@ -140,5 +141,90 @@ describe("saving the review", () => {
         note: "kept",
       }),
     );
+  });
+});
+
+describe("reloading", () => {
+  beforeEach(() => {
+    vi.mocked(api.saveReview).mockReset().mockResolvedValue(null);
+    vi.mocked(api.fingerprint).mockReset();
+  });
+
+  it("keeps the window's state when nothing reviewed changed", async () => {
+    await openWith("/a", { comments: [comment("c")], note: "" });
+    const before = useStore.getState().review;
+    await useStore.getState().reload();
+    expect(useStore.getState().review).toBe(before);
+  });
+
+  it("takes a load that changed something", async () => {
+    await openWith("/a", { comments: [], note: "" });
+    const before = useStore.getState().review;
+    vi.mocked(api.loadReview).mockImplementationOnce((base) =>
+      Promise.resolve<Review>({
+        checkout: opening("/a").checkout,
+        base,
+        fingerprint: null,
+        snapshot: { old: null, new: { kind: "workingTree" } },
+        files: [
+          {
+            kind: "changed",
+            signature: "s",
+            diff: { path: "a.ts", status: { kind: "added" }, content: { kind: "text", hunks: [] } },
+          },
+        ],
+        groups: [{ role: "source", files: [0] }],
+        comments: [],
+      }),
+    );
+    await useStore.getState().reload();
+    expect(useStore.getState().review).not.toBe(before);
+    expect(useStore.getState().review?.changes.files.map((f) => f.path)).toEqual(["a.ts"]);
+  });
+
+  it("clears a load problem when the next load shows the same", async () => {
+    await openWith("/a", { comments: [], note: "" });
+    useStore.setState({ loadProblem: { title: "Git reported a problem", detail: "busy" } });
+    await useStore.getState().reload();
+    expect(useStore.getState().loadProblem).toBeNull();
+  });
+
+  it("takes a load whose fingerprint moved, so a poll compares against it", async () => {
+    await openWith("/a", { comments: [], note: "" });
+    const before = useStore.getState().review;
+    vi.mocked(api.loadReview).mockImplementationOnce((base, comments) =>
+      Promise.resolve<Review>({
+        checkout: opening("/a").checkout,
+        base,
+        fingerprint: "newer",
+        snapshot: { old: null, new: { kind: "workingTree" } },
+        files: [],
+        groups: [],
+        comments: structuredClone(comments),
+      }),
+    );
+    await useStore.getState().reload();
+    expect(useStore.getState().review).not.toBe(before);
+    expect(useStore.getState().review?.fingerprint).toBe("newer");
+  });
+
+  it("checks again after a load during which a change was reported", async () => {
+    await openWith("/a", { comments: [], note: "" });
+    useStore.setState({ watching: true });
+    vi.mocked(api.loadReview).mockClear();
+    const loading = useStore.getState().reload();
+    await useStore.getState().poll();
+    expect(api.loadReview).toHaveBeenCalledTimes(1);
+    await loading;
+    await vi.waitFor(() => expect(api.loadReview).toHaveBeenCalledTimes(2));
+  });
+
+  it("while watching, checks for changes by loading, not by a fingerprint", async () => {
+    await openWith("/a", { comments: [], note: "" });
+    useStore.setState({ watching: true });
+    vi.mocked(api.loadReview).mockClear();
+    await useStore.getState().poll();
+    expect(api.loadReview).toHaveBeenCalledTimes(1);
+    expect(api.fingerprint).not.toHaveBeenCalled();
   });
 });

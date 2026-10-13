@@ -12,8 +12,9 @@ use crate::{
     anchor::{Comment, reanchor},
     base::{Base, BaseRef, default_base},
     diff::FileDiff,
-    repository::{Checkout, RepoError, Repository, Snapshot},
+    repository::{Changes, Checkout, RepoError, Repository, Snapshot, Touched},
     role::{FileGroup, group},
+    update::{Updated, covers, update},
 };
 
 /// A checkout's changes against a base, ready to review.
@@ -25,8 +26,9 @@ pub struct Review {
     pub checkout: Checkout,
     /// What it is compared with.
     pub base: Base,
-    /// [`Repository::fingerprint`] for `base`, taken before `files`.
-    pub fingerprint: String,
+    /// [`Repository::fingerprint`] for `base`, taken before `files`; `None`
+    /// for a load since the last one against `base`, which takes none.
+    pub fingerprint: Option<String>,
     /// The two trees compared, for [`Repository::blob`].
     pub snapshot: Snapshot,
     /// Every changed file, in path order; in full only where the caller's
@@ -103,9 +105,24 @@ pub fn open(repository: &(impl Repository + ?Sized)) -> Result<Opening, RepoErro
     })
 }
 
+/// What a review was last loaded from, so the next [`load`] can read only
+/// what was touched since.
+#[derive(Debug, Clone)]
+pub struct Loaded {
+    base: Base,
+    changes: Changes,
+    /// Each file's signature, by path, kept for files the next load does
+    /// not read again.
+    signatures: HashMap<String, String>,
+}
+
 /// The checkout's changes against `base`, with `comments` moved onto their
-/// code (see [`reanchor`]). Files whose version matches one in `known` are
-/// named, not sent.
+/// code (see [`reanchor`]), and what it was loaded from. Files whose version
+/// matches one in `known` are named, not sent.
+///
+/// `since` is the last load and what a watch saw touched after it: when it
+/// was against `base` too, no fingerprint is taken and `update` reads again
+/// only the touched paths, unless it must read everything (ADR 0005 §3).
 ///
 /// # Errors
 /// As [`Repository::checkout`] and [`Repository::changes`].
@@ -114,42 +131,80 @@ pub fn load(
     base: Base,
     comments: Vec<Comment>,
     known: Vec<KnownFile>,
-) -> Result<Review, RepoError> {
+    since: Option<(Loaded, Touched)>,
+) -> Result<(Review, Loaded), RepoError> {
     let checkout = repository.checkout()?;
-    // Taken first: a change landing between the two shows as a newer fingerprint
-    // on the next poll, never as a missed one.
-    let fingerprint = repository.fingerprint(&base)?;
-    let changes = repository.changes(&base)?;
+    let (fingerprint, changes, reread, held) = match since {
+        Some((loaded, touched)) if loaded.base == base => {
+            let Updated { changes, reread } = update(repository, &base, loaded.changes, touched)?;
+            (None, changes, reread, loaded.signatures)
+        }
+        // Taken first: a change landing between the two shows as a newer
+        // fingerprint on the next poll, never as a missed one.
+        _ => (
+            Some(repository.fingerprint(&base)?),
+            repository.changes(&base)?,
+            None,
+            HashMap::new(),
+        ),
+    };
+    // A file not read again keeps its signature: hashing every file would
+    // cost the whole diff on every watch event.
+    let signatures: HashMap<String, String> = changes
+        .files
+        .iter()
+        .map(|diff| {
+            let unread = reread
+                .as_ref()
+                .is_some_and(|r| !covers(r, &diff.path) && !covers(r, diff.old_path()));
+            let signature = unread
+                .then(|| held.get(&diff.path).cloned())
+                .flatten()
+                .unwrap_or_else(|| signature(diff));
+            (diff.path.clone(), signature)
+        })
+        .collect();
     let groups = group(&changes.files);
     let comments = comments
         .into_iter()
         .map(|c| reanchor(c, &changes.files))
         .collect();
     let known: HashMap<String, String> = known.into_iter().map(|k| (k.path, k.signature)).collect();
+    // Only what is sent is cloned: the changes move whole into `Loaded`.
     let files = changes
         .files
-        .into_iter()
+        .iter()
         .map(|diff| {
-            let signature = signature(&diff);
+            // Built from these files just above, so every path is present.
+            let signature = signatures[&diff.path].clone();
             if known.get(&diff.path) == Some(&signature) {
                 ReviewFile::Unchanged {
-                    path: diff.path,
+                    path: diff.path.clone(),
                     signature,
                 }
             } else {
-                ReviewFile::Changed { signature, diff }
+                ReviewFile::Changed {
+                    signature,
+                    diff: diff.clone(),
+                }
             }
         })
         .collect();
-    Ok(Review {
+    let review = Review {
         checkout,
-        base,
+        base: base.clone(),
         fingerprint,
-        snapshot: changes.snapshot,
+        snapshot: changes.snapshot.clone(),
         files,
         groups,
         comments,
-    })
+    };
+    let loaded = Loaded {
+        base,
+        changes,
+        signatures,
+    };
+    Ok((review, loaded))
 }
 
 /// Identifies a version of `file` within one run of the app: `DefaultHasher`
@@ -162,6 +217,8 @@ fn signature(file: &FileDiff) -> String {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
     use crate::{
         anchor::{AnchorState, Target},
@@ -170,7 +227,7 @@ pub(crate) mod tests {
             Side,
             tests::{add, text_file},
         },
-        repository::{Changes, Head, NewSide, OnChange, WatchGuard},
+        repository::{Head, NewSide, OnChange, WatchGuard},
         role::Role,
     };
 
@@ -211,6 +268,11 @@ pub(crate) mod tests {
                 }),
             }
         }
+        fn changes_in(&self, base: &Base, paths: &BTreeSet<String>) -> Result<Changes, RepoError> {
+            let mut changes = self.changes(base)?;
+            changes.files.retain(|f| paths.contains(&f.path));
+            Ok(changes)
+        }
         fn fingerprint(&self, _: &Base) -> Result<String, RepoError> {
             Ok("f1".into())
         }
@@ -243,8 +305,8 @@ pub(crate) mod tests {
             suggestion: None,
             state: AnchorState::Current,
         };
-        let review = load(&repo, Base::Uncommitted, vec![comment], vec![]).unwrap();
-        assert_eq!(review.fingerprint, "f1");
+        let (review, _) = load(&repo, Base::Uncommitted, vec![comment], vec![], None).unwrap();
+        assert_eq!(review.fingerprint.as_deref(), Some("f1"));
         assert_eq!(
             review.groups.iter().map(|g| g.role).collect::<Vec<_>>(),
             [Role::Source, Role::Tests]
@@ -261,7 +323,7 @@ pub(crate) mod tests {
             text_file("a.ts", vec![add(1, "a")]),
             text_file("b.ts", vec![add(1, "b")]),
         ]);
-        let first = load(&repo, Base::Uncommitted, vec![], vec![]).unwrap();
+        let (first, _) = load(&repo, Base::Uncommitted, vec![], vec![], None).unwrap();
         let known: Vec<KnownFile> = first
             .files
             .iter()
@@ -277,7 +339,7 @@ pub(crate) mod tests {
             text_file("a.ts", vec![add(1, "a")]),
             text_file("b.ts", vec![add(1, "B")]),
         ]);
-        let second = load(&edited, Base::Uncommitted, vec![], known).unwrap();
+        let (second, _) = load(&edited, Base::Uncommitted, vec![], known, None).unwrap();
         assert!(matches!(&second.files[0], ReviewFile::Unchanged { path, .. } if path == "a.ts"));
         assert!(
             matches!(&second.files[1], ReviewFile::Changed { diff, .. } if diff.path == "b.ts")
@@ -305,6 +367,7 @@ pub(crate) mod tests {
             },
             vec![],
             vec![],
+            None,
         )
         .unwrap_err();
         assert_eq!(
@@ -313,5 +376,78 @@ pub(crate) mod tests {
                 name: "nope".into()
             }
         );
+    }
+
+    #[test]
+    fn a_load_since_the_last_reads_only_what_was_touched() {
+        let before = Fixed(vec![
+            text_file("a.ts", vec![add(1, "a")]),
+            text_file("b.ts", vec![add(1, "b")]),
+        ]);
+        let (_, loaded) = load(&before, Base::Uncommitted, vec![], vec![], None).unwrap();
+        let after = Fixed(vec![
+            text_file("a.ts", vec![add(1, "A")]),
+            text_file("b.ts", vec![add(1, "B")]),
+        ]);
+        let touched = Touched::Paths(["a.ts".to_owned()].into());
+        let (review, _) = load(
+            &after,
+            Base::Uncommitted,
+            vec![],
+            vec![],
+            Some((loaded, touched)),
+        )
+        .unwrap();
+        assert_eq!(review.fingerprint, None);
+        let texts: Vec<&str> = review
+            .files
+            .iter()
+            .map(|f| match f {
+                ReviewFile::Changed { diff, .. } => diff.lines(Side::New).next().unwrap().1,
+                ReviewFile::Unchanged { .. } => panic!("nothing was known"),
+            })
+            .collect();
+        assert_eq!(texts, ["A", "b"]);
+    }
+
+    #[test]
+    fn a_file_not_read_again_keeps_its_signature() {
+        let repo = Fixed(vec![
+            text_file("a.ts", vec![add(1, "a")]),
+            text_file("b.ts", vec![add(1, "b")]),
+        ]);
+        let (_, mut loaded) = load(&repo, Base::Uncommitted, vec![], vec![], None).unwrap();
+        let computed = loaded.signatures["a.ts"].clone();
+        loaded.signatures.insert("a.ts".into(), "held a".into());
+        loaded.signatures.insert("b.ts".into(), "held b".into());
+        let touched = Touched::Paths(["a.ts".to_owned()].into());
+        let (review, _) = load(
+            &repo,
+            Base::Uncommitted,
+            vec![],
+            vec![],
+            Some((loaded, touched)),
+        )
+        .unwrap();
+        let signatures: Vec<&str> = review
+            .files
+            .iter()
+            .map(|f| match f {
+                ReviewFile::Changed { signature, .. } | ReviewFile::Unchanged { signature, .. } => {
+                    signature.as_str()
+                }
+            })
+            .collect();
+        assert_eq!(signatures, [computed.as_str(), "held b"]);
+    }
+
+    #[test]
+    fn a_load_against_another_base_reads_everything() {
+        let repo = Fixed(vec![text_file("a.ts", vec![add(1, "a")])]);
+        let (_, loaded) = load(&repo, Base::LastCommit, vec![], vec![], None).unwrap();
+        let since = Some((loaded, Touched::default()));
+        let (review, _) = load(&repo, Base::Uncommitted, vec![], vec![], since).unwrap();
+        assert_eq!(review.fingerprint.as_deref(), Some("f1"));
+        assert_eq!(review.files.len(), 1);
     }
 }

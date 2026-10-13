@@ -10,10 +10,10 @@ mod untracked;
 mod watch;
 
 use std::{
-    collections::{HashSet, hash_map::DefaultHasher},
+    collections::{BTreeSet, HashSet, hash_map::DefaultHasher},
     fs,
     hash::{Hash, Hasher},
-    io, iter,
+    io,
     path::{Component, Path, PathBuf},
 };
 
@@ -113,8 +113,13 @@ impl Git {
         })
     }
 
-    /// The raw `git diff` output for `snapshot`, tracked files only.
-    fn diff_output(&self, snapshot: &Snapshot) -> Result<String, RepoError> {
+    /// The raw `git diff` output for `snapshot`, tracked files only, limited
+    /// to `paths` when given.
+    fn diff_output(
+        &self,
+        snapshot: &Snapshot,
+        paths: Option<&BTreeSet<String>>,
+    ) -> Result<String, RepoError> {
         let old = match &snapshot.old {
             Some(old) => old.clone(),
             None => self.empty_tree()?,
@@ -125,6 +130,7 @@ impl Git {
             args.push(id);
         }
         args.push("--");
+        args.extend(paths.into_iter().flatten().map(String::as_str));
         self.run.stdout(&args)
     }
 
@@ -136,11 +142,12 @@ impl Git {
             .to_owned())
     }
 
-    /// Untracked, unignored files, relative to the root.
-    fn untracked(&self) -> Result<Vec<String>, RepoError> {
-        let out = self
-            .run
-            .stdout(&["ls-files", "--others", "--exclude-standard", "-z"])?;
+    /// Untracked, unignored files, relative to the root, limited to `paths`
+    /// when given.
+    fn untracked(&self, paths: Option<&BTreeSet<String>>) -> Result<Vec<String>, RepoError> {
+        let mut args = vec!["ls-files", "--others", "--exclude-standard", "-z", "--"];
+        args.extend(paths.into_iter().flatten().map(String::as_str));
+        let out = self.run.stdout(&args)?;
         // A nested repository is listed as its directory, with a trailing slash.
         Ok(out
             .split('\0')
@@ -194,6 +201,31 @@ impl Git {
             file.content = Content::Binary { old_size, new_size };
         }
         Ok(())
+    }
+
+    /// What changed between `base` and the checkout, limited to `paths` when given.
+    fn changes_under(
+        &self,
+        base: &Base,
+        paths: Option<&BTreeSet<String>>,
+    ) -> Result<Changes, RepoError> {
+        let snapshot = self.snapshot(base)?;
+        let mut files = parse::parse(&self.diff_output(&snapshot, paths)?);
+        if snapshot.new == NewSide::WorkingTree {
+            // A path git also reports as tracked (staged for deletion, still on
+            // disk) is left out: `Changes::files` holds each path once.
+            let tracked: HashSet<String> = files.iter().map(|f| f.path.clone()).collect();
+            let added: Vec<FileDiff> = self
+                .untracked(paths)?
+                .into_iter()
+                .filter(|path| !tracked.contains(path))
+                .map(|path| untracked::added(self.root(), path))
+                .collect::<Result<_, _>>()?;
+            files.extend(added);
+            files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
+        }
+        self.size_binaries(&snapshot, &mut files)?;
+        Ok(Changes { snapshot, files })
     }
 
     /// `path` inside the working tree, refusing any that leaves it.
@@ -298,32 +330,27 @@ impl Repository for Git {
     }
 
     fn changes(&self, base: &Base) -> Result<Changes, RepoError> {
-        let snapshot = self.snapshot(base)?;
-        let mut files = parse::parse(&self.diff_output(&snapshot)?);
-        if snapshot.new == NewSide::WorkingTree {
-            // A path git also reports as tracked (staged for deletion, still on
-            // disk) is left out: `Changes::files` holds each path once.
-            let tracked: HashSet<String> = files.iter().map(|f| f.path.clone()).collect();
-            let added: Vec<FileDiff> = self
-                .untracked()?
-                .into_iter()
-                .filter(|path| !tracked.contains(path))
-                .map(|path| untracked::added(self.root(), path))
-                .collect::<Result<_, _>>()?;
-            files.extend(added);
-            files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
+        self.changes_under(base, None)
+    }
+
+    fn changes_in(&self, base: &Base, paths: &BTreeSet<String>) -> Result<Changes, RepoError> {
+        if paths.is_empty() {
+            // An empty pathspec means every path to git.
+            return Ok(Changes {
+                snapshot: self.snapshot(base)?,
+                files: Vec::new(),
+            });
         }
-        self.size_binaries(&snapshot, &mut files)?;
-        Ok(Changes { snapshot, files })
+        self.changes_under(base, Some(paths))
     }
 
     fn fingerprint(&self, base: &Base) -> Result<String, RepoError> {
         let snapshot = self.snapshot(base)?;
         let mut hasher = DefaultHasher::new();
         snapshot.hash(&mut hasher);
-        self.diff_output(&snapshot)?.hash(&mut hasher);
+        self.diff_output(&snapshot, None)?.hash(&mut hasher);
         if snapshot.new == NewSide::WorkingTree {
-            for path in self.untracked()? {
+            for path in self.untracked(None)? {
                 let meta = fs::symlink_metadata(self.root().join(&path)).ok();
                 (
                     path,
@@ -356,11 +383,9 @@ impl Repository for Git {
     }
 
     fn watch(&self, on_change: OnChange) -> Result<WatchGuard, RepoError> {
-        // The working tree, plus a worktree's git directories, which live
-        // outside it: HEAD, the index and refs change there.
-        // The common directory comes first: a worktree's git directory is
-        // inside it, and a directory inside one already kept is left out.
-        let dirs = ["--git-common-dir", "--absolute-git-dir"]
+        // A worktree's git directories live outside it: HEAD, the index and
+        // refs change there.
+        let git_dirs = ["--git-common-dir", "--absolute-git-dir"]
             .into_iter()
             .map(|flag| {
                 let out = self
@@ -369,16 +394,7 @@ impl Repository for Git {
                 Ok(PathBuf::from(out.trim_end_matches('\n')))
             })
             .collect::<Result<Vec<_>, RepoError>>()?;
-        let paths = iter::once(self.root().to_path_buf()).chain(dirs).fold(
-            Vec::<PathBuf>::new(),
-            |mut kept, dir| {
-                if !kept.iter().any(|k| dir.starts_with(k)) {
-                    kept.push(dir);
-                }
-                kept
-            },
-        );
-        watch::watch(&paths, on_change)
+        watch::watch(self.root(), &git_dirs, on_change)
     }
 
     fn commits_between(&self, from: &str, to: &str) -> Result<Option<u32>, RepoError> {

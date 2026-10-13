@@ -19,6 +19,7 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 4. Untracked files as additions, binary sizes, blobs, fingerprint, commits between — done 2026-10-13.
 5. Watch the working tree and its git directories (ADR 0002) — done 2026-10-13.
 6. Find git as a terminal does (Decisions 8 and 9) — done 2026-10-13.
+7. `changes_in`: the changes under given paths (ADR 0005 §2) — done 2026-10-13.
 
 ## Decisions
 
@@ -37,8 +38,8 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 4. **The fingerprint** hashes the snapshot, the tracked diff and each
    untracked file's path, size and mtime. It is compared only within one
    run (`DefaultHasher` is not stable across Rust versions). Cost: one
-   `git diff` per check, which runs on a watch report or on focus
-   (ADR 0002).
+   `git diff` per check, which runs on focus or the 2 s poll only when
+   nothing watches (ADR 0005 §4).
 5. **Blobs refuse paths that leave the tree**, on either side: only
    normal components (`relative`), and a working-tree path must
    canonicalize inside the root. A failed file operation reports its path
@@ -46,7 +47,8 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 6. **The watch** covers the working tree recursively, plus the git
    directory and common directory when they lie outside it (a worktree),
    and reports a burst of events once after 250 ms of quiet
-   (`watch.rs`, `SETTLE`). Dropping the guard stops it and its thread.
+   (`watch.rs`, `SETTLE`), with the working-tree paths it touched
+   (ADR 0005 §1). Dropping the guard stops it and its thread.
 7. **Stdin is written on its own thread** (`command.rs`): git can fill
    its stdout pipe before it has read all its input.
 8. **Git is found as a terminal finds it** (`locate.rs`), once per
@@ -64,6 +66,10 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
    is the answer. Chosen by the author,
    2026-10-13.
 
+10. **Pathspecs are literal** (`GIT_LITERAL_PATHSPECS`, `command.rs`):
+    a touched file may be named `*.ts`. `changes_in` with no paths reads
+    no files, since git reads an empty pathspec as every path.
+
 ## Pitfalls
 
 - A hunk is read by its line counts, never by looking for the next
@@ -71,6 +77,10 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 - `git diff --git` headers are ambiguous for paths with spaces; only an
   identical pair is split from the header, and renames take their paths
   from `rename from` / `rename to`.
+
+## Progress (2026-10-13, reading only what was touched)
+
+Step 7 landed; the watch names what it touched (ADR 0005).
 
 ## Progress (2026-10-13, git through the login shell)
 

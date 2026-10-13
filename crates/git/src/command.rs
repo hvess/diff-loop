@@ -103,6 +103,8 @@ impl Runner {
             .args(CONFIG)
             .args(args)
             .env("GIT_OPTIONAL_LOCKS", "0")
+            // A pathspec is a path, never a pattern: a file may be named `*.ts`.
+            .env("GIT_LITERAL_PATHSPECS", "1")
             .env("LC_ALL", "C")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

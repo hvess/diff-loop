@@ -13,6 +13,7 @@ mod repository;
 mod review;
 mod role;
 mod saved;
+mod update;
 
 pub use anchor::{AnchorState, Comment, Target};
 pub use base::{Base, BaseRef, RefKind};
@@ -20,8 +21,9 @@ pub use diff::{Content, FileDiff, Hunk, Line, Side, Status};
 pub use instructions::{Format, InstructionsRequest, instructions};
 pub use lines::lines;
 pub use repository::{
-    Changes, Checkout, Head, NewSide, OnChange, RepoError, Repository, Snapshot, WatchGuard,
+    Changes, Checkout, Head, NewSide, OnChange, RepoError, Repository, Snapshot, Touched,
+    WatchGuard,
 };
-pub use review::{KnownFile, Opening, Review, ReviewFile, load, open};
+pub use review::{KnownFile, Loaded, Opening, Review, ReviewFile, load, open};
 pub use role::{FileGroup, Role};
 pub use saved::{ReviewStore, SavedReview, StoreError};
