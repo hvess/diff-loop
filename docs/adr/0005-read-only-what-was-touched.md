@@ -47,8 +47,10 @@ each time. The developer chose rebuilding per changed path, 2026-10-13.
 
 - An idle watch event costs reading the checkout and the snapshot (a few
   `rev-parse` and `symbolic-ref` calls) and a diff of the touched paths,
-  not a full diff. A change reported during a load is checked when the
-  load ends.
+  not a full diff. Its load still names every changed file across IPC
+  (path and signature, not content), O(files) where a fingerprint was
+  one string. A change reported during a load is checked when the load
+  ends.
 - Changes git makes only to the index (`git rm --cached`) show at the
   next full read: a moved snapshot, another base, or reopening.
 - A rename into a path the watch did not touch shows as an addition and

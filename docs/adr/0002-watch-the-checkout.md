@@ -17,12 +17,14 @@ and is paid even when nothing changed.
    anything in the checkout or its git state may have changed, until the
    returned guard is dropped. Calls may be spurious; the fingerprint still
    decides whether anything did change. The developer's call, 2026-10-13.
+   (Amended by ADR 0005 §1: the callback names what was touched.)
 2. **`diff-loop-git` watches with the `notify` crate** (8.x), recursively,
    over the working tree and, for a worktree, its git directory and the
    repository's common directory, which lie outside it. A burst of events
    is reported once, after 250 ms of quiet.
 3. **The app emits `repository-changed`** for each report; the front end
    checks the fingerprint on that event and when the window gains focus.
+   (Amended by ADR 0005 §4: while watching, it loads instead.)
 4. **Polling every 2 s remains only as the fallback** when a watch cannot
    start (on Linux, the inotify watch limit).
 

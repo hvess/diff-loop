@@ -67,7 +67,8 @@ change, annotate, hand off to the agent, next round.
    `anchor.rs`).
 7. **One watch per open repository.** `watch_repository` runs after a
    repository opens; `Session` keeps its guard, drops it when another
-   opens (atomically, under both locks), and drops a guard that arrives
+   opens (atomically, under `current`, which `replace` holds while it
+   clears the watch and the last load), and drops a guard that arrives
    for a repository no longer open, answering `false`. The store trusts
    only answers for the repository still open; until one confirms a watch,
    or if watching fails, `App` polls every 2 s. While a watch runs,
