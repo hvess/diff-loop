@@ -1,7 +1,7 @@
 # 0001 — Front-end stack, and git through its command line
 
 **Status:** accepted, 2026-10-13
-**Affects:** AGENTS.md "Language & Platform"; open-tasks 2 and 3
+**Affects:** AGENTS.md "Language & Platform"; open-tasks 2; CI (`.github/workflows/ci.yml`)
 
 ## Context
 

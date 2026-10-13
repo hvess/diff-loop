@@ -39,15 +39,6 @@ contradicts) and the entry says so before it goes.
    end's lint, type-check and test stages, a front-end skill states its
    idioms, and a UI judge reads captured windows against the `ux` skill.
 
-## Workspace
-
-3. **No CI.** The workspace and its lints exist (`Cargo.toml`). Closes
-   when `.github/workflows/ci.yml` runs the
-   review's stages 2–3 (`cargo fmt --all --check`, `cargo clippy
-   --workspace --all-targets --locked -- -D warnings`, `cargo test
-   --workspace --locked`) on every pull request and push to `main`, on
-   each platform a release ships for, with read-only permissions.
-
 ## App
 
 4. **Review comments are lost when the app quits.** They live only in
