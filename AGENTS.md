@@ -57,7 +57,8 @@ tree did not pass; install its local guard once per checkout with
 `.agents/skills/*/SKILL.md` are plain Markdown, whatever agent you are:
 read the one whose description matches the task before starting it —
 `rust` and `quality-gate` for any Rust change, `frontend` for anything
-under `app/src`, `big-o` and
+under `app/src` (with `mastering-typescript` as the general TypeScript
+reference; where they differ, `frontend` and the ADRs win), `big-o` and
 `data-structures` for any loop, collection, search, sort, cache or
 recursion, `comments` for any comment, `ux` for anything the user sees,
 `records` for the specs, ADRs and ledger, `review` before committing.
