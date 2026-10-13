@@ -9,6 +9,8 @@ use std::{
 
 use diff_loop_core::RepoError;
 
+use crate::locate;
+
 /// `git diff` flags `parse::parse` relies on, whatever the user's config says.
 pub(crate) const DIFF_FLAGS: [&str; 8] = [
     "diff",
@@ -108,7 +110,7 @@ impl Runner {
             .spawn()
             .map_err(|e| RepoError::Failed {
                 message: if e.kind() == std::io::ErrorKind::NotFound {
-                    "git is not installed, or neither PATH nor the login shell finds it".to_owned()
+                    locate::MISSING.to_owned()
                 } else {
                     format!("could not run git: {e}")
                 },

@@ -18,6 +18,7 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 3. Parse `git diff` output — done 2026-10-13.
 4. Untracked files as additions, binary sizes, blobs, fingerprint, commits between — done 2026-10-13.
 5. Watch the working tree and its git directories (ADR 0002) — done 2026-10-13.
+6. Find git as a terminal does (Decisions 8 and 9) — done 2026-10-13.
 
 ## Decisions
 
@@ -52,7 +53,16 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
    `Git::open`: the first `git` on `PATH`; else, on Unix, the file
    `$SHELL -lc 'command -v git'` names, since an app opened from the
    macOS Finder gets a minimal `PATH`; else plain `git`, which fails with
-   a message saying so. The developer's call, 2026-10-13.
+   a message naming where it looked (`MISSING`). The developer's call,
+   2026-10-13.
+9. **The login shell gets 5 s to exit** (`SHELL_TIMEOUT`), then is
+   killed, so a profile that waits on input cannot hang opening a
+   repository. It writes to a temporary file, not a pipe: a background
+   process the profile starts could hold a pipe open after the shell
+   exits. The file is created with `create_new`, so a file or symlink
+   planted at its name is refused, never followed. Its last line of output
+   is the answer. Chosen by the author,
+   2026-10-13.
 
 ## Pitfalls
 
@@ -64,8 +74,8 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 
 ## Progress (2026-10-13, git through the login shell)
 
-Decision 8 landed: an app without `git` on its `PATH` asks the login
-shell.
+Decisions 8 and 9 landed: an app without `git` on its `PATH` asks the
+login shell, and gives up on one that has not exited within 5 s.
 
 ## Progress (2026-10-13, first version)
 
