@@ -16,7 +16,8 @@ with the test quality-gate §8 asks for.
    `vitest run`). It is Vite's own test runner: it reads `vite.config.ts`
    and the same TypeScript, so tests need no second build setup.
 2. **Tests sit beside the module they test**, as `<module>.test.ts`, and
-   test plain functions; components are checked by use (`ux` skill, gate
+   test plain functions (and, since ADR 0004 §6, the store with `api`
+   mocked); components are checked by use (`ux` skill, gate
    9) until a UI judge exists (open-tasks 2).
 
 ## Consequences

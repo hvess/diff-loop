@@ -52,4 +52,4 @@ review in progress.
 - A failed read or write shows "Saved comments are unavailable" above
   the review, with Try again; the comments stay in the window.
 - A moved or deleted working tree leaves its entry behind; nothing
-  prunes it.
+  prunes it (open-tasks 9).

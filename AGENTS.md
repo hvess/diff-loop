@@ -13,7 +13,7 @@ Shape (quality-gate §2):
 
 | Crate | Path | Role | Spec |
 |---|---|---|---|
-| `diff-loop-core` | `crates/core` | Domain and the `Repository` port; no I/O | `docs/spec/diff-loop-core.md` |
+| `diff-loop-core` | `crates/core` | Domain and its ports, `Repository` and `ReviewStore`; no I/O | `docs/spec/diff-loop-core.md` |
 | `diff-loop-git` | `crates/git` | `Repository` over the `git` command line | `docs/spec/diff-loop-git.md` |
 | `diff-loop-app` | `app/src-tauri` | Composition root and Tauri commands | `docs/spec/diff-loop-app.md` |
 

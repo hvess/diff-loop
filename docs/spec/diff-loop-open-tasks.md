@@ -54,3 +54,12 @@ contradicts) and the entry says so before it goes.
    behind", "1 file"), and the app icon (`app/src-tauri/icons/` are
    placeholders). Each needs the developer's word on whether it is still
    wanted.
+9. **Saved reviews are never pruned, nor shared safely between
+   instances.** `reviews.json` (ADR 0004) keeps an entry for every
+   working tree ever reviewed, moved or deleted ones included, and each
+   save rewrites it whole (`JsonReviews::save`,
+   `app/src-tauri/src/reviews.rs`). Its lock is per process, so two
+   running instances can overwrite each other's saves. Closes when
+   entries for working trees that no longer exist are dropped, and
+   saving is safe across processes, or the developer decides against
+   either.
