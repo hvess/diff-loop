@@ -84,8 +84,9 @@ function describeRepository(r: RepoError): { title: string; detail: string } {
 }
 
 /**
- * A failure kind these bindings do not name. `never`, so adding a variant in
- * Rust fails the type check until it has words here.
+ * A failure kind these bindings do not name. `never`, so a new variant in Rust
+ * fails the type check until it has words. `isCommandError` checks only that a
+ * `kind` is present, so at run time an unnamed one can still reach here.
  */
 function unknownFailure(failure: never): { title: string; detail: string } {
   return { title: "Something went wrong", detail: JSON.stringify(failure) };
