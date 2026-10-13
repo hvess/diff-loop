@@ -8,6 +8,7 @@ mod anchor;
 mod base;
 mod diff;
 mod instructions;
+mod lines;
 mod repository;
 mod review;
 mod role;
@@ -16,6 +17,7 @@ pub use anchor::{AnchorState, Comment, Target};
 pub use base::{Base, BaseRef, RefKind};
 pub use diff::{Content, FileDiff, Hunk, Line, Side, Status};
 pub use instructions::{Format, InstructionsRequest, instructions};
+pub use lines::lines;
 pub use repository::{
     Changes, Checkout, Head, NewSide, OnChange, RepoError, Repository, Snapshot, WatchGuard,
 };

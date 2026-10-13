@@ -22,6 +22,7 @@ review as instructions. Each is a pure function tested here.
 4. `reanchor` — done 2026-10-13.
 5. `instructions` — done 2026-10-13.
 6. `open` and `load`, composing the above over a `Repository` — done 2026-10-13.
+7. `lines`: a line range of either side of a file, for the unchanged lines a diff leaves out — done 2026-10-13.
 
 ## Decisions
 
@@ -56,12 +57,19 @@ review as instructions. Each is a pure function tested here.
    `ReviewFile::Unchanged`.
 9. **The port can watch** (`Repository::watch`, ADR 0002): an adapter
    reports possible changes; the fingerprint decides.
+10. **`lines` reads through `Repository::blob`**, so the port needs no
+    new method; it splits as `str::lines` does, like the diff (Pitfalls).
+    A range past the file's end returns what exists.
 
 ## Pitfalls
 
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-13, expanding unchanged lines)
+
+Step 7 landed with the app's "Show N unchanged lines".
 
 ## Progress (2026-10-13, first version)
 

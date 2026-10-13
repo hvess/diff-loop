@@ -77,6 +77,8 @@ before reopening a decision they cover.
 - **0002 — Watch the checkout instead of polling it.** `Repository::watch`
   on the port; `diff-loop-git` watches with `notify`; the app emits
   `repository-changed`, and polls every 2 s only when a watch cannot start.
+- **0003 — Vitest for the front end's tests.** `npm test` in `app/`;
+  tests sit beside their module as `<module>.test.ts`.
 
 ## Key Constraints (non-negotiable)
 

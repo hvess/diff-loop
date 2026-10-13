@@ -31,6 +31,10 @@ change, annotate, hand off to the agent, next round.
    branch is checked out. Each says how many comments are outdated, and
    "Show what changed" compares with the previous `HEAD` — done
    2026-10-13.
+6. Expand unchanged lines: "Show N unchanged lines" before a hunk, and
+   "Show the rest of the file" after the last, read them (`file_lines`,
+   diff-loop-core `lines`) and show them, highlighted, in place (Decisions
+   9 and 10) — done 2026-10-13.
 
 ## Decisions
 
@@ -65,12 +69,25 @@ change, annotate, hand off to the agent, next round.
    only answers for the repository still open; until one confirms a watch,
    or if watching fails, `App` polls every 2 s.
 8. **Limits that keep the UI responsive**, chosen by the author for the
-   first version (2026-10-13), not by the design: files over 5000 diff
-   lines show without highlighting (`highlight.ts`, `MAX_LINES`); the base
+   first version (2026-10-13), not by the design: files showing over 5000 lines,
+   expanded ones included, show without highlighting (`highlight.ts`, `MAX_LINES`); the base
    picker lists 50 matches, an exactly named ref first, and asks to type
    to narrow (`SHOWN`); 8 recent
    folders are kept (`recent.ts`, `LIMIT`); the preview rebuilds 150 ms
    after the last change (`PREVIEW_DELAY_MS`).
+
+9. **Expanded lines cannot be commented on**: they are context for
+   reading. A comment's code comes from the diff (diff-loop-core
+   Decision 3), and lines read by `file_lines` are not in it; their
+   numbers are not buttons (`Cell.shown`). The developer's call,
+   2026-10-13.
+10. **Expansions** open the gap before any hunk ("Show N unchanged
+    lines") and after the last ("Show the rest of the file", `REST`),
+    except in an added or deleted file, whose diff is the whole file.
+    They last while the file's signature holds, as viewed marks do
+    (Decision 4), and are dropped when the base changes. The diff cannot
+    say whether its last hunk reaches the file's end, so "Show the rest
+    of the file" is offered anyway; when nothing follows, the row goes.
 
 ## Pitfalls
 
@@ -79,6 +96,13 @@ change, annotate, hand off to the agent, next round.
   them.
 - Code rows have an integer line height (25 px); a fractional one leaves
   hairline gaps between measured rows.
+
+## Progress (2026-10-13, expanding unchanged lines)
+
+Step 6 landed. A gap is now measured from the hunks' own line numbers
+(`gapBefore` in `app/src/rows.ts`): git's `+N,0` header names the line
+before a pure deletion, and the old count was one short there. The first
+front-end tests landed with it (`app/src/rows.test.ts`, ADR 0003).
 
 ## Progress (2026-10-13, first version)
 

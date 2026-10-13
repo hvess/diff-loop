@@ -161,7 +161,7 @@ fn signature(file: &FileDiff) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::{
         anchor::{AnchorState, Target},
@@ -174,7 +174,8 @@ mod tests {
         role::Role,
     };
 
-    struct Fixed(Vec<FileDiff>);
+    /// A repository with these changes, whose every blob is `one\r\ntwo\nthree\nfour`.
+    pub(crate) struct Fixed(pub(crate) Vec<FileDiff>);
 
     impl Repository for Fixed {
         fn checkout(&self) -> Result<Checkout, RepoError> {
@@ -214,7 +215,7 @@ mod tests {
             Ok("f1".into())
         }
         fn blob(&self, _: &Snapshot, _: Side, _: &str) -> Result<Vec<u8>, RepoError> {
-            Ok(vec![])
+            Ok(b"one\r\ntwo\nthree\nfour".to_vec())
         }
         fn commits_between(&self, _: &str, _: &str) -> Result<Option<u32>, RepoError> {
             Ok(Some(0))

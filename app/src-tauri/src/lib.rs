@@ -221,6 +221,21 @@ async fn blob(
     Ok(Response::new(bytes))
 }
 
+/// Lines `first..=last` of `path` on one side of `snapshot`: unchanged lines
+/// the diff leaves out.
+#[tauri::command]
+async fn file_lines(
+    snapshot: Snapshot,
+    side: Side,
+    path: String,
+    first: u32,
+    last: u32,
+    session: State<'_, Session>,
+) -> Result<Vec<String>, CommandError> {
+    let repository = session.current()?;
+    blocking(move || diff_loop_core::lines(&*repository, &snapshot, side, &path, first, last)).await
+}
+
 /// The folder the app was launched with (`diff-loop-app <path>`); `None` after the first call.
 #[tauri::command]
 fn launch_path(launch: State<'_, LaunchPath>) -> Option<PathBuf> {
@@ -257,6 +272,7 @@ pub fn run() -> TauriResult<()> {
             fingerprint,
             commits_between,
             blob,
+            file_lines,
             instructions,
             launch_path,
             watch_repository,

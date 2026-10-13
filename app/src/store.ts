@@ -14,7 +14,7 @@ import type { Snapshot } from "./bindings/Snapshot";
 import type { Side } from "./bindings/Side";
 import type { Target } from "./bindings/Target";
 import { rememberRecent } from "./recent";
-import { lastLine, linesOn, withinHunk } from "./rows";
+import { type Expanded, type Gap, lastLine, linesOn, withinHunk } from "./rows";
 
 export type Problem = { title: string; detail: string };
 
@@ -68,6 +68,11 @@ type State = {
    * opening and reloading replace it whole.
    */
   viewed: Map<string, string>;
+  /**
+   * Path → the gaps expanded in that file, kept while its signature holds.
+   * Replaced, never mutated: DiffView selects one file's entry.
+   */
+  expanded: Map<string, { signature: string; gaps: Expanded }>;
   mode: "unified" | "split";
   composer: Composer | null;
   selection: Selection | null;
@@ -87,6 +92,8 @@ type Actions = {
   poll(): Promise<void>;
   select(path: string): void;
   toggleViewed(path?: string): void;
+  /** Reads and shows the unchanged lines of `gap`, expanded under `key` (`gapKey`, or `REST`). */
+  expandGap(path: string, key: string, gap: Gap): Promise<void>;
   setMode(mode: State["mode"]): void;
   setSelection(selection: Selection | null): void;
   composeOnSelection(): void;
@@ -184,6 +191,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   comments: [],
   selected: null,
   viewed: new Map(),
+  expanded: new Map(),
   mode: "unified",
   composer: null,
   selection: null,
@@ -212,6 +220,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         review: null,
         comments: [],
         viewed: new Map(),
+        expanded: new Map(),
         watching: false,
         selected: null,
         composer: null,
@@ -242,7 +251,8 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   async setBase(base) {
-    set({ base, banner: null });
+    // Expanded lines were read from the old base's snapshot.
+    set({ base, banner: null, expanded: new Map() });
     api.refs().then((refs) => set({ refs }), () => {});
     await get().reload();
   },
@@ -261,9 +271,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
         return m ? { ...m, text: c.text, suggestion: c.suggestion } : c;
       });
       const viewed = new Map([...get().viewed].filter(([path, was]) => review.signatures[path] === was));
+      const expanded = new Map([...get().expanded].filter(([path, e]) => review.signatures[path] === e.signature));
       const current = get().selected;
       const selected = current !== null && review.byPath.has(current) ? current : (review.order[0]?.path ?? null);
-      set({ review, comments, viewed, selected, loadProblem: null });
+      set({ review, comments, viewed, expanded, selected, loadProblem: null });
       await announceMove(before, review, comments);
     } catch (error) {
       set({ loadProblem: describe(error) });
@@ -320,6 +331,28 @@ export const useStore = create<State & Actions>()((set, get) => ({
     else viewed.set(target, signature);
     // Same Map: `set` still notifies, and selectors read it afresh.
     set({ viewed });
+  },
+
+  async expandGap(path, key, gap) {
+    const review = get().review;
+    const signature = review?.signatures[path];
+    if (!review || signature === undefined || gap.count === 0) return;
+    // After the last hunk the file's length is unknown: `lines` stops at its end.
+    const last = gap.count === null ? 0xffffffff : gap.newFirst + gap.count - 1;
+    const mark = (state: Expanded[string]) => {
+      const now = get().review;
+      // A reload since asking may have changed the file: its lines no longer fit.
+      if (now?.signatures[path] !== signature) return;
+      const before = get().expanded.get(path);
+      const gaps = before?.signature === signature ? before.gaps : {};
+      set({ expanded: new Map(get().expanded).set(path, { signature, gaps: { ...gaps, [key]: state } }) });
+    };
+    mark("loading");
+    try {
+      mark(await api.fileLines(review.changes.snapshot, "new", path, gap.newFirst, last));
+    } catch {
+      mark("failed");
+    }
   },
 
   setMode(mode) {

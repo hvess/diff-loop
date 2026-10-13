@@ -22,6 +22,8 @@ export const api = {
     invoke<number | null>("commits_between", { from, to }),
   blob: (snapshot: Snapshot, side: Side, path: string) =>
     invoke<ArrayBuffer>("blob", { snapshot, side, path }),
+  fileLines: (snapshot: Snapshot, side: Side, path: string, first: number, last: number) =>
+    invoke<string[]>("file_lines", { snapshot, side, path, first, last }),
   watchRepository: () => invoke<boolean>("watch_repository"),
   launchPath: () => invoke<string | null>("launch_path"),
   instructions: (request: InstructionsRequest) =>

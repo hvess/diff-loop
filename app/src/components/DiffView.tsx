@@ -4,7 +4,7 @@ import type { Comment } from "../bindings/Comment";
 import type { FileDiff } from "../bindings/FileDiff";
 import type { Side } from "../bindings/Side";
 import { useHighlights, type Highlights } from "../highlight";
-import { type Cell, type HunkRow, lastLine, splitRows, unifiedRows, withinHunk } from "../rows";
+import { type Cell, type Expanded, type HunkRow, lastLine, splitRows, unifiedRows, withinHunk } from "../rows";
 import { orderedComments, type Selection, useStore } from "../store";
 import { CommentCard } from "./CommentCard";
 import { Composer } from "./Composer";
@@ -57,9 +57,13 @@ export function DiffView({ file }: { file: FileDiff }) {
   const selection = useStore((s) => s.selection);
   const composer = useStore((s) => s.composer);
   const openComment = useStore((s) => s.openComment);
-  const highlights = useHighlights(file);
+  const expanded = useStore((s) => s.expanded.get(file.path)?.gaps);
+  const highlights = useHighlights(file, expanded);
   const marks = useMarks(file);
-  const rows = useMemo(() => (mode === "unified" ? unifiedRows(file) : splitRows(file)), [file, mode]);
+  const rows = useMemo(
+    () => (mode === "unified" ? unifiedRows(file, expanded) : splitRows(file, expanded)),
+    [file, mode, expanded],
+  );
   // Side and line number → row, so N / P find a comment's row without a scan.
   const rowOf = useMemo(() => {
     const index = new Map<string, number>();
@@ -143,7 +147,12 @@ export function DiffView({ file }: { file: FileDiff }) {
               style={{ transform: `translateY(${item.start}px)`, zIndex: lifted ? 10 : undefined }}
             >
               {row.kind === "hunk" ? (
-                <HunkHeader row={row} indent={mode === "unified" ? 120 : 88} />
+                <HunkHeader
+                  row={row}
+                  path={file.path}
+                  state={expanded?.[row.key]}
+                  indent={mode === "unified" ? 120 : 88}
+                />
               ) : mode === "unified" ? (
                 <UnifiedLine
                   path={file.path}
@@ -179,17 +188,37 @@ export function DiffView({ file }: { file: FileDiff }) {
   );
 }
 
-function HunkHeader({ row, indent }: { row: HunkRow; indent: number }) {
+function HunkHeader({
+  row,
+  path,
+  state,
+  indent,
+}: {
+  row: HunkRow;
+  path: string;
+  state: Expanded[string] | undefined;
+  indent: number;
+}) {
+  const expandGap = useStore((s) => s.expandGap);
+  const { count } = row.gap;
+  const lines = count === null ? "the rest of the file" : `${count} unchanged ${count === 1 ? "line" : "lines"}`;
   return (
     <div
       className="flex h-[30px] items-center gap-4 border-y border-border bg-hunk pr-8 text-xs text-faint"
       style={{ paddingLeft: indent }}
     >
-      {row.hidden > 0 && (
-        <span className="flex-none font-sans text-[12.5px] whitespace-nowrap text-muted2">
-          {row.hidden} unchanged {row.hidden === 1 ? "line" : "lines"}
-        </span>
-      )}
+      {count !== 0 &&
+        (state === "loading" ? (
+          <span className="flex-none font-sans text-[12.5px] whitespace-nowrap text-muted2">Showing {lines}…</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void expandGap(path, row.key, row.gap)}
+            className="flex-none font-sans text-[12.5px] whitespace-nowrap text-muted2 hover:text-fg"
+          >
+            {state === "failed" ? `Couldn’t read ${lines}. Try again` : `Show ${lines}`}
+          </button>
+        ))}
       {row.section && <span className="truncate">{row.section}</span>}
     </div>
   );
@@ -270,6 +299,9 @@ function Number({
 }) {
   const width = wide ? "w-16" : "w-12";
   if (!cell) return <span className={`${width} flex-none ${gutter}`} />;
+  if (cell.shown) {
+    return <span className={`${width} flex-none pr-2.5 text-right text-faint select-none ${gutter}`}>{cell.no}</span>;
+  }
   return (
     <span
       role="button"

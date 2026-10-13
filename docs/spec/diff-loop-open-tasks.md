@@ -34,10 +34,12 @@ contradicts) and the entry says so before it goes.
      without the hook: `commit-tree`, `cherry-pick`, `revert`, `rebase`,
      `am`). The guard makes skipping the gate deliberate, not impossible.
 2. **The loop has no front-end stages.** The stack is chosen (ADR 0001)
-   and `npm run typecheck` / `npm run build` in `app/` pass, but the review
+   and `npm run typecheck` / `npm run build` / `npm test` in `app/` pass, but the review
    skill does not run them. Closes when the review skill gains the front
    end's lint, type-check and test stages, a front-end skill states its
    idioms, and a UI judge reads captured windows against the `ux` skill.
+   A test runner exists (Vitest, `npm test`, ADR 0003) but no stage runs
+   it yet.
 
 ## App
 
@@ -45,10 +47,6 @@ contradicts) and the entry says so before it goes.
    the front end's store (`app/src/store.ts`, `comments`). Closes with a
    persisted format for a review per checkout and base, decided in an
    ADR.
-5. **Unchanged lines cannot be expanded.** A hunk header says how many
-   lines are hidden (`app/src/rows.ts`, `hiddenBefore`); the design's
-   "Show 12 unchanged lines" needs a core call returning a line range of
-   either side.
 7. **A detected change rebuilds the whole diff in Rust**
    (`diff_loop_core::load`); only new or changed files cross IPC
    (`KnownFile`, `ReviewFile`). And when a watch cannot start (ADR 0002 §4,
