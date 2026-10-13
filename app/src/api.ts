@@ -9,6 +9,7 @@ import type { InstructionsRequest } from "./bindings/InstructionsRequest";
 import type { KnownFile } from "./bindings/KnownFile";
 import type { Opening } from "./bindings/Opening";
 import type { Review } from "./bindings/Review";
+import type { SavedReview } from "./bindings/SavedReview";
 import type { Side } from "./bindings/Side";
 import type { Snapshot } from "./bindings/Snapshot";
 
@@ -25,6 +26,8 @@ export const api = {
   fileLines: (snapshot: Snapshot, side: Side, path: string, first: number, last: number) =>
     invoke<string[]>("file_lines", { snapshot, side, path, first, last }),
   watchRepository: () => invoke<boolean>("watch_repository"),
+  savedReview: (root: string) => invoke<SavedReview>("saved_review", { root }),
+  saveReview: (root: string, review: SavedReview) => invoke<null>("save_review", { root, review }),
   launchPath: () => invoke<string | null>("launch_path"),
   instructions: (request: InstructionsRequest) =>
     invoke<string>("instructions", { request }),
@@ -35,6 +38,9 @@ export function describe(error: unknown): { title: string; detail: string } {
   const e = error as CommandError | undefined;
   if (e?.kind === "noRepository") {
     return { title: "No repository is open", detail: "Open a folder to start a review." };
+  }
+  if (e?.kind === "store") {
+    return { title: "Saved comments are unavailable", detail: e.error.message };
   }
   if (e?.kind === "internal") {
     return { title: "Diff Loop hit a problem", detail: e.message };

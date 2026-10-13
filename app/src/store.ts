@@ -10,6 +10,7 @@ import type { Format } from "./bindings/Format";
 import type { InstructionsRequest } from "./bindings/InstructionsRequest";
 import type { Opening } from "./bindings/Opening";
 import type { Review } from "./bindings/Review";
+import type { SavedReview } from "./bindings/SavedReview";
 import type { Snapshot } from "./bindings/Snapshot";
 import type { Side } from "./bindings/Side";
 import type { Target } from "./bindings/Target";
@@ -82,6 +83,8 @@ type State = {
   undo: Undo | null;
   note: string;
   prefs: Prefs;
+  /** Why the open checkout's comments and note are not being kept, if they are not. */
+  saveProblem: Problem | null;
 };
 
 type Actions = {
@@ -120,6 +123,11 @@ type Actions = {
   copyReview(): Promise<void>;
   copyText(text: string): Promise<void>;
   setCopied(copied: boolean): void;
+  /**
+   * Saves the open checkout's comments and note now. When its saved review
+   * could not be read, reads it again first and merges it into the window.
+   */
+  retrySave(): Promise<void>;
 };
 
 const PREFS_KEY = "diff-loop.prefs";
@@ -201,6 +209,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   undo: null,
   note: "",
   prefs: loadPrefs(),
+  saveProblem: null,
 
   async open(path) {
     set({ busy: true, openProblem: null });
@@ -213,12 +222,16 @@ export const useStore = create<State & Actions>()((set, get) => ({
         branch: head.kind === "branch" ? head.name : `HEAD detached at ${head.commit}`,
         openedAt: Date.now(),
       });
+      // Read before the checkout shows, and set with it: loading is not a change
+      // to save. Before the first load, so it moves the comments onto their code.
+      const root = opening.checkout.root;
+      const saved = await readSaved(root);
       set({
         opening,
         refs: opening.refs,
         base: opening.base,
         review: null,
-        comments: [],
+        comments: saved.review.comments,
         viewed: new Map(),
         expanded: new Map(),
         watching: false,
@@ -228,12 +241,12 @@ export const useStore = create<State & Actions>()((set, get) => ({
         openComment: null,
         banner: null,
         undo: null,
-        note: "",
+        note: saved.review.note,
+        saveProblem: saved.problem,
       });
       await get().reload();
       // Only the answer for the repository still open counts: a slow answer
       // for one opened before must not stop the fallback polling.
-      const root = opening.checkout.root;
       const stillOpen = () => get().opening?.checkout.root === root;
       api.watchRepository().then(
         (kept) => kept && stillOpen() && set({ watching: true }),
@@ -538,4 +551,94 @@ export const useStore = create<State & Actions>()((set, get) => ({
   setCopied(copied) {
     set({ copied });
   },
+
+  async retrySave() {
+    const opening = get().opening;
+    if (!opening) return;
+    const root = opening.checkout.root;
+    if (savings.get(root)?.last !== null) {
+      await save(root, { comments: get().comments, note: get().note });
+      return;
+    }
+    const saved = await readSaved(root);
+    if (get().opening !== opening || saved.problem) {
+      if (get().opening === opening) set({ saveProblem: saved.problem });
+      return;
+    }
+    // Comment ids are unique, so the saved ones the window lacks are added.
+    const ids = new Set(get().comments.map((c) => c.id));
+    const comments = [...saved.review.comments.filter((c) => !ids.has(c.id)), ...get().comments];
+    set({ comments, note: get().note || saved.review.note, saveProblem: null });
+    await get().reload();
+  },
 }));
+
+/** Typing pauses this long before the note is saved; comments save at once. */
+const NOTE_SAVE_DELAY_MS = 300;
+
+/** How saving stands for one working tree. */
+type Saving = {
+  /** JSON of the review last saved or read; null while it could not be read, which stops saving. */
+  last: string | null;
+  /** Saves run one after another, so an older one never lands after a newer. */
+  queue: Promise<void>;
+  /** A note save waiting for typing to pause. */
+  note?: ReturnType<typeof setTimeout>;
+};
+
+/** By working-tree root, for each checkout opened in this window. */
+const savings = new Map<string, Saving>();
+
+/** The review saved for `root`, recorded as its last; empty with the problem when it cannot be read. */
+async function readSaved(root: string): Promise<{ review: SavedReview; problem: Problem | null }> {
+  const saving = savings.get(root) ?? { last: null, queue: Promise.resolve() };
+  savings.set(root, saving);
+  try {
+    const review = await api.savedReview(root);
+    saving.last = JSON.stringify(review);
+    return { review, problem: null };
+  } catch (error) {
+    // Saving stays stopped: writing now would replace a review never read.
+    saving.last = null;
+    return { review: { comments: [], note: "" }, problem: describe(error) };
+  }
+}
+
+/** Keeps `review` for `root` unless it is what was last kept, reporting failure while `root` is open. */
+function save(root: string, review: SavedReview): Promise<void> {
+  const saving = savings.get(root);
+  if (!saving || saving.last === null) return Promise.resolve();
+  clearTimeout(saving.note);
+  saving.queue = saving.queue.then(async () => {
+    const json = JSON.stringify(review);
+    if (json === saving.last) return;
+    const stillOpen = () => useStore.getState().opening?.checkout.root === root;
+    try {
+      await api.saveReview(root, review);
+      saving.last = json;
+      if (stillOpen()) useStore.setState({ saveProblem: null });
+    } catch (error) {
+      if (stillOpen()) useStore.setState({ saveProblem: describe(error) });
+    }
+  });
+  return saving.queue;
+}
+
+// Saves the open checkout's review when its comments or note change (ADR
+// 0004 §4); `open` sets the checkout and its saved review together, so
+// opening is never seen as a change.
+useStore.subscribe((now, before) => {
+  const opening = now.opening;
+  if (!opening || opening !== before.opening) return;
+  if (now.comments === before.comments && now.note === before.note) return;
+  const root = opening.checkout.root;
+  const review = { comments: now.comments, note: now.note };
+  if (now.comments !== before.comments) {
+    void save(root, review);
+    return;
+  }
+  const saving = savings.get(root);
+  if (!saving) return;
+  clearTimeout(saving.note);
+  saving.note = setTimeout(() => void save(root, review), NOTE_SAVE_DELAY_MS);
+});

@@ -23,6 +23,7 @@ review as instructions. Each is a pure function tested here.
 5. `instructions` — done 2026-10-13.
 6. `open` and `load`, composing the above over a `Repository` — done 2026-10-13.
 7. `lines`: a line range of either side of a file, for the unchanged lines a diff leaves out — done 2026-10-13.
+8. The `ReviewStore` port and `SavedReview` (ADR 0004) — done 2026-10-13.
 
 ## Decisions
 
@@ -61,11 +62,19 @@ review as instructions. Each is a pure function tested here.
     new method; it splits as `str::lines` does, like the diff (Pitfalls).
     A range past the file's end returns what exists.
 
+11. **A review is kept per working tree** (`ReviewStore`, ADR 0004 §1):
+    its comments and note, whatever the base. An empty `SavedReview`
+    removes the entry.
+
 ## Pitfalls
 
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-13, reviews kept between runs)
+
+Step 8 landed with the app's `JsonReviews` adapter.
 
 ## Progress (2026-10-13, expanding unchanged lines)
 

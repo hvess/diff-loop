@@ -11,14 +11,17 @@ use std::{
     sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
+mod reviews;
+
 use diff_loop_core::{
     Base, BaseRef, Comment, InstructionsRequest, KnownFile, Opening, RepoError, Repository, Review,
-    Side, Snapshot, WatchGuard,
+    ReviewStore, SavedReview, Side, Snapshot, StoreError, WatchGuard,
 };
 use diff_loop_git::Git;
 use serde::Serialize;
 use tauri::{
-    AppHandle, Emitter, Result as TauriResult, State, async_runtime::spawn_blocking, ipc::Response,
+    AppHandle, Emitter, Manager, Result as TauriResult, State, async_runtime::spawn_blocking,
+    ipc::Response,
 };
 use thiserror::Error;
 use ts_rs::TS;
@@ -40,6 +43,15 @@ struct Session {
     watch: Mutex<Option<WatchGuard>>,
 }
 
+/// Where reviews are kept between runs.
+struct Reviews(Arc<dyn ReviewStore + Send + Sync>);
+
+impl fmt::Debug for Reviews {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Reviews").finish_non_exhaustive()
+    }
+}
+
 /// The folder named on the command line, handed to the front end once.
 #[derive(Debug, Default)]
 struct LaunchPath(Mutex<Option<PathBuf>>);
@@ -58,6 +70,12 @@ pub(crate) enum CommandError {
         /// Why.
         error: RepoError,
     },
+    /// Saved reviews could not be read or written.
+    #[error("{error}")]
+    Store {
+        /// Why.
+        error: StoreError,
+    },
     /// The work panicked; a defect in the app, not in the repository.
     #[error("{message}")]
     Internal {
@@ -69,6 +87,12 @@ pub(crate) enum CommandError {
 impl From<RepoError> for CommandError {
     fn from(error: RepoError) -> Self {
         Self::Repository { error }
+    }
+}
+
+impl From<StoreError> for CommandError {
+    fn from(error: StoreError) -> Self {
+        Self::Store { error }
     }
 }
 
@@ -122,10 +146,13 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Runs blocking repository work off the async runtime.
-async fn blocking<T: Send + 'static>(
-    work: impl FnOnce() -> Result<T, RepoError> + Send + 'static,
-) -> Result<T, CommandError> {
+/// Runs blocking work (a repository, the review store) off the async runtime.
+async fn blocking<T: Send + 'static, E: Send + 'static>(
+    work: impl FnOnce() -> Result<T, E> + Send + 'static,
+) -> Result<T, CommandError>
+where
+    CommandError: From<E>,
+{
     Ok(spawn_blocking(work)
         .await
         .map_err(|e| CommandError::Internal {
@@ -143,7 +170,7 @@ async fn open_repository(
     let (repository, opening) = blocking(move || {
         let repository = open(&path)?;
         let opening = diff_loop_core::open(&*repository)?;
-        Ok((repository, opening))
+        Ok::<_, RepoError>((repository, opening))
     })
     .await?;
     session.replace(repository);
@@ -242,6 +269,27 @@ fn launch_path(launch: State<'_, LaunchPath>) -> Option<PathBuf> {
     lock(&launch.0).take()
 }
 
+/// The review saved for the working tree at `root`; empty when none is.
+#[tauri::command]
+async fn saved_review(
+    root: String,
+    reviews: State<'_, Reviews>,
+) -> Result<SavedReview, CommandError> {
+    let store = Arc::clone(&reviews.0);
+    blocking(move || store.saved(&root)).await
+}
+
+/// Keeps `review` for the working tree at `root`; an empty one removes it.
+#[tauri::command]
+async fn save_review(
+    root: String,
+    review: SavedReview,
+    reviews: State<'_, Reviews>,
+) -> Result<(), CommandError> {
+    let store = Arc::clone(&reviews.0);
+    blocking(move || store.save(&root, &review)).await
+}
+
 /// The review as instructions for a coding agent.
 #[tauri::command]
 fn instructions(request: InstructionsRequest) -> String {
@@ -261,6 +309,12 @@ pub fn run() -> TauriResult<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .setup(|app| {
+            // The review store's adapter (ADR 0004 §2).
+            let file = app.path().app_data_dir()?.join("reviews.json");
+            app.manage(Reviews(Arc::new(reviews::JsonReviews::new(file))));
+            Ok(())
+        })
         .manage(Session::new(open_git))
         .manage(LaunchPath(Mutex::new(
             std::env::args_os().nth(1).map(PathBuf::from),
@@ -276,6 +330,8 @@ pub fn run() -> TauriResult<()> {
             instructions,
             launch_path,
             watch_repository,
+            saved_review,
+            save_review,
         ])
         .run(tauri::generate_context!())
 }

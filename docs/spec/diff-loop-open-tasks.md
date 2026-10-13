@@ -43,10 +43,6 @@ contradicts) and the entry says so before it goes.
 
 ## App
 
-4. **Review comments are lost when the app quits.** They live only in
-   the front end's store (`app/src/store.ts`, `comments`). Closes with a
-   persisted format for a review per checkout and base, decided in an
-   ADR.
 7. **A detected change rebuilds the whole diff in Rust**
    (`diff_loop_core::load`); only new or changed files cross IPC
    (`KnownFile`, `ReviewFile`). And when a watch cannot start (ADR 0002 §4,

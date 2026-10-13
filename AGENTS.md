@@ -72,13 +72,16 @@ before reopening a decision they cover.
 - **0001 — Front-end stack, and git through its command line.** Tauri 2
   with React 19, TypeScript, Vite, Tailwind 4, Radix, Zustand, TanStack
   Virtual and Shiki; Rust types reach TypeScript through `ts-rs`; git is
-  read by running `git` with optional locks off; the only persisted state
-  is two `localStorage` keys (recent folders, instruction preferences).
+  read by running `git` with optional locks off; two `localStorage` keys
+  (recent folders, instruction preferences).
 - **0002 — Watch the checkout instead of polling it.** `Repository::watch`
   on the port; `diff-loop-git` watches with `notify`; the app emits
   `repository-changed`, and polls every 2 s only when a watch cannot start.
 - **0003 — Vitest for the front end's tests.** `npm test` in `app/`;
   tests sit beside their module as `<module>.test.ts`.
+- **0004 — Reviews kept between runs.** One per working tree (comments
+  and note), through the core's `ReviewStore` port, in `reviews.json` in
+  the app-data directory; a file it cannot read is never overwritten.
 
 ## Key Constraints (non-negotiable)
 

@@ -35,6 +35,9 @@ change, annotate, hand off to the agent, next round.
    "Show the rest of the file" after the last, read them (`file_lines`,
    diff-loop-core `lines`) and show them, highlighted, in place (Decisions
    9 and 10) — done 2026-10-13.
+7. Keep a review between runs (ADR 0004): comments and note are read
+   before a checkout's first load and saved as they change — done
+   2026-10-13.
 
 ## Decisions
 
@@ -89,6 +92,12 @@ change, annotate, hand off to the agent, next round.
     say whether its last hunk reaches the file's end, so "Show the rest
     of the file" is offered anyway; when nothing follows, the row goes.
 
+11. **Where the review store lives is chosen in `run`'s setup**, the
+    composition root, as `Reviews` managed state over `dyn
+    ReviewStore`; `saved_review` and `save_review` only delegate. Read
+    or write failures show above the review (`SaveProblem` in
+    `ReviewScreen.tsx`).
+
 ## Pitfalls
 
 - Overlays (composer, comment card, range pill) live inside virtualized
@@ -96,6 +105,10 @@ change, annotate, hand off to the agent, next round.
   them.
 - Code rows have an integer line height (25 px); a fractional one leaves
   hairline gaps between measured rows.
+
+## Progress (2026-10-13, reviews kept between runs)
+
+Step 7 landed, with the store's save trigger tested (`app/src/store.test.ts`).
 
 ## Progress (2026-10-13, expanding unchanged lines)
 

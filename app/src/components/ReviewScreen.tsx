@@ -37,6 +37,7 @@ export function ReviewScreen() {
       </TitleBar>
       <Banner />
       <UndoBar />
+      <SaveProblem />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <FilePane onCompareWithAnother={() => setPickerOpen(true)} />
@@ -82,6 +83,24 @@ function UndoBar() {
       <span>{undo.label}</span>
       <button type="button" className="font-medium" onClick={undoLast}>
         Undo
+      </button>
+    </div>
+  );
+}
+
+/** The open checkout's comments are not being kept between runs. */
+function SaveProblem() {
+  const problem = useStore((s) => s.saveProblem);
+  const retrySave = useStore((s) => s.retrySave);
+  if (!problem) return null;
+  return (
+    <div role="alert" className="flex flex-none items-center gap-3 border-b border-border bg-side px-6 py-2 text-[13px]">
+      <span className="font-medium">{problem.title}</span>
+      <span className="min-w-0 truncate text-muted" title={problem.detail}>
+        {problem.detail}. Comments stay in this window until it closes.
+      </span>
+      <button type="button" className="ml-auto flex-none font-medium" onClick={() => void retrySave()}>
+        Try again
       </button>
     </div>
   );

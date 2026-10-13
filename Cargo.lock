@@ -615,6 +615,7 @@ dependencies = [
  "diff-loop-core",
  "diff-loop-git",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",

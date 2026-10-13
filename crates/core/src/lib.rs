@@ -12,6 +12,7 @@ mod lines;
 mod repository;
 mod review;
 mod role;
+mod saved;
 
 pub use anchor::{AnchorState, Comment, Target};
 pub use base::{Base, BaseRef, RefKind};
@@ -23,3 +24,4 @@ pub use repository::{
 };
 pub use review::{KnownFile, Opening, Review, ReviewFile, load, open};
 pub use role::{FileGroup, Role};
+pub use saved::{ReviewStore, SavedReview, StoreError};
