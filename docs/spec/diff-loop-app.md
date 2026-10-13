@@ -138,6 +138,15 @@ change, annotate, hand off to the agent, next round.
 - Code rows have an integer line height (25 px); a fractional one leaves
   hairline gaps between measured rows.
 
+## Progress (2026-10-13, the TypeScript audit)
+
+The front end was audited against the `mastering-typescript` skill. Lint
+reads types and `exactOptionalPropertyTypes` is on (ADR 0008).
+`describe` (`api.ts`) now reads a failure as a `CommandError` only when it
+is an object with a `kind`, and switches over every variant with a `never`
+fallback, so a new error kind in Rust fails the type check until it has
+words.
+
 ## Progress (2026-10-13, the app icon)
 
 Step 10 landed.

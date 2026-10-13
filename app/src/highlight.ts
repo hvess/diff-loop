@@ -12,7 +12,7 @@ import type { FileDiff } from "./bindings/FileDiff";
 import type { Side } from "./bindings/Side";
 import { type Expanded, type Gap, gapAfter, gapBefore, gapKey, hunksOf, REST } from "./rows";
 
-export type Token = { content: string; color?: string; italic: boolean };
+export type Token = { content: string; color: string | undefined; italic: boolean };
 /** Line number → tokens, per side. */
 export type Highlights = Record<Side, Map<number, Token[]>>;
 

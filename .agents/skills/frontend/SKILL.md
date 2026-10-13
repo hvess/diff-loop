@@ -26,6 +26,7 @@ captions, what to send and when.
 
 - **One store**, `useStore` in `store.ts` (Zustand). Every change is an
   action there; components call actions, never `setState` with logic.
+  Actions are typed as function properties, not methods (ADR 0008 §2).
 - **Select narrowly.** A component selects the smallest value it renders
   (`useStore((s) => s.viewed.has(path))`), so an unrelated change does
   not re-render it.
@@ -78,7 +79,7 @@ one line by default, anchors that resolve.
 Run in `app/`, all must pass:
 
 ```sh
-npm run lint        # ESLint, no warnings (ADR 0006)
+npm run lint        # ESLint with types, no warnings (ADR 0006, 0008)
 npm run typecheck   # tsc --noEmit
 npm test            # Vitest
 npm run build       # what ships

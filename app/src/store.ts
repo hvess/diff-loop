@@ -90,48 +90,48 @@ type State = {
 };
 
 type Actions = {
-  open(path: string): Promise<void>;
-  closeRepository(): void;
-  setBase(base: Base): Promise<void>;
+  open: (path: string) => Promise<void>;
+  closeRepository: () => void;
+  setBase: (base: Base) => Promise<void>;
   /** Reads the branches and tags again, with their behind counts. */
-  refreshRefs(): void;
-  reload(): Promise<void>;
-  poll(): Promise<void>;
-  select(path: string): void;
-  toggleViewed(path?: string): void;
+  refreshRefs: () => void;
+  reload: () => Promise<void>;
+  poll: () => Promise<void>;
+  select: (path: string) => void;
+  toggleViewed: (path?: string) => void;
   /** Reads and shows the unchanged lines of `gap`, expanded under `key` (`gapKey`, or `REST`). */
-  expandGap(path: string, key: string, gap: Gap): Promise<void>;
-  setMode(mode: State["mode"]): void;
-  setSelection(selection: Selection | null): void;
-  composeOnSelection(): void;
-  composeOnLines(path: string, side: Side, start: number, end: number): void;
-  composeOnFile(path: string): void;
-  editComment(id: string): void;
-  updateComposer(patch: Partial<Composer>): void;
-  cancelComposer(): void;
-  saveComposer(): void;
-  deleteComment(id: string): void;
-  keepComment(id: string): void;
-  toggleComment(id: string | null): void;
-  jumpComment(step: 1 | -1): void;
+  expandGap: (path: string, key: string, gap: Gap) => Promise<void>;
+  setMode: (mode: State["mode"]) => void;
+  setSelection: (selection: Selection | null) => void;
+  composeOnSelection: () => void;
+  composeOnLines: (path: string, side: Side, start: number, end: number) => void;
+  composeOnFile: (path: string) => void;
+  editComment: (id: string) => void;
+  updateComposer: (patch: Partial<Composer>) => void;
+  cancelComposer: () => void;
+  saveComposer: () => void;
+  deleteComment: (id: string) => void;
+  keepComment: (id: string) => void;
+  toggleComment: (id: string | null) => void;
+  jumpComment: (step: 1 | -1) => void;
   /** Selects the comment's file and opens its card. */
-  showComment(id: string): void;
-  clearUndo(): void;
-  clearComments(): void;
-  undoLast(): void;
-  dismissBanner(): void;
-  showWhatChanged(): Promise<void>;
-  setNote(note: string): void;
-  setPrefs(prefs: Partial<Prefs>): void;
-  instructionsRequest(prefs?: Prefs): InstructionsRequest | null;
-  copyReview(): Promise<void>;
-  copyText(text: string): Promise<void>;
-  setCopied(copied: boolean): void;
+  showComment: (id: string) => void;
+  clearUndo: () => void;
+  clearComments: () => void;
+  undoLast: () => void;
+  dismissBanner: () => void;
+  showWhatChanged: () => Promise<void>;
+  setNote: (note: string) => void;
+  setPrefs: (prefs: Partial<Prefs>) => void;
+  instructionsRequest: (prefs?: Prefs) => InstructionsRequest | null;
+  copyReview: () => Promise<void>;
+  copyText: (text: string) => Promise<void>;
+  setCopied: (copied: boolean) => void;
   /**
    * Saves the open checkout's comments and note now. When its saved review
    * could not be read, reads it again first and merges it into the window.
    */
-  retrySave(): Promise<void>;
+  retrySave: () => Promise<void>;
 };
 
 const PREFS_KEY = "diff-loop.prefs";

@@ -98,6 +98,10 @@ before reopening a decision they cover.
   its tree, written only by `diff-loop-review pass` after clean stages
   and verdicts. The hooks are committed; installing them, the guard and
   the pass records are per checkout and never committed.
+- **0008 — Type-aware lint, and exact optional properties.** The lint
+  stage runs typescript-eslint's `recommendedTypeChecked`; the store's
+  actions are function-typed properties; `exactOptionalPropertyTypes` is
+  on.
 
 ## Key Constraints (non-negotiable)
 

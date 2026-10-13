@@ -8,6 +8,7 @@ import type { Comment } from "./bindings/Comment";
 import type { InstructionsRequest } from "./bindings/InstructionsRequest";
 import type { KnownFile } from "./bindings/KnownFile";
 import type { Opening } from "./bindings/Opening";
+import type { RepoError } from "./bindings/RepoError";
 import type { Review } from "./bindings/Review";
 import type { SavedReview } from "./bindings/SavedReview";
 import type { Side } from "./bindings/Side";
@@ -34,41 +35,58 @@ export const api = {
     invoke<string>("instructions", { request }),
 };
 
+/** Whether `error` is a command's own failure, not one from the IPC layer (a string). */
+function isCommandError(error: unknown): error is CommandError {
+  return typeof error === "object" && error !== null && "kind" in error;
+}
+
 /** A command failure in words a person can act on. */
 export function describe(error: unknown): { title: string; detail: string } {
-  const e = error as CommandError | undefined;
-  if (e?.kind === "noRepository") {
-    return { title: "No repository is open", detail: "Open a folder to start a review." };
+  if (!isCommandError(error)) return { title: "Something went wrong", detail: String(error) };
+  switch (error.kind) {
+    case "noRepository":
+      return { title: "No repository is open", detail: "Open a folder to start a review." };
+    case "store":
+      return { title: "Saved comments are unavailable", detail: error.error.message };
+    case "internal":
+      return { title: "Diff Loop hit a problem", detail: error.message };
+    case "repository":
+      return describeRepository(error.error);
+    default:
+      return unknownFailure(error);
   }
-  if (e?.kind === "store") {
-    return { title: "Saved comments are unavailable", detail: e.error.message };
+}
+
+function describeRepository(r: RepoError): { title: string; detail: string } {
+  switch (r.kind) {
+    case "notARepository":
+      return {
+        title: "Not a git repository",
+        detail: `${r.path} is not inside a git repository. Open the repository root or one of its worktrees.`,
+      };
+    case "unknownBase":
+      return {
+        title: `Can’t find ${r.name}`,
+        detail: "It is not a branch, tag or commit in this repository. Choose another base.",
+      };
+    case "noCommits":
+      return {
+        title: "No commits yet",
+        detail: "This branch has no commits, so only uncommitted changes can be shown.",
+      };
+    case "outsideRepository":
+      return { title: "File outside the repository", detail: `${r.path} can’t be shown.` };
+    case "failed":
+      return { title: "Git reported a problem", detail: r.message };
+    default:
+      return unknownFailure(r);
   }
-  if (e?.kind === "internal") {
-    return { title: "Diff Loop hit a problem", detail: e.message };
-  }
-  if (e?.kind === "repository") {
-    const r = e.error;
-    switch (r.kind) {
-      case "notARepository":
-        return {
-          title: "Not a git repository",
-          detail: `${r.path} is not inside a git repository. Open the repository root or one of its worktrees.`,
-        };
-      case "unknownBase":
-        return {
-          title: `Can’t find ${r.name}`,
-          detail: "It is not a branch, tag or commit in this repository. Choose another base.",
-        };
-      case "noCommits":
-        return {
-          title: "No commits yet",
-          detail: "This branch has no commits, so only uncommitted changes can be shown.",
-        };
-      case "outsideRepository":
-        return { title: "File outside the repository", detail: `${r.path} can’t be shown.` };
-      case "failed":
-        return { title: "Git reported a problem", detail: r.message };
-    }
-  }
-  return { title: "Something went wrong", detail: String(error) };
+}
+
+/**
+ * A failure kind these bindings do not name. `never`, so adding a variant in
+ * Rust fails the type check until it has words here.
+ */
+function unknownFailure(failure: never): { title: string; detail: string } {
+  return { title: "Something went wrong", detail: JSON.stringify(failure) };
 }
