@@ -1,0 +1,31 @@
+[package]
+name         = "diff-loop-app"
+version      = "0.1.0"
+description  = "Diff Loop's desktop app: Tauri commands around diff-loop-core, wired to diff-loop-git."
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+publish.workspace      = true
+
+[lib]
+name       = "diff_loop_app"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.2", features = [] }
+
+[dependencies]
+diff-loop-core                 = { workspace = true }
+diff-loop-git                  = { workspace = true }
+serde                          = { workspace = true }
+thiserror                      = { workspace = true }
+ts-rs                          = { workspace = true }
+tauri                          = { version = "2.12.3", features = [] }
+tauri-plugin-clipboard-manager = "2.4.2"
+tauri-plugin-dialog            = "2.8.2"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

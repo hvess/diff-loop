@@ -1,0 +1,86 @@
+# diff-loop-app
+
+The desktop app: Tauri commands around `diff-loop-core`, and the React front end built from the "Agent Review" design.
+
+**Status:** active — flows 1–5 of the design landed.
+**Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
+**Owner:** Maximilian
+**Last Updated:** 2026-10-13
+
+## Why
+
+The design (ADR 0001, Context) has five flows: open a project, read the
+change, annotate, hand off to the agent, next round.
+
+## Steps
+
+1. Open a project: welcome, open folder (⌘/Ctrl-O, drop, or a path on the
+   command line), recent folders, "Not a git repository", "Nothing to
+   review" — done 2026-10-13.
+2. Read the change: files grouped by role with viewed progress (V),
+   unified and split views, highlighting, base picker, cards for renamed,
+   deleted and binary files with image previews — done 2026-10-13.
+3. Annotate: click a line number for one line, drag or shift-click for a
+   range then C, Suggest code; edit, delete with undo — done 2026-10-13.
+4. Hand off: comment list (N / P to jump), Copy review, preview with
+   format and toggles, clear with undo — done 2026-10-13.
+5. Next round: check for changes when the watch reports one or the
+   window gains focus (ADR 0002); when `HEAD` moves, a banner: "The
+   branch moved: N new commits", "The branch was rewritten" when the old
+   commit is no longer an ancestor, or "Switched to <branch>" when another
+   branch is checked out. Each says how many comments are outdated, and
+   "Show what changed" compares with the previous `HEAD` — done
+   2026-10-13.
+
+## Decisions
+
+1. **Commands only convert and delegate** (quality-gate §2). `run`
+   chooses the adapter (`open_git`); `Session` managed state holds it and
+   the open repository as `dyn Repository`. The `Opener` indirection has
+   one implementation on purpose: the folder is picked at run time, and
+   §2 keeps choosing the adapter in `run`; every repository call runs in
+   `spawn_blocking`. `run` returns the runtime's error and `main` reports
+   it.
+2. **Native window controls.** The design draws Windows and Linux window
+   buttons inside the app; the app keeps the platform's own (HIG,
+   familiarity) and uses an overlay title bar only on macOS. The
+   developer was told, 2026-10-13.
+3. **A general note** for the instructions is written in the preview
+   dialog. The design toggles it but shows no field; this is the one
+   addition.
+4. **Viewed marks reset** when a file's diff changes after a refresh,
+   judged by the signature `load_review` returns per file.
+5. **A refresh sends only what changed.** The store passes the
+   signatures it holds as `known`; unchanged files come back named and
+   are carried over from the last load (`fetchReview` in
+   `app/src/store.ts`).
+6. **A comment range stays inside one hunk.** `withinHunk`
+   (`app/src/rows.ts`) clamps every drag, shift-click and kept comment, so
+   `Target::Lines` always has one `code` entry per line (diff-loop-core
+   `anchor.rs`).
+7. **One watch per open repository.** `watch_repository` runs after a
+   repository opens; `Session` keeps its guard, drops it when another
+   opens (atomically, under both locks), and drops a guard that arrives
+   for a repository no longer open, answering `false`. The store trusts
+   only answers for the repository still open; until one confirms a watch,
+   or if watching fails, `App` polls every 2 s.
+8. **Limits that keep the UI responsive**, chosen by the author for the
+   first version (2026-10-13), not by the design: files over 5000 diff
+   lines show without highlighting (`highlight.ts`, `MAX_LINES`); the base
+   picker lists 50 matches, an exactly named ref first, and asks to type
+   to narrow (`SHOWN`); 8 recent
+   folders are kept (`recent.ts`, `LIMIT`); the preview rebuilds 150 ms
+   after the last change (`PREVIEW_DELAY_MS`).
+
+## Pitfalls
+
+- Overlays (composer, comment card, range pill) live inside virtualized
+  rows; their row is lifted with `z-index`, or the next row paints over
+  them.
+- Code rows have an integer line height (25 px); a fractional one leaves
+  hairline gaps between measured rows.
+
+## Progress (2026-10-13, first version)
+
+Built and walked through every design state against a fixture repository,
+in light and dark, on Linux (WebKitGTK, Sway).

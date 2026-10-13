@@ -1,0 +1,176 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* Values from the Agent Review design (claude.ai/design, "Agent Review.dc.html"). */
+:root {
+  color-scheme: light;
+  --ui-bg: #ffffff;
+  --ui-fg: #0d0d0d;
+  --ui-border: #ececec;
+  --ui-line: #e3e3e3;
+  --ui-chip: #f3f3f3;
+  --ui-faint: #acacbe;
+  --ui-muted: #8e8e96;
+  --ui-muted2: #4b4b55;
+  --ui-muted3: #6e6e80;
+  --ui-side: #f9f9f9;
+  --ui-hunk: #fafafa;
+  --ui-card-border: #e6e6e6;
+  --ui-ghost: #d3d3d8;
+  --ui-live: #10a37f;
+  --ui-btn-bg: #2f2f32;
+  --ui-btn-fg: #ffffff;
+  --ui-add-fg: #1a7f4b;
+  --ui-del-fg: #b93838;
+  --ui-add-bg: #f0faf4;
+  --ui-del-bg: #fdf2f2;
+  --ui-add-gutter: #e2f4ea;
+  --ui-del-gutter: #f9e3e3;
+  --ui-add-ring: #3faf7a;
+  --ui-ok-bg: #e9f6f0;
+  --ui-ok-fg: #0f7a5a;
+  --ui-sel-bg: #e6ecfb;
+  --ui-sel-gutter: #c9d5f6;
+  --ui-sel-fg: #2f4fb8;
+  --ui-row-sel: #ededed;
+  --ui-modified: #8a6a1f;
+  --ui-warn: #a87b0a;
+  --ui-shadow: 0 16px 40px rgba(0, 0, 0, 0.14);
+
+  --shiki-foreground: #0d0d0d;
+  --shiki-token-keyword: #a3337e;
+  --shiki-token-string: #1f7a5a;
+  --shiki-token-string-expression: #1f7a5a;
+  --shiki-token-constant: #b45309;
+  --shiki-token-function: #3b5bdb;
+  --shiki-token-parameter: #0d0d0d;
+  --shiki-token-comment: #9a9a9a;
+  --shiki-token-punctuation: #7a7a7a;
+  --shiki-token-link: #0e7490;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ui-bg: #181818;
+    --ui-fg: #ececec;
+    --ui-border: #2a2a2a;
+    --ui-line: #3a3a3a;
+    --ui-chip: #262626;
+    --ui-faint: #5f5f5f;
+    --ui-muted: #8a8a8a;
+    --ui-muted2: #b5b5b5;
+    --ui-muted3: #9a9a9a;
+    --ui-side: #121212;
+    --ui-hunk: #1d1d1d;
+    --ui-card-border: #333333;
+    --ui-ghost: #444444;
+    --ui-live: #2bc48a;
+    --ui-btn-bg: #e8e8e8;
+    --ui-btn-fg: #121212;
+    --ui-add-fg: #5bd3a2;
+    --ui-del-fg: #f08a8a;
+    --ui-add-bg: rgba(43, 196, 138, 0.09);
+    --ui-del-bg: rgba(240, 96, 96, 0.09);
+    --ui-add-gutter: rgba(43, 196, 138, 0.14);
+    --ui-del-gutter: rgba(240, 96, 96, 0.14);
+    --ui-add-ring: #2bc48a;
+    --ui-ok-bg: rgba(43, 196, 138, 0.14);
+    --ui-ok-fg: #5bd3a2;
+    --ui-sel-bg: rgba(110, 140, 255, 0.16);
+    --ui-sel-gutter: rgba(110, 140, 255, 0.3);
+    --ui-sel-fg: #b4c4ff;
+    --ui-row-sel: #2a2a2a;
+    --ui-modified: #e0b860;
+    --ui-warn: #e5be5c;
+    --ui-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+
+    --shiki-foreground: #ececec;
+    --shiki-token-keyword: #f08cc8;
+    --shiki-token-string: #86d6ae;
+    --shiki-token-string-expression: #86d6ae;
+    --shiki-token-constant: #f2b57a;
+    --shiki-token-function: #93acff;
+    --shiki-token-parameter: #ececec;
+    --shiki-token-comment: #6b6b6b;
+    --shiki-token-punctuation: #9a9a9a;
+    --shiki-token-link: #72d3e2;
+  }
+}
+
+@theme {
+  --font-sans: "Geist Variable", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --color-bg: var(--ui-bg);
+  --color-fg: var(--ui-fg);
+  --color-border: var(--ui-border);
+  --color-line: var(--ui-line);
+  --color-chip: var(--ui-chip);
+  --color-faint: var(--ui-faint);
+  --color-muted: var(--ui-muted);
+  --color-muted2: var(--ui-muted2);
+  --color-muted3: var(--ui-muted3);
+  --color-side: var(--ui-side);
+  --color-hunk: var(--ui-hunk);
+  --color-card-border: var(--ui-card-border);
+  --color-ghost: var(--ui-ghost);
+  --color-live: var(--ui-live);
+  --color-btn: var(--ui-btn-bg);
+  --color-btn-fg: var(--ui-btn-fg);
+  --color-add: var(--ui-add-fg);
+  --color-del: var(--ui-del-fg);
+  --color-add-bg: var(--ui-add-bg);
+  --color-del-bg: var(--ui-del-bg);
+  --color-add-gutter: var(--ui-add-gutter);
+  --color-del-gutter: var(--ui-del-gutter);
+  --color-add-ring: var(--ui-add-ring);
+  --color-ok-bg: var(--ui-ok-bg);
+  --color-ok: var(--ui-ok-fg);
+  --color-sel: var(--ui-sel-bg);
+  --color-sel-gutter: var(--ui-sel-gutter);
+  --color-sel-fg: var(--ui-sel-fg);
+  --color-row-sel: var(--ui-row-sel);
+  --color-modified: var(--ui-modified);
+  --color-warn: var(--ui-warn);
+  --shadow-pop: var(--ui-shadow);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--ui-bg);
+    color: var(--ui-fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+  }
+
+  /* Code and what the user writes stay selectable and copyable. */
+  .code,
+  textarea,
+  input,
+  pre {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ui-sel-fg);
+    outline-offset: 1px;
+  }
+
+  button {
+    cursor: default;
+  }
+}

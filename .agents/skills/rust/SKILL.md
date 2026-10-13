@@ -191,7 +191,14 @@ cargo check --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-How to run the app is added here when the Tauri app is scaffolded.
+### Run the app
+
+```sh
+cd app && npm install && npm run tauri dev
+```
+
+`cargo test --workspace` also regenerates `app/src/bindings/` (ts-rs);
+commit them with the Rust change that altered them.
 
 ## Code Style
 

@@ -1,0 +1,18 @@
+[package]
+name         = "diff-loop-git"
+version      = "0.1.0"
+description  = "Diff Loop's Repository adapter over the git command line."
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+publish.workspace      = true
+
+[dependencies]
+diff-loop-core = { workspace = true }
+notify         = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

@@ -5,8 +5,8 @@
 *.pdb
 
 # Tauri
-/src-tauri/gen/schemas/
-/src-tauri/WixTools/
+/app/src-tauri/gen/schemas/
+/app/src-tauri/WixTools/
 
 # Front end (Node)
 node_modules/
