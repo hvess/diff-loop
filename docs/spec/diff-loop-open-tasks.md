@@ -33,14 +33,6 @@ contradicts) and the entry says so before it goes.
      `core.hooksPath`, git aliases, and the git commands that commit
      without the hook: `commit-tree`, `cherry-pick`, `revert`, `rebase`,
      `am`). The guard makes skipping the gate deliberate, not impossible.
-2. **The loop has no front-end stages.** The stack is chosen (ADR 0001)
-   and `npm run typecheck` / `npm run build` / `npm test` in `app/` pass, but the review
-   skill does not run them. Closes when the review skill gains the front
-   end's lint, type-check and test stages, a front-end skill states its
-   idioms, and a UI judge reads captured windows against the `ux` skill.
-   A test runner exists (Vitest, `npm test`, ADR 0003) but no stage runs
-   it yet.
-
 ## App
 
 7. **Without a watch, every check reads the whole diff.** When a watch

@@ -30,8 +30,8 @@ other languages. The references are the Rust Book, std docs, the Tauri 2
 docs and each crate's own documentation. The front end is React 19,
 TypeScript and Vite (ADR 0001); its types for anything crossing the
 Tauri boundary are generated from Rust into `app/src/bindings/` by
-`cargo test` — never edit them by hand. No front-end skill exists yet
-(open-tasks 2).
+`cargo test` — never edit them by hand. Its idioms are the `frontend`
+skill's.
 
 ## Spec Workflow
 
@@ -54,7 +54,8 @@ the loop is the rule, and skipping it is a defect of the commit.
 
 `.agents/skills/*/SKILL.md` are plain Markdown, whatever agent you are:
 read the one whose description matches the task before starting it —
-`rust` and `quality-gate` for any Rust change, `big-o` and
+`rust` and `quality-gate` for any Rust change, `frontend` for anything
+under `app/src`, `big-o` and
 `data-structures` for any loop, collection, search, sort, cache or
 recursion, `comments` for any comment, `ux` for anything the user sees,
 `records` for the specs, ADRs and ledger, `review` before committing.
@@ -85,6 +86,9 @@ before reopening a decision they cover.
 - **0005 — Read only what the watch saw touched.** The watch names
   touched paths; `Repository::changes_in` and the core's `update` read
   them again; the app keeps the last load only while watching.
+- **0006 — The front end's review stages.** ESLint, `tsc`, Vitest and
+  the build in the review loop and CI; a `frontend` skill; a UI judge
+  over captured windows.
 
 ## Key Constraints (non-negotiable)
 

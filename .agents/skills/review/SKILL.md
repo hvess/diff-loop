@@ -15,15 +15,13 @@ principle.
 | stage | what | who |
 | --- | --- | --- |
 | 1 toolchain | `rustc --version` matches `rust-toolchain.toml` | you |
-| 2 lint | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` with the workspace lints — the checkable rules of the `rust`, `big-o` and `data-structures` skills | you |
-| 3 test | `cargo test --workspace` | you |
+| 2 lint | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` with the workspace lints — the checkable rules of the `rust`, `big-o` and `data-structures` skills; in `app/`, `npm run lint` and `npm run typecheck` (ADR 0006) | you |
+| 3 test | `cargo test --workspace`; in `app/`, `npm test` and `npm run build` | you |
 | 4 code judge | the diff against `quality-gate`, the Key Constraints, the ADRs, the crate's spec | two subagents, one verdict |
 | 5 Rust judge | the diff against the `rust` skill's rules no lint checks | a subagent |
+| 5 UI judge | captured windows against the `ux` skill | a subagent |
 | 6 iterate | any failure: fix, and run again from stage 1 | you |
 | 7 gate | the commit is refused unless exactly its tree passed | **not built yet** (open-tasks 1) |
-
-Front-end stages (its lint, type check and tests) and a UI judge over
-captured windows join this table when the front end exists (open-tasks 2).
 
 **Until the gate exists, nothing stops a commit that skipped this loop —
 so skipping it is the author's defect, not a shortcut.** Once it exists:
@@ -71,12 +69,21 @@ the diff is the only statement the author makes.
 
 ## Which judges run
 
-- **Code judge** — any path under `crates/` (or the Tauri app's Rust
-  side), `Cargo.toml` / `Cargo.lock`, or the gate's own hooks once they
-  exist.
+- **Code judge** — any path under `crates/`, `app/src-tauri/` or
+  `app/src/`, `Cargo.toml` / `Cargo.lock`, `app/package.json`, or the
+  gate's own hooks once they exist.
 - **Rust judge** — any `.rs` file.
+- **UI judge** — any `.tsx` or `.css` file under `app/src/`.
 
 A change with no judge to run — docs only — passes when stages 1–3 pass.
+
+**Capturing windows for the UI judge.** Run the app on a checkout that
+shows what changed (`cd app && npm run tauri dev -- -- <path>`), bring
+each view the diff alters into the state it changes — light and dark —
+and capture the window into `<run>/windows/` as PNG, one file per state,
+named for it (`sidebar-captions-dark.png`). On Linux `grim -g` with the
+window's geometry, on macOS `screencapture -l <window id>`. Capture
+before judging; the judge cannot run the app.
 
 Write the staged diff for the judges, in a run directory per review:
 
@@ -155,8 +162,10 @@ The shape both return:
 >    n, why it is unbounded, and how often the code runs; a small, bounded
 >    n is not a finding (big-o, "When it matters here").
 > 4. The spec for each crate the diff touches: `docs/spec/diff-loop-<crate>.md`,
->    or `docs/spec/archive/` for an archived one. A spec step the change
->    completes should be noted in it.
+>    or `docs/spec/archive/` for an archived one, and for any path under
+>    `app/src/`, `.agents/skills/frontend/SKILL.md`, with
+>    `docs/spec/diff-loop-app.md`. A spec step the change completes should
+>    be noted in it.
 >
 > Read nothing else, and do not judge Rust idiom — a separate judge owns the
 > `rust` skill.
@@ -211,6 +220,28 @@ The shape both return:
 > **Your entire output is one fenced `json` block and nothing else**, in the
 > shape above: `source` is the skill's section heading, `at` is `file:line`.
 > At most six findings. Anything unsure is a question.
+
+### The UI judge
+
+> You are reviewing how a change to Diff Loop's window looks and reads,
+> against one document. You are blind to the conversation that produced
+> the change by design.
+>
+> **The change:** `<run>/change.diff`, and the windows captured after it
+> in `<run>/windows/`, one PNG per state, named for it. Read every PNG.
+> **Judge only what the diff changes**, as the windows show it.
+>
+> **What you judge against:** `.agents/skills/ux/SKILL.md` — its gate,
+> line by line — and the HIG pages it names for what you see. Read
+> nothing else. Do not judge code.
+>
+> - **major** — a line of the `ux` gate fails in a captured window.
+> - **minor** — something the HIG page for that element says, passed over.
+>
+> **Your entire output is one fenced `json` block and nothing else**, in
+> the shape above: `source` is the gate line or HIG page, `at` is the PNG
+> and where in it. At most six findings. Anything you cannot see in a
+> window is a question.
 
 ## Iterate
 

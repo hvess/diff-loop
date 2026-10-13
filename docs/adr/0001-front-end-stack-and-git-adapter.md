@@ -1,7 +1,7 @@
 # 0001 — Front-end stack, and git through its command line
 
 **Status:** accepted, 2026-10-13
-**Affects:** AGENTS.md "Language & Platform"; open-tasks 2; CI (`.github/workflows/ci.yml`)
+**Affects:** AGENTS.md "Language & Platform"; open-tasks 2 (closed by ADR 0006); CI (`.github/workflows/ci.yml`)
 
 ## Context
 
@@ -40,7 +40,7 @@ to a coding agent as instructions. The core also needs a way to read git.
 ## Consequences
 
 - The review skill gains front-end stages (type check, build) as part of
-  open-tasks 2.
+  ADR 0006.
 - Rendering depends on each platform's webview (WebKitGTK on Linux,
   WKWebView on macOS, WebView2 on Windows); each is checked before a
   release.

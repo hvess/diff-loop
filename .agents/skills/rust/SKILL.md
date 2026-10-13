@@ -41,14 +41,14 @@ Use `while let` for loop patterns:
 
 ```rust
 // Good
-while let Some(item) = iterator.next() {
-    process(item);
+while let Some(job) = queue.pop() {
+    process(job);
 }
 
 // Avoid
 loop {
-    match iterator.next() {
-        Some(item) => process(item),
+    match queue.pop() {
+        Some(job) => process(job),
         None => break,
     }
 }
