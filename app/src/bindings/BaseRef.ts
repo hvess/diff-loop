@@ -12,4 +12,9 @@ name: string,
 /**
  * Where it lives.
  */
-kind: RefKind, };
+kind: RefKind, 
+/**
+ * How many commits it has that the checkout lacks: the checkout is this
+ * many behind it, as `git status` counts. `None` when unknown.
+ */
+behind: number | null, };

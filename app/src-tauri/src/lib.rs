@@ -295,6 +295,13 @@ async fn fingerprint(base: Base, session: State<'_, Session>) -> Result<String, 
     blocking(move || repository.fingerprint(&base)).await
 }
 
+/// How many files the open checkout has not committed, untracked ones included.
+#[tauri::command]
+async fn uncommitted_files(session: State<'_, Session>) -> Result<u32, CommandError> {
+    let repository = session.current()?;
+    blocking(move || repository.uncommitted_files()).await
+}
+
 /// How many commits `to` is ahead of `from`; `None` when history was rewritten.
 #[tauri::command]
 async fn commits_between(
@@ -403,6 +410,7 @@ pub fn run() -> TauriResult<()> {
             watch_repository,
             saved_review,
             save_review,
+            uncommitted_files,
         ])
         .run(tauri::generate_context!())
 }

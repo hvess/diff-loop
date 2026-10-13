@@ -50,10 +50,8 @@ contradicts) and the entry says so before it goes.
    checkout too large to watch can be checked by less, or the developer
    decides the cost is fine.
 8. **Design details not built:** the sidebar's "tested by" / "imported
-   by" captions, the base picker's ahead/behind and file counts ("2
-   behind", "1 file"), and the app icon (`app/src-tauri/icons/` are
-   placeholders). Each needs the developer's word on whether it is still
-   wanted.
+   by" captions, and the app icon (`app/src-tauri/icons/` are
+   placeholders). The developer wants both, 2026-10-13.
 9. **Saved reviews are never pruned, nor shared safely between
    instances.** `reviews.json` (ADR 0004) keeps an entry for every
    working tree ever reviewed, moved or deleted ones included, and each

@@ -491,3 +491,63 @@ fn changes_in_reads_a_path_literally() {
     let only = git.changes_in(&Base::Uncommitted, &set(&["*.ts"])).unwrap();
     assert_eq!(names(&only.files), ["*.ts"]);
 }
+
+#[test]
+fn refs_say_how_far_behind_them_the_checkout_is() {
+    let dir = repo();
+    let root = dir.path();
+    git(root, &["switch", "-q", "main"]);
+    git(root, &["commit", "-q", "--allow-empty", "-m", "main 1"]);
+    git(root, &["commit", "-q", "--allow-empty", "-m", "main 2"]);
+    git(root, &["switch", "-q", "agent/x"]);
+    git(root, &["commit", "-q", "--allow-empty", "-m", "agent"]);
+    git(root, &["tag", "here"]);
+    let refs = Git::open(root).unwrap().refs().unwrap();
+    let behind = |name: &str| refs.iter().find(|r| r.name == name).unwrap().behind;
+    assert_eq!(behind("main"), Some(2));
+    assert_eq!(behind("here"), Some(0));
+}
+
+#[test]
+fn refs_before_the_first_commit_come_without_counts() {
+    let source = repo();
+    let dir = TempDir::new().unwrap();
+    git(dir.path(), &["init", "-q", "-b", "main"]);
+    let from = source.path().to_str().unwrap();
+    git(dir.path(), &["fetch", "-q", from, "main:refs/heads/other"]);
+    let refs = Git::open(dir.path()).unwrap().refs().unwrap();
+    assert_eq!(refs.len(), 1);
+    assert_eq!((refs[0].name.as_str(), refs[0].behind), ("other", None));
+}
+
+#[test]
+fn uncommitted_files_count_each_changed_file_once() {
+    let dir = repo();
+    assert_eq!(
+        Git::open(dir.path()).unwrap().uncommitted_files().unwrap(),
+        0
+    );
+    write(dir.path(), "src/handler.ts", "edited\n");
+    write(dir.path(), "new/a.ts", "a\n");
+    write(dir.path(), "new/b.ts", "b\n");
+    git(dir.path(), &["mv", "old.txt", "moved.txt"]);
+    let git_ = Git::open(dir.path()).unwrap();
+    assert_eq!(git_.uncommitted_files().unwrap(), 4);
+    let shown = git_.changes(&Base::Uncommitted).unwrap().files.len();
+    assert_eq!(git_.uncommitted_files().unwrap() as usize, shown);
+}
+
+/// A file removed from the index but still on disk counts once, and a staged
+/// change undone on disk not at all, as the list shows them.
+#[test]
+fn uncommitted_files_match_what_uncommitted_changes_list() {
+    let dir = repo();
+    git(dir.path(), &["rm", "-q", "--cached", "old.txt"]);
+    write(dir.path(), "src/handler.ts", "staged\n");
+    git(dir.path(), &["add", "src/handler.ts"]);
+    write(dir.path(), "src/handler.ts", "a\nb\nc\n");
+    let git_ = Git::open(dir.path()).unwrap();
+    let shown = git_.changes(&Base::Uncommitted).unwrap().files.len();
+    assert_eq!(shown, 1);
+    assert_eq!(git_.uncommitted_files().unwrap(), 1);
+}

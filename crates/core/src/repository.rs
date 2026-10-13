@@ -67,6 +67,13 @@ pub trait Repository {
     /// [`RepoError::Failed`] when either commit cannot be read.
     fn commits_between(&self, from: &str, to: &str) -> Result<Option<u32>, RepoError>;
 
+    /// How many files differ from `HEAD`, untracked ones included: what
+    /// [`Base::Uncommitted`] would show.
+    ///
+    /// # Errors
+    /// [`RepoError::Failed`] when the checkout cannot be read.
+    fn uncommitted_files(&self) -> Result<u32, RepoError>;
+
     /// Calls `on_change` soon after anything in the checkout or its git state
     /// may have changed, with what was touched, until the returned guard is
     /// dropped. Calls can be spurious: a touched path may not have changed.

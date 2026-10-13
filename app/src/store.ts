@@ -93,6 +93,8 @@ type Actions = {
   open(path: string): Promise<void>;
   closeRepository(): void;
   setBase(base: Base): Promise<void>;
+  /** Reads the branches and tags again, with their behind counts. */
+  refreshRefs(): void;
   reload(): Promise<void>;
   poll(): Promise<void>;
   select(path: string): void;
@@ -285,8 +287,12 @@ export const useStore = create<State & Actions>()((set, get) => ({
   async setBase(base) {
     // Expanded lines were read from the old base's snapshot.
     set({ base, banner: null, expanded: new Map() });
-    api.refs().then((refs) => set({ refs }), () => {});
+    get().refreshRefs();
     await get().reload();
+  },
+
+  refreshRefs() {
+    api.refs().then((refs) => set({ refs }), () => {});
   },
 
   async reload() {

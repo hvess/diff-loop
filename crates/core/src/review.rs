@@ -249,6 +249,7 @@ pub(crate) mod tests {
             Ok(vec![BaseRef {
                 name: "main".into(),
                 kind: RefKind::Branch,
+                behind: None,
             }])
         }
         fn remote_default(&self) -> Result<Option<String>, RepoError> {
@@ -281,6 +282,9 @@ pub(crate) mod tests {
         }
         fn commits_between(&self, _: &str, _: &str) -> Result<Option<u32>, RepoError> {
             Ok(Some(0))
+        }
+        fn uncommitted_files(&self) -> Result<u32, RepoError> {
+            Ok(0)
         }
         fn watch(&self, _: OnChange) -> Result<WatchGuard, RepoError> {
             Ok(Box::new(()))

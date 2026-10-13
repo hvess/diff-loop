@@ -153,6 +153,9 @@ mod tests {
         fn commits_between(&self, _: &str, _: &str) -> Result<Option<u32>, RepoError> {
             unreachable!("update counts no commits")
         }
+        fn uncommitted_files(&self) -> Result<u32, RepoError> {
+            unreachable!("update counts no files")
+        }
         fn watch(&self, _: OnChange) -> Result<WatchGuard, RepoError> {
             unreachable!("update starts no watch")
         }

@@ -31,6 +31,9 @@ pub struct BaseRef {
     pub name: String,
     /// Where it lives.
     pub kind: RefKind,
+    /// How many commits it has that the checkout lacks: the checkout is this
+    /// many behind it, as `git status` counts. `None` when unknown.
+    pub behind: Option<u32>,
 }
 
 /// Where a [`BaseRef`] lives.
@@ -94,6 +97,7 @@ mod tests {
                 } else {
                     RefKind::Branch
                 },
+                behind: None,
             })
             .collect()
     }

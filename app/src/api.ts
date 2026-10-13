@@ -19,6 +19,7 @@ export const api = {
   loadReview: (base: Base, comments: Comment[], known: KnownFile[]) =>
     invoke<Review>("load_review", { base, comments, known }),
   fingerprint: (base: Base) => invoke<string>("fingerprint", { base }),
+  uncommittedFiles: () => invoke<number>("uncommitted_files"),
   commitsBetween: (from: string, to: string) =>
     invoke<number | null>("commits_between", { from, to }),
   blob: (snapshot: Snapshot, side: Side, path: string) =>

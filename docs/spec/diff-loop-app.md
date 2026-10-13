@@ -38,6 +38,8 @@ change, annotate, hand off to the agent, next round.
 7. Keep a review between runs (ADR 0004): comments and note are read
    before a checkout's first load and saved as they change — done
    2026-10-13.
+8. The base picker's notes: behind counts, the uncommitted file count
+   and the last commit's id (Decision 12) — done 2026-10-13.
 
 ## Decisions
 
@@ -101,6 +103,12 @@ change, annotate, hand off to the agent, next round.
     or write failures show above the review (`SaveProblem` in
     `ReviewScreen.tsx`).
 
+12. **The base picker's notes:** a branch or remote the checkout is
+    behind says "N behind" (diff-loop-core Decision 13), a tag says
+    "Tag", Uncommitted changes says how many files (`uncommitted_files`),
+    and Last commit shows its short id, as the design does. Refs and the
+    file count are read again each time the picker opens.
+
 ## Pitfalls
 
 - Overlays (composer, comment card, range pill) live inside virtualized
@@ -108,6 +116,10 @@ change, annotate, hand off to the agent, next round.
   them.
 - Code rows have an integer line height (25 px); a fractional one leaves
   hairline gaps between measured rows.
+
+## Progress (2026-10-13, the base picker's notes)
+
+Step 8 landed, with the counts read again each time the picker opens.
 
 ## Progress (2026-10-13, reading only what was touched)
 

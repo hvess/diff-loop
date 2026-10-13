@@ -119,12 +119,14 @@ impl Git {
         &self,
         snapshot: &Snapshot,
         paths: Option<&BTreeSet<String>>,
+        extra: &[&str],
     ) -> Result<String, RepoError> {
         let old = match &snapshot.old {
             Some(old) => old.clone(),
             None => self.empty_tree()?,
         };
         let mut args = command::DIFF_FLAGS.to_vec();
+        args.extend(extra);
         args.push(&old);
         if let NewSide::Commit { id } = &snapshot.new {
             args.push(id);
@@ -153,6 +155,21 @@ impl Git {
             .split('\0')
             .filter(|p| !p.is_empty() && !p.ends_with('/'))
             .map(str::to_owned)
+            .collect())
+    }
+
+    /// Untracked files under `paths` that are not among `tracked`, the paths
+    /// the diff names: a path git also reports as tracked (staged for
+    /// deletion, still on disk) is left out, so each path is listed once.
+    fn untracked_beside(
+        &self,
+        tracked: &HashSet<&str>,
+        paths: Option<&BTreeSet<String>>,
+    ) -> Result<Vec<String>, RepoError> {
+        Ok(self
+            .untracked(paths)?
+            .into_iter()
+            .filter(|path| !tracked.contains(path.as_str()))
             .collect())
     }
 
@@ -210,15 +227,12 @@ impl Git {
         paths: Option<&BTreeSet<String>>,
     ) -> Result<Changes, RepoError> {
         let snapshot = self.snapshot(base)?;
-        let mut files = parse::parse(&self.diff_output(&snapshot, paths)?);
+        let mut files = parse::parse(&self.diff_output(&snapshot, paths, &[])?);
         if snapshot.new == NewSide::WorkingTree {
-            // A path git also reports as tracked (staged for deletion, still on
-            // disk) is left out: `Changes::files` holds each path once.
-            let tracked: HashSet<String> = files.iter().map(|f| f.path.clone()).collect();
+            let tracked: HashSet<&str> = files.iter().map(|f| f.path.as_str()).collect();
             let added: Vec<FileDiff> = self
-                .untracked(paths)?
+                .untracked_beside(&tracked, paths)?
                 .into_iter()
-                .filter(|path| !tracked.contains(path))
                 .map(|path| untracked::added(self.root(), path))
                 .collect::<Result<_, _>>()?;
             files.extend(added);
@@ -289,17 +303,31 @@ impl Repository for Git {
             Outcome::Success(out) => Some(out.trim().to_owned()),
             Outcome::Failure => None,
         };
-        let out = self.run.stdout(&[
-            "for-each-ref",
-            "--format=%(refname)",
-            "refs/heads",
-            "refs/remotes",
-            "refs/tags",
-        ])?;
+        fn list(format: &str) -> [&str; 5] {
+            [
+                "for-each-ref",
+                format,
+                "refs/heads",
+                "refs/remotes",
+                "refs/tags",
+            ]
+        }
+        // `ahead-behind` needs git 2.41 and a commit at HEAD; without either,
+        // the refs come without counts.
+        let out = match self
+            .run
+            .outcome(&list("--format=%(refname)%00%(ahead-behind:HEAD)"))?
+        {
+            Outcome::Success(out) => out,
+            Outcome::Failure => self.run.stdout(&list("--format=%(refname)"))?,
+        };
         Ok(out
             .lines()
-            .filter(|full| Some(*full) != current.as_deref() && !full.ends_with("/HEAD"))
-            .filter_map(|full| {
+            .filter_map(|line| {
+                let (full, counts) = line.split_once('\0').unwrap_or((line, ""));
+                if Some(full) == current.as_deref() || full.ends_with("/HEAD") {
+                    return None;
+                }
                 let (kind, name) = [
                     ("refs/heads/", RefKind::Branch),
                     ("refs/remotes/", RefKind::Remote),
@@ -307,9 +335,12 @@ impl Repository for Git {
                 ]
                 .into_iter()
                 .find_map(|(prefix, kind)| full.strip_prefix(prefix).map(|n| (kind, n)))?;
+                // The first count is the ref's commits HEAD lacks.
+                let behind = counts.split(' ').next().and_then(|n| n.parse().ok());
                 Some(BaseRef {
                     name: name.to_owned(),
                     kind,
+                    behind,
                 })
             })
             .collect())
@@ -348,7 +379,7 @@ impl Repository for Git {
         let snapshot = self.snapshot(base)?;
         let mut hasher = DefaultHasher::new();
         snapshot.hash(&mut hasher);
-        self.diff_output(&snapshot, None)?.hash(&mut hasher);
+        self.diff_output(&snapshot, None, &[])?.hash(&mut hasher);
         if snapshot.new == NewSide::WorkingTree {
             for path in self.untracked(None)? {
                 let meta = fs::symlink_metadata(self.root().join(&path)).ok();
@@ -395,6 +426,15 @@ impl Repository for Git {
             })
             .collect::<Result<Vec<_>, RepoError>>()?;
         watch::watch(self.root(), &git_dirs, on_change)
+    }
+
+    fn uncommitted_files(&self) -> Result<u32, RepoError> {
+        // The files `changes(Uncommitted)` lists, read by name only.
+        let snapshot = self.snapshot(&Base::Uncommitted)?;
+        let names = self.diff_output(&snapshot, None, &["--name-only", "-z"])?;
+        let tracked: HashSet<&str> = names.split('\0').filter(|n| !n.is_empty()).collect();
+        let untracked = self.untracked_beside(&tracked, None)?.len();
+        Ok(u32::try_from(tracked.len() + untracked).unwrap_or(u32::MAX))
     }
 
     fn commits_between(&self, from: &str, to: &str) -> Result<Option<u32>, RepoError> {

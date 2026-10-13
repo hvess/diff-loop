@@ -1,18 +1,41 @@
 import * as Popover from "@radix-ui/react-popover";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../api";
 import type { Base } from "../bindings/Base";
 import type { BaseRef } from "../bindings/BaseRef";
 import { sameBase, useStore } from "../store";
 
-type Choice = { key: string; base: Base; label: string; mono: boolean; hint: string };
+type Choice = { key: string; base: Base; label: string; mono: boolean; hint: string; monoHint?: boolean };
 
 /** Most refs listed at once; typing narrows to the rest. */
 const SHOWN = 50;
 
-const ONLY: Choice[] = [
-  { key: "uncommitted", base: { kind: "uncommitted" }, label: "Uncommitted changes", mono: false, hint: "" },
-  { key: "lastCommit", base: { kind: "lastCommit" }, label: "Last commit", mono: false, hint: "" },
-];
+/** "Show only" choices, with the open checkout's uncommitted file count and last commit. */
+export function showOnly(uncommitted: number | null, commit: string | null | undefined): Choice[] {
+  return [
+    {
+      key: "uncommitted",
+      base: { kind: "uncommitted" },
+      label: "Uncommitted changes",
+      mono: false,
+      hint: uncommitted === null ? "" : `${uncommitted} ${uncommitted === 1 ? "file" : "files"}`,
+    },
+    {
+      key: "lastCommit",
+      base: { kind: "lastCommit" },
+      label: "Last commit",
+      mono: false,
+      hint: commit?.slice(0, 7) ?? "",
+      monoHint: true,
+    },
+  ];
+}
+
+/** A ref's note: a tag says so; a branch says how far behind it the checkout is (`git status`'s sense). */
+export function refHint(ref: BaseRef): string {
+  if (ref.kind === "tag") return "Tag";
+  return ref.behind ? `${ref.behind} behind` : "";
+}
 
 export function baseLabel(base: Base): string {
   switch (base.kind) {
@@ -30,8 +53,25 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
   const base = useStore((s) => s.base);
   const refs = useStore((s) => s.refs);
   const setBase = useStore((s) => s.setBase);
+  const commit = useStore((s) => s.review?.checkout.commit);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const [uncommitted, setUncommitted] = useState<number | null>(null);
+
+  // Counted when the picker opens, not kept fresh: each reads the whole
+  // working tree or every ref.
+  useEffect(() => {
+    if (!open) return;
+    useStore.getState().refreshRefs();
+    let live = true;
+    api.uncommittedFiles().then(
+      (count) => live && setUncommitted(count),
+      () => live && setUncommitted(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [open]);
 
   const byName = useMemo(() => new Map(refs.map((r) => [r.name, r])), [refs]);
   const { compare, only, more } = useMemo(() => {
@@ -56,13 +96,13 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
         base: { kind: "ref", name: r.name },
         label: r.name,
         mono: true,
-        hint: r.kind === "tag" ? "Tag" : "",
+        hint: refHint(r),
       }));
     if (q && !exact) {
       compare.push({ key: "typed", base: { kind: "ref", name: query.trim() }, label: query.trim(), mono: true, hint: "Commit" });
     }
-    return { compare, only: q ? [] : ONLY, more };
-  }, [refs, byName, query]);
+    return { compare, only: q ? [] : showOnly(uncommitted, commit), more };
+  }, [refs, byName, query, uncommitted, commit]);
   const all = [...compare, ...only];
 
   const choose = (choice: Choice | undefined) => {
@@ -83,7 +123,9 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
       className={`flex items-center justify-between rounded-lg px-2.5 py-2 text-left ${index === active ? "bg-chip" : ""}`}
     >
       <span className={choice.mono ? "font-mono text-[12.5px]" : ""}>{choice.label}</span>
-      <span className="text-xs text-muted">{sameBase(choice.base, base) ? "✓" : choice.hint}</span>
+      <span className={`text-muted ${choice.monoHint ? "font-mono text-[11.5px]" : "text-xs"}`}>
+        {sameBase(choice.base, base) ? "✓" : choice.hint}
+      </span>
     </button>
   );
 

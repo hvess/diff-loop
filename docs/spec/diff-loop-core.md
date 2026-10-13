@@ -25,6 +25,7 @@ review as instructions. Each is a pure function tested here.
 7. `lines`: a line range of either side of a file, for the unchanged lines a diff leaves out — done 2026-10-13.
 8. The `ReviewStore` port and `SavedReview` (ADR 0004) — done 2026-10-13.
 9. `update`, and `load` since the last load: read only what was touched (ADR 0005) — done 2026-10-13.
+10. `BaseRef::behind` and `Repository::uncommitted_files`, for the base picker — done 2026-10-13.
 
 ## Decisions
 
@@ -73,11 +74,19 @@ review as instructions. Each is a pure function tested here.
     track; it then takes no fingerprint, and keeps the signatures of files
     it did not read again. `Loaded` is opaque: only `load` makes one.
 
+13. **"Behind" is `git status`'s sense:** `BaseRef::behind` counts the
+    ref's commits the checkout lacks. The design shows only "behind";
+    the author's reading, 2026-10-13.
+
 ## Pitfalls
 
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-13, the base picker's notes)
+
+Step 10 landed.
 
 ## Progress (2026-10-13, reading only what was touched)
 
