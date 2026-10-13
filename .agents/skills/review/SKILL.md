@@ -17,9 +17,9 @@ principle.
 | 1 toolchain | `rustc --version` matches `rust-toolchain.toml` | you |
 | 2 lint | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` with the workspace lints — the checkable rules of the `rust`, `big-o` and `data-structures` skills; in `app/`, `npm run lint` and `npm run typecheck` (ADR 0006) | you |
 | 3 test | `cargo test --workspace`; in `app/`, `npm test` and `npm run build` | you |
-| 4 code judge | the diff against `quality-gate`, the Key Constraints, the ADRs, the crate's spec | two subagents, one verdict |
+| 4 code judge | the diff against `quality-gate`, the Key Constraints, the ADRs, the crate's spec, and for `app/src` the `frontend` skill | two subagents, one verdict |
 | 5 Rust judge | the diff against the `rust` skill's rules no lint checks | a subagent |
-| 5 UI judge | captured windows against the `ux` skill | a subagent |
+| 5 UI judge | captured windows against the `ux` skill; runs beside the Rust judge | a subagent |
 | 6 iterate | any failure: fix, and run again from stage 1 | you |
 | 7 gate | the commit is refused unless exactly its tree passed | **not built yet** (open-tasks 1) |
 
