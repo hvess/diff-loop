@@ -11,28 +11,6 @@ An entry leaves this file by being done, or by being decided against — in
 which case the decision goes where it belongs (an ADR, or the spec it
 contradicts) and the entry says so before it goes.
 
-## Review loop
-
-1. **The commit gate is not built.** The `review` skill's stage 7 is a
-   rule with nothing enforcing it: an agent can commit without running the
-   loop. Closes when all of these exist, specified in
-   `docs/spec/diff-loop-review.md`:
-   - a dev-only review crate, never in a release build, that runs stages
-     1–3, decides which judges the staged diff needs, and takes each
-     judge's JSON verdict through a command — never transcribed by the
-     author — rejecting any verdict with findings;
-   - a pass record keyed by the staged tree's hash, written only when
-     stages 1–3 and every required judge passed on exactly that tree;
-   - `.githooks/pre-commit` (and `pre-merge-commit`, which calls it) that,
-     when `AGENT` or Claude Code's `CLAUDECODE` is set, refuses a commit
-     whose tree has no pass record, reading the index git is about to
-     commit, `GIT_INDEX_FILE` included;
-   - a local Claude Code guard (`.claude/settings.json` setting `AGENT`
-     and `core.hooksPath`, denying edits to the hooks and the record, and
-     a `PreToolUse` hook refusing `--no-verify`, `-n`, a changed
-     `core.hooksPath`, git aliases, and the git commands that commit
-     without the hook: `commit-tree`, `cherry-pick`, `revert`, `rebase`,
-     `am`). The guard makes skipping the gate deliberate, not impossible.
 ## App
 
 7. **Without a watch, every check reads the whole diff.** When a watch
@@ -59,3 +37,9 @@ contradicts) and the entry says so before it goes.
     path the watch did not touch shows as an addition and a deletion
     (`update`, `crates/core/src/update.rs`). Closes when a load since the
     last notices both, or the developer decides the wait is fine.
+11. **A linked worktree's pass records may be unguarded.** They sit in the
+    main checkout's git directory (`.git/worktrees/<name>/`), outside the
+    worktree's project, where the Claude Code deny rules `install-guard`
+    writes may not reach (`docs/spec/diff-loop-review.md`, Pitfalls).
+    Closes when a worktree's records are shown to be protected, or are
+    kept where they are, or the developer decides the gap is fine.

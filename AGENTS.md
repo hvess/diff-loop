@@ -16,6 +16,7 @@ Shape (quality-gate §2):
 | `diff-loop-core` | `crates/core` | Domain and its ports, `Repository` and `ReviewStore`; no I/O | `docs/spec/diff-loop-core.md` |
 | `diff-loop-git` | `crates/git` | `Repository` over the `git` command line | `docs/spec/diff-loop-git.md` |
 | `diff-loop-app` | `app/src-tauri` | Composition root and Tauri commands | `docs/spec/diff-loop-app.md` |
+| `diff-loop-review` | `crates/review` | The review loop's commit gate; dev-only | `docs/spec/diff-loop-review.md` |
 
 The front end is `app/src` (React). Each new crate gets a spec in
 `docs/spec/`.
@@ -47,8 +48,9 @@ understood, undone work, each entry citing its evidence.
 **The review loop.** `.agents/skills/review/SKILL.md` is the feedback loop
 every agent commit runs: deterministic stages, then blind subagent judges,
 iterated until nothing is found. Run it before every commit. The commit
-gate that makes it compulsory is not built yet (open-tasks 1): until it is,
-the loop is the rule, and skipping it is a defect of the commit.
+gate (`docs/spec/diff-loop-review.md`) refuses an agent's commit whose
+tree did not pass; install its local guard once per checkout with
+`cargo run -q -p diff-loop-review -- install-guard`.
 
 ## Skills
 
@@ -60,7 +62,9 @@ under `app/src`, `big-o` and
 recursion, `comments` for any comment, `ux` for anything the user sees,
 `records` for the specs, ADRs and ledger, `review` before committing.
 
-This repository ships no agent-specific configuration. Claude Code reads
+This repository ships no agent-specific configuration; its git hooks
+(`.githooks/`) gate an agent that sets `AGENT` (or Claude Code's
+`CLAUDECODE`), and run only once a checkout installs them. Claude Code reads
 neither this file nor `.agents/skills/`: give it a local `.claude/CLAUDE.md`
 holding `@../AGENTS.md`, and link `.claude/skills` to `../.agents/skills`.
 
@@ -89,6 +93,10 @@ before reopening a decision they cover.
 - **0006 — The front end's review stages.** ESLint, `tsc`, Vitest and
   the build in the review loop and CI; a `frontend` skill; a UI judge
   over captured windows.
+- **0007 — The commit gate.** An agent's commit needs a pass record for
+  its tree, written only by `diff-loop-review pass` after clean stages
+  and verdicts. The hooks are committed; installing them, the guard and
+  the pass records are per checkout and never committed.
 
 ## Key Constraints (non-negotiable)
 

@@ -14,20 +14,20 @@ principle.
 
 | stage | what | who |
 | --- | --- | --- |
-| 1 toolchain | `rustc --version` matches `rust-toolchain.toml` | you |
-| 2 lint | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` with the workspace lints — the checkable rules of the `rust`, `big-o` and `data-structures` skills; in `app/`, `npm run lint` and `npm run typecheck` (ADR 0006) | you |
-| 3 test | `cargo test --workspace`; in `app/`, `npm test` and `npm run build` | you |
+| 1 toolchain | `rustc --version` matches `rust-toolchain.toml` | you, then `diff-loop-review begin` |
+| 2 lint | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` with the workspace lints — the checkable rules of the `rust`, `big-o` and `data-structures` skills; in `app/`, `npm run lint` and `npm run typecheck` (ADR 0006) | you, then `diff-loop-review begin` |
+| 3 test | `cargo test --workspace`; in `app/`, `npm test` and `npm run build` | you, then `diff-loop-review begin` |
 | 4 code judge | the diff against `quality-gate`, the Key Constraints, the ADRs, the crate's spec, and for `app/src` the `frontend` skill | two subagents, one verdict |
 | 5 Rust judge | the diff against the `rust` skill's rules no lint checks | a subagent |
 | 5 UI judge | captured windows against the `ux` skill; runs beside the Rust judge | a subagent |
 | 6 iterate | any failure: fix, and run again from stage 1 | you |
-| 7 gate | the commit is refused unless exactly its tree passed | **not built yet** (open-tasks 1) |
+| 7 gate | the commit is refused unless exactly its tree passed | `diff-loop-review` and `.githooks/` (`docs/spec/diff-loop-review.md`) |
 
-**Until the gate exists, nothing stops a commit that skipped this loop —
-so skipping it is the author's defect, not a shortcut.** Once it exists:
-no `--no-verify`, no `-n`, no changing where hooks are read from, and none
-of the git commands that write commits without the hook. If the gate
-refuses, run the loop; never find another way to commit.
+**The gate refuses an agent's commit whose tree did not pass.** No
+`--no-verify`, no `-n`, no changing where hooks are read from, and none of
+the git commands that write commits without the hook; the local guard
+refuses them too (`diff-loop-review install-guard`). If the gate refuses,
+run the loop; never find another way to commit.
 
 ## Before you start: the author's loop
 
@@ -71,11 +71,18 @@ the diff is the only statement the author makes.
 
 - **Code judge** — any path under `crates/`, `app/src-tauri/` or
   `app/src/`, `Cargo.toml` / `Cargo.lock`, `app/package.json`, or the
-  gate's own hooks once they exist.
+  gate's own hooks (`.githooks/`).
 - **Rust judge** — any `.rs` file.
 - **UI judge** — any `.tsx` or `.css` file under `app/src/`.
 
 A change with no judge to run — docs only — passes when stages 1–3 pass.
+
+Begin the run: it refuses unstaged work, runs stages 1–3, and writes a run
+directory with the staged diff and the judges the change needs:
+
+```sh
+cargo run -q -p diff-loop-review -- begin
+```
 
 **Capturing windows for the UI judge.** Run the app on a checkout that
 shows what changed (`cd app && npm run tauri dev -- -- <path>`), bring
@@ -83,13 +90,8 @@ each view the diff alters into the state it changes — light and dark —
 and capture the window into `<run>/windows/` as PNG, one file per state,
 named for it (`sidebar-captions-dark.png`). On Linux `grim -g` with the
 window's geometry, on macOS `screencapture -l <window id>`. Capture
-before judging; the judge cannot run the app.
-
-Write the staged diff for the judges, in a run directory per review:
-
-```sh
-run=target/review/$(date +%Y%m%d-%H%M%S) && mkdir -p "$run" && git diff --cached > "$run/change.diff"
-```
+after `begin`, which makes the run directory, and before judging;
+the judge cannot run the app.
 
 ## The judges
 
@@ -113,10 +115,10 @@ What every prompt does, each for a measured reason:
   it and not an earlier verdict.
 - **It asks for findings, not a number.** A verdict passes with no findings
   and fails with any; severity orders the fixing.
-- **Its whole output is one JSON block**, saved verbatim to the run
-  directory (`code-1.json`, `code-2.json`, `rust.json`) — so the judge's own
-  words are the record, not the author's transcription of them. Never edit
-  or summarise a verdict before saving it.
+- **Its whole output is one JSON block**, which the judge itself pipes into
+  `diff-loop-review verdict <run> <judge>` (`code-1`, `code-2`, `rust`,
+  `ui`) — so the judge's own words are the record, not the author's
+  transcription of them. Never write, edit or summarise a verdict.
 
 The shape both return:
 
@@ -175,6 +177,10 @@ The shape both return:
 >   open-tasks ledger (`docs/spec/diff-loop-open-tasks.md`) stale where it
 >   completed or discovered work.
 >
+> **Pipe your verdict, exactly as you output it, into `cargo run -q -p
+> diff-loop-review -- verdict <run> <judge>`**, with your judge name
+> (`code-1`, `code-2`, `rust` or `ui`) as the run gave it.
+>
 > **Your entire output is one fenced `json` block and nothing else**, in the
 > shape above. At most six findings, each one you can demonstrate with a
 > `file:line` and the sentence of the source it breaks. A finding whose
@@ -217,6 +223,10 @@ The shape both return:
 > - **minor** — a preference it states ("prefer", "where appropriate")
 >   passed over without a reason written next to it.
 >
+> **Pipe your verdict, exactly as you output it, into `cargo run -q -p
+> diff-loop-review -- verdict <run> <judge>`**, with your judge name
+> (`code-1`, `code-2`, `rust` or `ui`) as the run gave it.
+>
 > **Your entire output is one fenced `json` block and nothing else**, in the
 > shape above: `source` is the skill's section heading, `at` is `file:line`.
 > At most six findings. Anything unsure is a question.
@@ -237,6 +247,10 @@ The shape both return:
 >
 > - **major** — a line of the `ux` gate fails in a captured window.
 > - **minor** — something the HIG page for that element says, passed over.
+>
+> **Pipe your verdict, exactly as you output it, into `cargo run -q -p
+> diff-loop-review -- verdict <run> <judge>`**, with your judge name
+> (`code-1`, `code-2`, `rust` or `ui`) as the run gave it.
 >
 > **Your entire output is one fenced `json` block and nothing else**, in
 > the shape above: `source` is the gate line or HIG page, `at` is the PNG
@@ -260,6 +274,12 @@ it to the developer: five failed passes is a disagreement about what a
 source means, and another iteration will not settle it.
 
 ## Commit
+
+When every verdict is in and clean, record the pass, then commit:
+
+```sh
+cargo run -q -p diff-loop-review -- pass <run>
+```
 
 Commit exactly what was staged. A commit that changes anything after the
 review — `git commit -a` with unstaged edits, a fixup — is a different tree

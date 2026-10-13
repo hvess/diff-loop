@@ -1,0 +1,5 @@
+#!/bin/sh
+# The commit gate (docs/spec/diff-loop-review.md Decision 8): an agent's
+# commit needs a pass record for exactly the tree it commits.
+[ -n "$AGENT$CLAUDECODE" ] || exit 0
+exec cargo run --quiet --locked -p diff-loop-review -- check

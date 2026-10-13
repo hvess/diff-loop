@@ -75,8 +75,8 @@ review as instructions. Each is a pure function tested here.
     it did not read again. `Loaded` is opaque: only `load` makes one.
 
 13. **"Behind" is `git status`'s sense:** `BaseRef::behind` counts the
-    ref's commits the checkout lacks. The design shows only "behind";
-    the author's reading, 2026-10-13.
+    ref's commits the checkout lacks. The design shows only
+    "behind". The developer's call, 2026-10-13.
 
 ## Pitfalls
 
