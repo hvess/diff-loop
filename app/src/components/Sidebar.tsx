@@ -3,6 +3,7 @@ import { memo, useMemo, useRef } from "react";
 import type { Comment } from "../bindings/Comment";
 import type { FileDiff } from "../bindings/FileDiff";
 import type { Role } from "../bindings/Role";
+import { captionOf, type Links, linksOf } from "../links";
 import { counts } from "../rows";
 import { type LoadedReview, useStore } from "../store";
 
@@ -50,6 +51,12 @@ function itemKey(item: Item): string {
   return item.kind === "group" ? `g:${item.role}` : `f:${item.file.path}`;
 }
 
+/** The paths the review groups as tests. */
+function testsOf(review: LoadedReview): Set<string> {
+  const tests = review.groups.find((g) => g.role === "tests")?.files ?? [];
+  return new Set(tests.map((i) => review.changes.files[i]!.path));
+}
+
 function commentCounts(comments: Comment[]): Map<string, number> {
   const perFile = new Map<string, number>();
   for (const c of comments) perFile.set(c.path, (perFile.get(c.path) ?? 0) + 1);
@@ -73,6 +80,8 @@ export function Sidebar() {
     [items],
   );
   const perFile = useMemo(() => commentCounts(comments), [comments]);
+  // Once per load: O(files + import words), each file's words read once.
+  const links = useMemo(() => (review ? linksOf(review.changes.files, testsOf(review)) : null), [review]);
   // O(changed files) per load: `counts` is cached per file.
   const total = useMemo(
     () =>
@@ -159,6 +168,7 @@ export function Sidebar() {
                     file={item.file}
                     selected={item.file.path === selected}
                     comments={perFile.get(item.file.path) ?? 0}
+                    links={links}
                     onSelect={select}
                   />
                 )}
@@ -175,16 +185,22 @@ const FileRow = memo(function FileRow({
   file,
   selected,
   comments,
+  links,
   onSelect,
 }: {
   file: FileDiff;
   selected: boolean;
   comments: number;
+  links: Links | null;
   onSelect: (path: string) => void;
 }) {
   const viewed = useStore((s) => s.viewed.has(file.path));
   const status = statusOf(file);
-  const sub = [dirOf(file.path), file.status.kind === "renamed" ? `renamed from ${file.status.from}` : ""]
+  const sub = [
+    dirOf(file.path),
+    file.status.kind === "renamed" ? `renamed from ${file.status.from}` : "",
+    ...(links ? captionOf(links, file.path) : []),
+  ]
     .filter(Boolean)
     .join(" · ");
   return (

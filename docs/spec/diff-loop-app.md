@@ -40,6 +40,8 @@ change, annotate, hand off to the agent, next round.
    2026-10-13.
 8. The base picker's notes: behind counts, the uncommitted file count
    and the last commit's id (Decision 12) — done 2026-10-13.
+9. The sidebar's captions: "tested by", "covers" and "new, imported by"
+   (Decision 13) — done 2026-10-13.
 
 ## Decisions
 
@@ -109,6 +111,15 @@ change, annotate, hand off to the agent, next round.
     and Last commit shows its short id, as the design does. Refs and the
     file count are read again each time the picker opens.
 
+13. **Captions are read from names**, in the front end
+    (`app/src/links.ts`), so they suggest rather than prove: a test
+    covers the source its name carries without its marker (`.test.`,
+    `.spec.`, `_test.`, `_spec.`, `test_`), the one beside it first, else
+    the only one of that name; a new file is imported by a changed file
+    whose added lines name it beside an importing word (`import`, `from`,
+    `require`, `use`, `include`, `mod`). Each file's words are read once
+    per version. The author's reading of the design, 2026-10-13.
+
 ## Pitfalls
 
 - Overlays (composer, comment card, range pill) live inside virtualized
@@ -116,6 +127,10 @@ change, annotate, hand off to the agent, next round.
   them.
 - Code rows have an integer line height (25 px); a fractional one leaves
   hairline gaps between measured rows.
+
+## Progress (2026-10-13, the sidebar's captions)
+
+Step 9 landed.
 
 ## Progress (2026-10-13, the base picker's notes)
 
