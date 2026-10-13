@@ -42,6 +42,7 @@ change, annotate, hand off to the agent, next round.
    and the last commit's id (Decision 12) — done 2026-10-13.
 9. The sidebar's captions: "tested by", "covers" and "new, imported by"
    (Decision 13) — done 2026-10-13.
+10. The app icon (Decision 14) — done 2026-10-13.
 
 ## Decisions
 
@@ -120,6 +121,15 @@ change, annotate, hand off to the agent, next round.
     `require`, `use`, `include`, `mod`). Each file's words are read once
     per version. The author's reading of the design, 2026-10-13.
 
+14. **The app icon is design 2a, "Pinned line"** (claude.ai/design
+    project `df71ed5c-a97b-4293-a1f7-f31eb6b93f9b`, `App Icon.dc.html`),
+    in its light appearance as the canvas draws it, on the macOS grid:
+    `icons/app-icon.svg` is the source, and `npx tauri icon
+    src-tauri/icons/app-icon.svg -o src-tauri/icons` in `app/` makes the
+    desktop sizes `tauri.conf.json` lists; the others it makes are not
+    kept. The design's `icon/` layers are for Icon Composer, which this
+    app does not use yet. The developer's choice, 2026-10-13.
+
 ## Pitfalls
 
 - Overlays (composer, comment card, range pill) live inside virtualized
@@ -127,6 +137,10 @@ change, annotate, hand off to the agent, next round.
   them.
 - Code rows have an integer line height (25 px); a fractional one leaves
   hairline gaps between measured rows.
+
+## Progress (2026-10-13, the app icon)
+
+Step 10 landed.
 
 ## Progress (2026-10-13, the sidebar's captions)
 

@@ -19,9 +19,6 @@ contradicts) and the entry says so before it goes.
    triggers a full load (`app/src/App.tsx`, `POLL_MS`; ADR 0005 §4). Closes when a
    checkout too large to watch can be checked by less, or the developer
    decides the cost is fine.
-8. **The app icon is a placeholder** (`app/src-tauri/icons/`). The
-   developer wants one, designed in claude.ai/design and taken from
-   there, 2026-10-13.
 9. **Saved reviews are never pruned, nor shared safely between
    instances.** `reviews.json` (ADR 0004) keeps an entry for every
    working tree ever reviewed, moved or deleted ones included, and each
