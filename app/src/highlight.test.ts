@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FileDiff } from "./bindings/FileDiff";
 import type { Hunk } from "./bindings/Hunk";
 import type { Line } from "./bindings/Line";
-import { linesOf, placed, type Token } from "./highlight";
+import { linesOf, placed, runsOf, type Token } from "./highlight";
 import { gapKey } from "./rows";
 
 const ctx = (old: number, new_: number, text: string): Line => ({ kind: "context", old, new: new_, text });
@@ -46,6 +46,19 @@ describe("linesOf", () => {
     const long = hunk(1, 1, Array.from({ length: 5001 }, (_, i) => ctx(i + 1, i + 1, "x")));
     expect(linesOf(file([long]), undefined)).toBeNull();
     expect(linesOf(file([hunk(1, 1, long.lines.slice(0, 5000))]), undefined)).not.toBeNull();
+  });
+});
+
+describe("runsOf", () => {
+  it("splits lines where a hidden gap separates them, so each is tokenized fresh", () => {
+    const lines = [
+      { no: 3, text: "/**" },
+      { no: 4, text: " * open" },
+      { no: 20, text: "code();" },
+      { no: 21, text: "" },
+    ];
+    expect(runsOf(lines)).toEqual([["/**", " * open"], ["code();", ""]]);
+    expect(runsOf([])).toEqual([]);
   });
 });
 

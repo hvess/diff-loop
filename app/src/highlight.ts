@@ -9,8 +9,12 @@ export type Token = { content: string; color: string | undefined; italic: boolea
 /** Line number → tokens, per side. */
 export type Highlights = Record<Side, Map<number, Token[]>>;
 
-/** What the worker is sent: each side's lines, in file order. */
-export type HighlightRequest = { id: number; path: string; sides: Record<Side, string[]> };
+/**
+ * What the worker is sent: each side's lines in file order, split into runs of
+ * consecutive line numbers. Each run is tokenized on its own, so a comment or
+ * string left open where a hunk ends does not run on into the next hunk.
+ */
+export type HighlightRequest = { id: number; path: string; sides: Record<Side, string[][]> };
 /** Its answer: tokens per line sent, or null when the language is unknown or tokenizing failed. */
 export type HighlightReply = { id: number; tokens: Record<Side, Token[][]> | null };
 
@@ -42,6 +46,19 @@ export function linesOf(file: FileDiff, expanded: Expanded | undefined): Record<
   });
   addGap(gapAfter(file), REST);
   return shown > MAX_LINES ? null : sides;
+}
+
+/** `lines` split where a line number does not follow the one before: the runs a hidden gap separates. */
+export function runsOf(lines: Line[]): string[][] {
+  const runs: string[][] = [];
+  let run: string[] = [];
+  let next: number | null = null;
+  for (const line of lines) {
+    if (line.no !== next) runs.push((run = []));
+    run.push(line.text);
+    next = line.no + 1;
+  }
+  return runs;
 }
 
 /** The worker's tokens placed at the line numbers they were sent for. */
@@ -86,7 +103,7 @@ function tokenize(path: string, lines: Record<Side, Line[]>): Promise<HighlightR
   const request: HighlightRequest = {
     id,
     path,
-    sides: { old: lines.old.map((l) => l.text), new: lines.new.map((l) => l.text) },
+    sides: { old: runsOf(lines.old), new: runsOf(lines.new) },
   };
   return new Promise((resolve) => {
     waiting.set(id, resolve);

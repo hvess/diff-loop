@@ -2,8 +2,8 @@
 
 **Status:** accepted, 2026-10-14
 **Affects:** `app/src/highlight.ts`, `app/src/highlight.worker.ts`,
-`app/vite.config.ts`, `app/package.json`, `app/src/components/FilePane.tsx`;
-the `frontend` skill's Cost section
+`app/src/tokenize.ts`, `app/vite.config.ts`, `app/package.json`,
+`app/src/components/FilePane.tsx`; the `frontend` skill's Cost section
 
 ## Context
 
@@ -15,11 +15,13 @@ into the main chunk. Components were memoized by hand.
 
 ## Decision
 
-1. **Tokenizing runs in a Web Worker** (`highlight.worker.ts`), built from
-   Shiki's fine-grained modules (`shiki/core`, `shiki/engine/javascript`,
-   `shiki/langs`), each language loaded on first use. `highlight.ts` sends
-   each side's lines and places the tokens it gets back; highlights are
-   cached per `FileDiff` and its expansions in a `WeakMap`, so returning to
+1. **Tokenizing runs in a Web Worker** (`highlight.worker.ts`, its
+   tokenizing in `tokenize.ts`), built from Shiki's fine-grained modules
+   (`shiki/core`, `shiki/engine/javascript`, `shiki/langs`), each language
+   loaded on first use. `highlight.ts` sends each side's lines, split into
+   runs of consecutive line numbers that are tokenized separately so a
+   comment or string a hunk leaves open does not colour the hunks after it,
+   and places the tokens it gets back; highlights are cached per `FileDiff` and its expansions in a `WeakMap`, so returning to
    a file shows them at once. A worker that fails leaves every file plain
    rather than waiting. `MAX_LINES` stays, now bounding the worker's time and
    the tokens sent back.
