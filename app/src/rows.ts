@@ -213,6 +213,12 @@ export function withinHunk(file: FileDiff, side: Side, anchor: number, head: num
   return anchor;
 }
 
+/** The line a press on a row's gutter, away from its numbers, comments on: the new side's when it has both. */
+export function gutterLine(cells: readonly (Cell | null)[]): Cell | undefined {
+  const live = cells.filter((c): c is Cell => c !== null && !c.shown);
+  return live.find((c) => c.side === "new") ?? live[0];
+}
+
 /** The text of lines `start..=end` on `side`, in order; lines the diff does not show are skipped. */
 export function linesOn(file: FileDiff, side: Side, start: number, end: number): string[] {
   const out: string[] = [];

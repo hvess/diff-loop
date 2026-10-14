@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FileDiff } from "./bindings/FileDiff";
 import type { Hunk } from "./bindings/Hunk";
 import type { Line } from "./bindings/Line";
-import { gapAfter, gapBefore, REST, splitRows, unifiedRows } from "./rows";
+import { type Cell, gapAfter, gapBefore, gutterLine, REST, splitRows, unifiedRows } from "./rows";
 
 const ctx = (old: number, new_: number): Line => ({ kind: "context", old, new: new_, text: "x" });
 const add = (new_: number): Line => ({ kind: "added", new: new_, text: "+" });
@@ -83,5 +83,26 @@ describe("expanded rows", () => {
   it("are not shown while loading or after a failed read", () => {
     expect(unifiedRows(file, { [REST]: "loading" }).at(-1)?.kind).toBe("hunk");
     expect(unifiedRows(file, { [REST]: "failed" }).at(-1)?.kind).toBe("hunk");
+  });
+});
+
+describe("gutterLine", () => {
+  const cell = (side: Cell["side"], change: Cell["change"], shown = false): Cell => ({ side, no: 3, text: "x", change, shown });
+
+  it("takes the side an added or removed line has", () => {
+    expect(gutterLine([null, cell("new", "added")])).toEqual(cell("new", "added"));
+    expect(gutterLine([cell("old", "removed"), null])).toEqual(cell("old", "removed"));
+    expect(gutterLine([cell("old", "removed")])).toEqual(cell("old", "removed"));
+  });
+
+  it("takes the new side of a context line, in either order", () => {
+    expect(gutterLine([cell("old", "context"), cell("new", "context")])?.side).toBe("new");
+    expect(gutterLine([cell("new", "context"), cell("old", "context")])?.side).toBe("new");
+  });
+
+  it("takes no line that cannot be commented on", () => {
+    expect(gutterLine([cell("old", "context", true), cell("new", "context", true)])).toBeUndefined();
+    expect(gutterLine([null])).toBeUndefined();
+    expect(gutterLine([])).toBeUndefined();
   });
 });

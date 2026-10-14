@@ -6,7 +6,7 @@ import type { Side } from "../bindings/Side";
 import { showMenu } from "../contextMenu";
 import { useDelayed } from "../delay";
 import { useHighlights, type Highlights } from "../highlight";
-import { type Cell, type Expanded, type HunkRow, lastLine, splitRows, unifiedRows, withinHunk } from "../rows";
+import { type Cell, type Expanded, gutterLine, type HunkRow, lastLine, splitRows, unifiedRows, withinHunk } from "../rows";
 import { orderedComments, type Selection, useStore } from "../store";
 import { CommentCard } from "./CommentCard";
 import { Composer } from "./Composer";
@@ -272,9 +272,11 @@ function UnifiedLine(props: LineProps & { old: Cell | null; new: Cell | null }) 
     <div className="relative" onContextMenu={(e) => commentMenu(e, path, main)}>
       <div className={`relative flex ${selected ? "bg-sel" : tone.bg}`}>
         <Decorations {...props} cells={[old, props.new]} />
-        <Number cell={old} props={props} gutter={selected ? "bg-sel-gutter" : tone.gutter} commented={false} />
-        <Number cell={props.new} props={props} gutter={selected ? "bg-sel-gutter" : tone.gutter} commented={commented} />
-        <span className={`w-6 flex-none text-center ${tone.sign}`}>{tone.mark}</span>
+        <Gutter cells={[old, props.new]} props={props}>
+          <Number cell={old} props={props} gutter={selected ? "bg-sel-gutter" : tone.gutter} commented={false} />
+          <Number cell={props.new} props={props} gutter={selected ? "bg-sel-gutter" : tone.gutter} commented={commented} />
+          <span className={`w-6 flex-none text-center ${tone.sign}`}>{tone.mark}</span>
+        </Gutter>
         <Code cell={main} highlights={highlights} />
       </div>
       <Overlays {...props} cells={[old, props.new]} left={112} />
@@ -294,18 +296,39 @@ function SplitHalf(props: LineProps & { cell: Cell | null }) {
     >
       <div className={`relative flex ${selected ? "bg-sel" : tone.bg}`}>
         <Decorations {...props} cells={[cell]} />
-        <Number
-          cell={cell}
-          props={props}
-          gutter={selected ? "bg-sel-gutter" : tone.gutter}
-          commented={props.marks.pins.has(key(cell.side, cell.no))}
-          wide
-        />
-        <span className={`w-6 flex-none text-center ${tone.sign}`}>{tone.mark}</span>
+        <Gutter cells={[cell]} props={props}>
+          <Number
+            cell={cell}
+            props={props}
+            gutter={selected ? "bg-sel-gutter" : tone.gutter}
+            commented={props.marks.pins.has(key(cell.side, cell.no))}
+            wide
+          />
+          <span className={`w-6 flex-none text-center ${tone.sign}`}>{tone.mark}</span>
+        </Gutter>
         <Code cell={cell} highlights={highlights} />
       </div>
       <Overlays {...props} cells={[cell]} left={80} />
     </div>
+  );
+}
+
+/** A row's numbers and sign as one target: a drag over it keeps the side it started on. */
+function Gutter({ cells, props, children }: { cells: (Cell | null)[]; props: LineProps; children: React.ReactNode }) {
+  const line = gutterLine(cells);
+  if (!line) return <>{children}</>;
+  return (
+    <span
+      onMouseDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        props.pressNumber(line, e.shiftKey);
+      }}
+      onMouseEnter={() => cells.forEach((c) => c && !c.shown && props.enterNumber(c))}
+      className="group flex flex-none select-none"
+    >
+      {children}
+    </span>
   );
 }
 
@@ -334,10 +357,11 @@ function Number({
       onMouseDown={(e) => {
         if (e.button !== 0) return;
         e.preventDefault();
+        // This number's own side, not the line's.
+        e.stopPropagation();
         props.pressNumber(cell, e.shiftKey);
       }}
-      onMouseEnter={() => props.enterNumber(cell)}
-      className={`${width} flex-none pr-2.5 text-right select-none hover:text-fg ${gutter} ${commented ? "text-fg" : "text-faint"}`}
+      className={`${width} flex-none pr-2.5 text-right select-none group-hover:text-fg ${gutter} ${commented ? "text-fg" : "text-faint"}`}
     >
       {cell.no}
     </span>

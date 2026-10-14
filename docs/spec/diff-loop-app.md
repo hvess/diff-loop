@@ -20,8 +20,10 @@ change, annotate, hand off to the agent, next round.
 2. Read the change: files grouped by role with viewed progress (V),
    unified and split views, highlighting, base picker, cards for renamed,
    deleted and binary files with image previews — done 2026-10-13.
-3. Annotate: click a line number for one line, drag or shift-click for a
-   range then C, Suggest code; edit, delete with undo — done 2026-10-13.
+3. Annotate: click a line's gutter (its numbers or sign) for one line,
+   drag or shift-click for a range then C, Suggest code; edit, delete with
+   undo — done 2026-10-13; the whole gutter, not only its numbers, since
+   2026-10-14.
 4. Hand off: comment list (N / P to jump), Copy review, preview with
    format and toggles, clear with undo — done 2026-10-13.
 5. Next round: check for changes when the watch reports one or the
