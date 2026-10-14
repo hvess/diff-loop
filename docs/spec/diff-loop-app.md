@@ -5,7 +5,7 @@ The desktop app: Tauri commands around `diff-loop-core`, and the React front end
 **Status:** active — flows 1–5 of the design landed.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-13
+**Last Updated:** 2026-10-14
 
 ## Why
 
@@ -153,6 +153,35 @@ change, annotate, hand off to the agent, next round.
     skill's gate line 6, and the wording is the `ux` skill's "Settled
     wording". The developer's calls, 2026-10-13 and 2026-10-14.
 
+17. **The window behaves as a native one** (ADR 0010 §1): hidden until
+    the front end's first paint, its size, position, maximized and
+    full-screen state kept between runs, its background the page's.
+    Closing the window quits, on macOS too, as on Linux. The developer's
+    call, 2026-10-14.
+18. **A menu bar on macOS only** (ADR 0010 §5, `app/src/menuBar.ts`):
+    the app menu, File (Open Folder… ⌘O, Close Window), Edit, View
+    (Unified, Split, Enter Full Screen), Review (Comment on Selection…,
+    Next Comment, Previous Comment, Viewed) and Window, so the context
+    menus' commands are in the menu bar too (HIG `context-menus`). Linux keeps none, so its layout stays
+    the design's; its shortcuts work without one. The developer's call,
+    2026-10-14. Menu items are title case, per the HIG's `menus` page,
+    where the rest of the app's text is sentence case.
+19. **Context menus** (ADR 0010 §5, `app/src/contextMenu.ts`): a file in
+    the sidebar offers Viewed; a line that can take a comment offers
+    "Comment on Line N…" ("Removed Line" on the old side), or "Comment on
+    Lines A–B…" when it is inside the selected range; the ellipsis because
+    the composer then asks for the text (HIG `menus`). A text field and
+    selected text keep the webview's own menu, which is the platform's;
+    elsewhere there is none.
+20. **Indicators wait 200 ms** (ADR 0010 §6, `app/src/delay.ts`):
+    "Opening…", "Loading changes…", "Showing N unchanged lines…" and an
+    image preview's "Loading…" appear only once the wait reaches it; until
+    then the control that started it is disabled.
+21. **Not built:** type-ahead in the file list, because typing a letter
+    there would clash with V, N, P and C; and a translucent macOS sidebar,
+    which would replace the design's sidebar colour and needs
+    `macOSPrivateApi`. The developer's calls, 2026-10-14.
+
 ## Pitfalls
 
 - Overlays (composer, comment card, range pill) live inside virtualized
@@ -160,6 +189,20 @@ change, annotate, hand off to the agent, next round.
   them.
 - Code rows have an integer line height (25 px); a fractional one leaves
   hairline gaps between measured rows.
+- A native context menu needs the pointer's position (`showMenu` passes
+  `clientX`/`clientY`): without one, GTK on Wayland opens it at a corner
+  of the window.
+- Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
+  under Wayland (they send keys through libxdo, X11 only), so a context
+  menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-14, native behaviour)
+
+The window, its menus, its theme on Linux and its indicators behave as a
+native app's (ADR 0010; Decisions 17–21). Walked on Linux (WebKitGTK
+2.54, Sway): the window appears painted, context menus open at the
+pointer and act, a text field keeps the GTK edit menu, and the portal's
+colour scheme switches the window live.
 
 ## Progress (2026-10-13, comments deleted when their code changes)
 

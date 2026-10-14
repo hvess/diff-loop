@@ -106,6 +106,11 @@ before reopening a decision they cover.
   builds an AppImage, a `.deb` and an Apple Silicon `.dmg` into a draft
   GitHub Release in this private repository; macOS builds are ad-hoc
   signed, not notarized.
+- **0010 — Native behaviour of the window.** Hidden until first paint,
+  its state kept (`tauri-plugin-window-state`); a release profile with
+  LTO; on Linux, shared-memory buffers under NVIDIA and the portal's
+  colour scheme (`gio`); native menus (a menu bar on macOS only, context
+  menus); indicators after 200 ms; no beep on macOS.
 
 ## Key Constraints (non-negotiable)
 

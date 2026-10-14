@@ -3,6 +3,7 @@ import { memo, useMemo, useRef } from "react";
 import type { Comment } from "../bindings/Comment";
 import type { FileDiff } from "../bindings/FileDiff";
 import type { Role } from "../bindings/Role";
+import { showMenu } from "../contextMenu";
 import { captionOf, type Links, linksOf } from "../links";
 import { counts } from "../rows";
 import { type LoadedReview, useStore } from "../store";
@@ -195,6 +196,7 @@ const FileRow = memo(function FileRow({
   onSelect: (path: string) => void;
 }) {
   const viewed = useStore((s) => s.viewed.has(file.path));
+  const toggleViewed = useStore((s) => s.toggleViewed);
   const status = statusOf(file);
   const sub = [
     dirOf(file.path),
@@ -208,6 +210,7 @@ const FileRow = memo(function FileRow({
       role="option"
       aria-selected={selected}
       onClick={() => onSelect(file.path)}
+      onContextMenu={(e) => showMenu(e, [{ text: "Viewed", checked: viewed, action: () => toggleViewed(file.path) }])}
       className={`flex flex-col gap-[3px] rounded-[10px] px-3 py-[7px] ${selected ? "bg-row-sel" : "hover:bg-chip"}`}
     >
       <div className="flex items-center gap-2">

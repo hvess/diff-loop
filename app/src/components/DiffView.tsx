@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef } from "react";
 import type { Comment } from "../bindings/Comment";
 import type { FileDiff } from "../bindings/FileDiff";
 import type { Side } from "../bindings/Side";
+import { showMenu } from "../contextMenu";
+import { useDelayed } from "../delay";
 import { useHighlights, type Highlights } from "../highlight";
 import { type Cell, type Expanded, type HunkRow, lastLine, splitRows, unifiedRows, withinHunk } from "../rows";
 import { orderedComments, type Selection, useStore } from "../store";
@@ -201,6 +203,7 @@ function HunkHeader({
   indent: number;
 }) {
   const expandGap = useStore((s) => s.expandGap);
+  const slow = useDelayed(state === "loading");
   const { count } = row.gap;
   const lines = count === null ? "the rest of the file" : `${count} unchanged ${count === 1 ? "line" : "lines"}`;
   return (
@@ -209,11 +212,12 @@ function HunkHeader({
       style={{ paddingLeft: indent }}
     >
       {count !== 0 &&
-        (state === "loading" ? (
+        (slow ? (
           <span className="flex-none font-sans text-[12.5px] whitespace-nowrap text-muted2">Showing {lines}…</span>
         ) : (
           <button
             type="button"
+            disabled={state === "loading"}
             onClick={() => void expandGap(path, row.key, row.gap)}
             className="flex-none font-sans text-[12.5px] whitespace-nowrap text-muted2 hover:text-fg"
           >
@@ -241,6 +245,23 @@ const TONE = {
   context: { bg: "bg-bg", gutter: "bg-bg", sign: "text-faint", mark: "" },
 } as const;
 
+/** The menu for a commentable line: comment on it, or on the selected range it is in. */
+function commentMenu(e: React.MouseEvent, path: string, cell: Cell) {
+  const s = useStore.getState();
+  if (cell.shown || s.composer) return;
+  const sel = s.selection;
+  const range = sel && !sel.dragging && sel.anchor !== sel.head && inSelection(sel, path, cell) ? sel : null;
+  const removed = cell.side === "old" ? "Removed " : "";
+  showMenu(e, [
+    range
+      ? {
+          text: `Comment on ${removed}Lines ${Math.min(range.anchor, range.head)}–${Math.max(range.anchor, range.head)}…`,
+          action: () => s.composeOnSelection(),
+        }
+      : { text: `Comment on ${removed}Line ${cell.no}…`, action: () => s.composeOnLines(path, cell.side, cell.no, cell.no) },
+  ]);
+}
+
 function UnifiedLine(props: LineProps & { old: Cell | null; new: Cell | null }) {
   const { path, old, marks, highlights, selection } = props;
   const main = (props.new ?? old)!;
@@ -248,7 +269,7 @@ function UnifiedLine(props: LineProps & { old: Cell | null; new: Cell | null }) 
   const tone = TONE[main.change];
   const commented = [old, props.new].some((c) => c && marks.pins.has(key(c.side, c.no)));
   return (
-    <div className="relative">
+    <div className="relative" onContextMenu={(e) => commentMenu(e, path, main)}>
       <div className={`relative flex ${selected ? "bg-sel" : tone.bg}`}>
         <Decorations {...props} cells={[old, props.new]} />
         <Number cell={old} props={props} gutter={selected ? "bg-sel-gutter" : tone.gutter} commented={false} />
@@ -267,7 +288,10 @@ function SplitHalf(props: LineProps & { cell: Cell | null }) {
   const selected = inSelection(selection, path, cell);
   const tone = TONE[cell.change];
   return (
-    <div className={`relative w-1/2 min-w-0 ${cell.side === "old" ? "border-r border-border" : ""}`}>
+    <div
+      className={`relative w-1/2 min-w-0 ${cell.side === "old" ? "border-r border-border" : ""}`}
+      onContextMenu={(e) => commentMenu(e, path, cell)}
+    >
       <div className={`relative flex ${selected ? "bg-sel" : tone.bg}`}>
         <Decorations {...props} cells={[cell]} />
         <Number
@@ -313,7 +337,7 @@ function Number({
         props.pressNumber(cell, e.shiftKey);
       }}
       onMouseEnter={() => props.enterNumber(cell)}
-      className={`${width} flex-none cursor-pointer pr-2.5 text-right select-none hover:text-fg ${gutter} ${commented ? "text-fg" : "text-faint"}`}
+      className={`${width} flex-none pr-2.5 text-right select-none hover:text-fg ${gutter} ${commented ? "text-fg" : "text-faint"}`}
     >
       {cell.no}
     </span>

@@ -30,3 +30,10 @@ linkedlist            = "warn"
 stable_sort_primitive = "warn"
 large_stack_arrays    = "warn"
 inefficient_to_string = "warn"
+
+# Not `panic = "abort"`: `blocking` in app/src-tauri/src/lib.rs turns a
+# panicking command into `CommandError::Internal`, which needs unwinding.
+[profile.release]
+codegen-units = 1
+lto           = true
+strip         = true

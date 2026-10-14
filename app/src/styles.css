@@ -170,4 +170,10 @@
   button {
     cursor: default;
   }
+
+  /* A dragged image or link would carry a webview URL, not a file. */
+  img,
+  a {
+    -webkit-user-drag: none;
+  }
 }

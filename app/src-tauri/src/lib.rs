@@ -9,8 +9,14 @@ use std::{
     fmt, mem,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard, PoisonError},
+    thread,
+    time::Duration,
 };
 
+#[cfg(target_os = "linux")]
+mod appearance;
+#[cfg(target_os = "linux")]
+mod renderer;
 mod reviews;
 
 use diff_loop_core::{
@@ -20,9 +26,10 @@ use diff_loop_core::{
 use diff_loop_git::Git;
 use serde::Serialize;
 use tauri::{
-    AppHandle, Emitter, Manager, Result as TauriResult, State, async_runtime::spawn_blocking,
-    ipc::Response,
+    AppHandle, Emitter, Manager, Result as TauriResult, State, WebviewWindow,
+    async_runtime::spawn_blocking, ipc::Response,
 };
+use tauri_plugin_window_state::StateFlags;
 use thiserror::Error;
 use ts_rs::TS;
 
@@ -34,6 +41,10 @@ type Opener = fn(&Path) -> Result<Shared, RepoError>;
 
 /// The event the front end hears when the open checkout may have changed.
 const CHANGED: &str = "repository-changed";
+
+/// How long the hidden window waits for the front end's first paint, which
+/// shows it (ADR 0010 §1), before it is shown anyway.
+const SHOW_ANYWAY: Duration = Duration::from_secs(3);
 
 /// The checkout the window reviews, once one is open, how to open one, the
 /// watch on it, and its last load.
@@ -379,18 +390,50 @@ fn open_git(path: &Path) -> Result<Shared, RepoError> {
     Ok(Arc::new(Git::open(path)?))
 }
 
+/// Shows `window` after [`SHOW_ANYWAY`] if the front end has not, so a front
+/// end that fails to start still leaves a window to see.
+fn show_anyway(window: WebviewWindow) {
+    thread::spawn(move || {
+        thread::sleep(SHOW_ANYWAY);
+        if window.is_visible().is_ok_and(|visible| !visible) {
+            // Fails only once the window is gone, when nothing is left to show.
+            let _ = window.show();
+        }
+    });
+}
+
 /// Builds and runs the app until its last window closes.
 ///
 /// # Errors
 /// When the Tauri runtime cannot start: no window system, or a broken bundle.
 pub fn run() -> TauriResult<()> {
+    #[cfg(target_os = "linux")]
+    renderer::choose();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        // Not `VISIBLE`: the front end shows the window once it has painted.
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(
+                    StateFlags::SIZE
+                        | StateFlags::POSITION
+                        | StateFlags::MAXIMIZED
+                        | StateFlags::FULLSCREEN,
+                )
+                .build(),
+        )
         .setup(|app| {
             // The review store's adapter (ADR 0004 §2).
             let file = app.path().app_data_dir()?.join("reviews.json");
             app.manage(Reviews(Arc::new(reviews::JsonReviews::new(file))));
+            if let Some(window) = app.get_webview_window("main") {
+                show_anyway(window);
+            }
+            #[cfg(target_os = "linux")]
+            if let Some(portal) = appearance::follow(app.handle()) {
+                app.manage(portal);
+            }
             Ok(())
         })
         .manage(Session::new(open_git))

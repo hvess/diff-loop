@@ -5,7 +5,7 @@ Work that is known, understood and not done. Each entry says what was seen, wher
 **Status:** active — a ledger, not a spec. Nothing here blocks anything else.
 **Scope:** everything outstanding.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-13
+**Last Updated:** 2026-10-14
 
 An entry leaves this file by being done, or by being decided against — in
 which case the decision goes where it belongs (an ADR, or the spec it
@@ -40,6 +40,18 @@ contradicts) and the entry says so before it goes.
     writes may not reach (`docs/spec/diff-loop-review.md`, Pitfalls).
     Closes when a worktree's records are shown to be protected, or are
     kept where they are, or the developer decides the gap is fine.
+
+14. **A dark-named GTK theme overrides the portal's light preference.**
+    `appearance::follow` (`app/src-tauri/src/appearance.rs`) sets GTK's
+    prefer-dark off, but WebKitGTK also reads the theme's name, so under
+    `Arc-Dark` the window stays dark (ADR 0010, Consequences). Closes when
+    a light preference shows light under such a theme, or the developer
+    decides the theme should win.
+15. **The macOS side of ADR 0010 has not run on a Mac**: the menu bar
+    (`app/src/menuBar.ts`), the traffic lights' position and background
+    throttling (`app/src-tauri/tauri.conf.json`), and the beep rule
+    (`wouldBeep`, `app/src/platform.ts`). Closes when each is walked on
+    macOS and any fault fixed.
 
 ## Distribution
 

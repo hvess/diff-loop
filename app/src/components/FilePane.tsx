@@ -3,6 +3,7 @@ import { api } from "../api";
 import type { FileDiff } from "../bindings/FileDiff";
 import type { Side } from "../bindings/Side";
 import type { Snapshot } from "../bindings/Snapshot";
+import { useDelayed } from "../delay";
 import { counts, hunksOf } from "../rows";
 import { useStore } from "../store";
 import { baseLabel } from "./BasePicker";
@@ -17,6 +18,7 @@ export function FilePane({ onCompareWithAnother }: { onCompareWithAnother: () =>
   const problem = useStore((s) => s.loadProblem);
   const base = useStore((s) => s.base);
   const selected = useStore((s) => s.selected);
+  const slow = useDelayed(loading);
 
   if (problem) {
     return (
@@ -30,7 +32,7 @@ export function FilePane({ onCompareWithAnother }: { onCompareWithAnother: () =>
     );
   }
   if (!review) {
-    return <Centered>{loading && <span className="text-sm text-muted3">Loading changes…</span>}</Centered>;
+    return <Centered>{slow && <span className="text-sm text-muted3">Loading changes…</span>}</Centered>;
   }
   if (review.changes.files.length === 0) {
     const head = review.checkout.head;
@@ -204,6 +206,7 @@ function BinaryCard({ file, snapshot }: { file: FileDiff; snapshot: Snapshot }) 
 function Preview({ label, snapshot, side, path }: { label: string; snapshot: Snapshot; side: Side; path: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const slow = useDelayed(!url && !failed);
   useEffect(() => {
     let live = true;
     let made: string | null = null;
@@ -236,9 +239,11 @@ function Preview({ label, snapshot, side, path }: { label: string; snapshot: Sna
             className="max-h-full max-w-full object-contain"
           />
         ) : (
-          <span className="rounded-md bg-bg px-2 py-0.5 font-mono text-[11.5px] text-muted">
-            {failed ? "Can’t show this image" : "Loading…"}
-          </span>
+          (failed || slow) && (
+            <span className="rounded-md bg-bg px-2 py-0.5 font-mono text-[11.5px] text-muted">
+              {failed ? "Can’t show this image" : "Loading…"}
+            </span>
+          )
         )}
       </div>
     </div>

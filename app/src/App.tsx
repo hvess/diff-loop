@@ -3,9 +3,12 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { chooseFolder } from "./choose";
+import { suppressWebviewMenu } from "./contextMenu";
+import { installMenuBar } from "./menuBar";
+import { matchBackground, showWhenPainted } from "./nativeWindow";
 import { ReviewScreen } from "./components/ReviewScreen";
 import { Welcome } from "./components/Welcome";
-import { hasMod, typing } from "./platform";
+import { hasMod, isMac, typing, wouldBeep } from "./platform";
 import { useStore } from "./store";
 
 /** How often the checkout is polled while focused, only when it cannot be watched. */
@@ -14,6 +17,19 @@ const POLL_MS = 2000;
 export function App() {
   const hasRepository = useStore((s) => s.opening !== null);
   const [dropping, setDropping] = useState(false);
+
+  useEffect(() => {
+    showWhenPainted();
+    const stopBackground = matchBackground();
+    const stopMenu = suppressWebviewMenu();
+    // diff-loop-app.md Decision 18: macOS only.
+    const menuBar = isMac ? installMenuBar() : null;
+    return () => {
+      stopBackground();
+      stopMenu();
+      void menuBar?.then((stop) => stop());
+    };
+  }, []);
 
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
@@ -41,6 +57,8 @@ export function App() {
         return;
       }
       const s = useStore.getState();
+      // On macOS a key the webview leaves unhandled sounds the alert beep.
+      if (isMac && wouldBeep(e)) e.preventDefault();
       if (!s.opening || typing(e.target) || e.altKey || e.metaKey || e.ctrlKey) return;
       if (document.querySelector("[role=dialog]")) return;
       const key = e.key.toLowerCase();

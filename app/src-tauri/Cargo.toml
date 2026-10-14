@@ -24,6 +24,11 @@ ts-rs                          = { workspace = true }
 tauri                          = { version = "2.12.3", features = [] }
 tauri-plugin-clipboard-manager = "2.4.2"
 tauri-plugin-dialog            = "2.8.2"
+tauri-plugin-window-state      = "2.5.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The version Tauri's GTK stack already uses (Cargo.lock).
+gio = "0.18.4"
 
 [dev-dependencies]
 tempfile = { workspace = true }

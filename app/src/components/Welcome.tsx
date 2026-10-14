@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { chooseFolder } from "../choose";
+import { useDelayed } from "../delay";
 import { modKey } from "../platform";
 import { loadRecent, when } from "../recent";
 import { useStore } from "../store";
@@ -8,6 +9,7 @@ import { TitleBar } from "./TitleBar";
 export function Welcome() {
   const problem = useStore((s) => s.openProblem);
   const busy = useStore((s) => s.busy);
+  const slow = useDelayed(busy);
   const open = useStore((s) => s.open);
   const [recent] = useState(loadRecent);
 
@@ -31,7 +33,7 @@ export function Welcome() {
               title={`${modKey}O`}
               className="rounded-full bg-btn px-5 py-2.5 font-medium text-btn-fg disabled:opacity-60"
             >
-              {busy ? "Opening…" : "Open folder…"}
+              {slow ? "Opening…" : "Open folder…"}
             </button>
             <span className="ml-2 text-[13px] text-muted">or drop a folder onto this window</span>
           </div>

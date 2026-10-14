@@ -58,7 +58,7 @@ event and per IPC call, nothing proportional to a whole diff.
 - **Colours, spacing and type come from the tokens** in `styles.css`
   through Tailwind classes; no raw colour in a component.
 - **Every visible string follows the `ux` skill** (HIG `writing`):
-  sentence case, plain words, errors that say what happened and what to
+  sentence case (menu items title case, HIG `menus`), plain words, errors that say what happened and what to
   do, meaning never in colour alone.
 
 ## Tests
