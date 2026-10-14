@@ -4,7 +4,7 @@ import type { Comment } from "./bindings/Comment";
 import type { Opening } from "./bindings/Opening";
 import type { Review } from "./bindings/Review";
 import type { SavedReview } from "./bindings/SavedReview";
-import { useStore } from "./store";
+import { moveDetail, useStore } from "./store";
 
 vi.mock("./api", () => ({
   api: {
@@ -13,6 +13,7 @@ vi.mock("./api", () => ({
     saveReview: vi.fn(),
     loadReview: vi.fn(),
     fingerprint: vi.fn(),
+    refs: vi.fn(() => Promise.resolve([])),
     watchRepository: vi.fn(() => Promise.resolve(true)),
   },
   describe: (error: unknown) => ({ title: "Saved comments are unavailable", detail: String(error) }),
@@ -45,6 +46,21 @@ function answerLoads(root: string) {
       files: [],
       groups: [],
       comments: structuredClone(comments),
+    }),
+  );
+}
+
+/** The next load finds no comment's code, with `branch` checked out. */
+function answerNextLoadWithCodeGone(root: string, branch = "agent/x") {
+  vi.mocked(api.loadReview).mockImplementationOnce((base, comments) =>
+    Promise.resolve<Review>({
+      checkout: { ...opening(root).checkout, head: { kind: "branch", name: branch } },
+      base,
+      fingerprint: null,
+      snapshot: { old: null, new: { kind: "workingTree" } },
+      files: [],
+      groups: [],
+      comments: comments.map((c) => ({ ...c, state: "outdated" })),
     }),
   );
 }
@@ -219,6 +235,100 @@ describe("reloading", () => {
     await vi.waitFor(() => expect(api.loadReview).toHaveBeenCalledTimes(2));
   });
 
+  it("deletes a comment whose code is gone against the same base and branch", async () => {
+    await openWith("/a", { comments: [comment("c")], note: "" });
+    useStore.setState({ openComment: "c" });
+    answerNextLoadWithCodeGone("/a");
+    await useStore.getState().reload();
+    expect(useStore.getState().comments).toEqual([]);
+    expect(useStore.getState().openComment).toBeNull();
+    await vi.waitFor(() => expect(api.saveReview).toHaveBeenCalledWith("/a", { comments: [], note: "" }));
+  });
+
+  it("keeps a saved comment whose code is gone when the checkout opens, hidden", async () => {
+    answerNextLoadWithCodeGone("/a");
+    await openWith("/a", { comments: [comment("c")], note: "" });
+    expect(useStore.getState().comments).toEqual([{ ...comment("c"), state: "outdated" }]);
+  });
+
+  it("keeps a comment whose code is gone after the base changed, hidden", async () => {
+    await openWith("/a", { comments: [comment("c")], note: "" });
+    answerNextLoadWithCodeGone("/a");
+    await useStore.getState().setBase({ kind: "ref", name: "main" });
+    expect(useStore.getState().comments).toEqual([{ ...comment("c"), state: "outdated" }]);
+  });
+
+  it("closes the card of a comment that becomes hidden", async () => {
+    await openWith("/a", { comments: [comment("c")], note: "" });
+    useStore.setState({ openComment: "c" });
+    answerNextLoadWithCodeGone("/a");
+    await useStore.getState().setBase({ kind: "ref", name: "main" });
+    expect(useStore.getState().openComment).toBeNull();
+  });
+
+  it("keeps a comment whose code is gone after another branch was checked out, hidden", async () => {
+    await openWith("/a", { comments: [comment("c")], note: "" });
+    answerNextLoadWithCodeGone("/a", "agent/y");
+    await useStore.getState().reload();
+    expect(useStore.getState().comments).toEqual([{ ...comment("c"), state: "outdated" }]);
+  });
+
+  it("deletes a comment whose code is gone while the HEAD stays detached", async () => {
+    const detached = { kind: "detached", commit: "abc" } as const;
+    vi.mocked(api.openRepository).mockResolvedValue({ ...opening("/a"), checkout: { ...opening("/a").checkout, head: detached } });
+    vi.mocked(api.savedReview).mockResolvedValue({ comments: [comment("c")], note: "" });
+    vi.mocked(api.loadReview).mockImplementation((base, comments) =>
+      Promise.resolve<Review>({
+        checkout: { ...opening("/a").checkout, head: detached },
+        base,
+        fingerprint: null,
+        snapshot: { old: null, new: { kind: "workingTree" } },
+        files: [],
+        groups: [],
+        comments: structuredClone(comments),
+      }),
+    );
+    await useStore.getState().open("/a");
+    vi.mocked(api.loadReview).mockImplementationOnce((base, comments) =>
+      Promise.resolve<Review>({
+        checkout: { ...opening("/a").checkout, head: { kind: "detached", commit: "def" } },
+        base,
+        fingerprint: null,
+        snapshot: { old: null, new: { kind: "workingTree" } },
+        files: [],
+        groups: [],
+        comments: comments.map((c) => ({ ...c, state: "outdated" })),
+      }),
+    );
+    await useStore.getState().reload();
+    expect(useStore.getState().comments).toEqual([]);
+  });
+
+  it("keeps a hidden comment whose code is still gone", async () => {
+    const hidden: Comment = { ...comment("c"), state: "outdated" };
+    await openWith("/a", { comments: [hidden], note: "" });
+    answerNextLoadWithCodeGone("/a");
+    await useStore.getState().reload();
+    expect(useStore.getState().comments).toEqual([hidden]);
+  });
+
+  it("keeps a comment being edited whose code is gone", async () => {
+    await openWith("/a", { comments: [comment("c")], note: "" });
+    useStore.getState().editComment("c");
+    answerNextLoadWithCodeGone("/a");
+    await useStore.getState().reload();
+    expect(useStore.getState().comments.map((c) => c.id)).toEqual(["c"]);
+  });
+
+  it("jumps past a hidden comment", async () => {
+    const hidden: Comment = { ...comment("h"), state: "outdated" };
+    await openWith("/a", { comments: [hidden, comment("c")], note: "" });
+    useStore.getState().jumpComment(1);
+    expect(useStore.getState().openComment).toBe("c");
+    useStore.getState().jumpComment(1);
+    expect(useStore.getState().openComment).toBe("c");
+  });
+
   it("while watching, checks for changes by loading, not by a fingerprint", async () => {
     await openWith("/a", { comments: [], note: "" });
     useStore.setState({ watching: true });
@@ -226,5 +336,28 @@ describe("reloading", () => {
     await useStore.getState().poll();
     expect(api.loadReview).toHaveBeenCalledTimes(1);
     expect(api.fingerprint).not.toHaveBeenCalled();
+  });
+});
+
+describe("the move banner's detail", () => {
+  it("names each deleted comment and says what became of the rest", () => {
+    expect(moveDetail(["a.ts:1 “Hash it”", "b.ts:4 “Why?”"], 1, 2)).toBe(
+      "2 comments were deleted because their code changed: a.ts:1 “Hash it”; b.ts:4 “Why?”. 1 comment is not in this diff. 1 comment still applies.",
+    );
+    expect(moveDetail(["a.ts:1 “Hash it”"], 2, 4)).toBe(
+      "1 comment was deleted because its code changed: a.ts:1 “Hash it”. 2 comments are not in this diff. 2 comments still apply.",
+    );
+  });
+
+  it("says how many are not in this diff when none was deleted", () => {
+    expect(moveDetail([], 1, 2)).toBe("1 comment is not in this diff. 1 comment still applies.");
+  });
+
+  it("says how many still apply", () => {
+    expect(moveDetail([], 0, 1)).toBe("1 comment still applies.");
+  });
+
+  it("is empty when there are no comments", () => {
+    expect(moveDetail([], 0, 0)).toBe("");
   });
 });

@@ -42,8 +42,10 @@ review as instructions. Each is a pure function tested here.
 4. **A comment stays on its code, not its line number.** `reanchor` keeps
    it where its saved `code` still is, moves it to the nearest run of
    consecutive lines that match, or marks it outdated. An outdated comment
-   keeps its old position and code until the reviewer resolves it or keeps
-   it (which re-snapshots the code).
+   keeps its last position and code, and every load looks for it again:
+   found, it is current. Whether an outdated comment is deleted or only
+   hidden is the front end's, which knows what the last load compared
+   (diff-loop-app Decision 16).
 5. **Roles come from the path**, and binary content makes a file an
    asset, whatever its path. Order: source, tests, config, docs, assets.
 6. **Instructions** group comments by file in the order given (the front
@@ -83,6 +85,10 @@ review as instructions. Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-13, comments deleted when their code changes)
+
+An outdated comment is looked for again on every load (Decision 4).
 
 ## Progress (2026-10-13, the base picker's notes)
 

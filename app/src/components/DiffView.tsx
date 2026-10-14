@@ -33,7 +33,8 @@ function useMarks(file: FileDiff): Marks {
   return useMemo(() => {
     const marks: Marks = { pins: new Map(), bars: new Set(), cardAt: new Map(), composerAt };
     orderedComments(review, all)
-      .filter((c) => c.path === file.path && c.target.kind === "lines" && c.id !== editing)
+      // An outdated comment's lines hold other code, or are not in the diff.
+      .filter((c) => c.path === file.path && c.target.kind === "lines" && c.state === "current" && c.id !== editing)
       .forEach((c, i) => {
         if (c.target.kind !== "lines") return;
         const { side, start } = c.target;
@@ -353,10 +354,10 @@ function Decorations({ cells, marks, pill }: LineProps & { cells: (Cell | null)[
         <button
           type="button"
           onClick={() => toggleComment(pin.comment.id)}
-          aria-label={`Comment ${pin.n}${pin.comment.state === "outdated" ? ", outdated" : ""}`}
+          aria-label={`Comment ${pin.n}`}
           className={`absolute top-[3px] left-2.5 z-[2] flex size-[18px] items-center justify-center rounded-full font-sans text-[11px] leading-none font-semibold ${
             openComment === pin.comment.id ? "bg-btn text-btn-fg" : "bg-line text-muted2"
-          } ${pin.comment.state === "outdated" ? "ring-1 ring-warn" : ""}`}
+          }`}
         >
           {pin.n}
         </button>

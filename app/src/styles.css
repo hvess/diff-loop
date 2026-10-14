@@ -35,7 +35,6 @@
   --ui-sel-fg: #2f4fb8;
   --ui-row-sel: #ededed;
   --ui-modified: #8a6a1f;
-  --ui-warn: #a87b0a;
   --ui-shadow: 0 16px 40px rgba(0, 0, 0, 0.14);
 
   --shiki-foreground: #0d0d0d;
@@ -83,7 +82,6 @@
     --ui-sel-fg: #b4c4ff;
     --ui-row-sel: #2a2a2a;
     --ui-modified: #e0b860;
-    --ui-warn: #e5be5c;
     --ui-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
 
     --shiki-foreground: #ececec;
@@ -132,7 +130,6 @@
   --color-sel-fg: var(--ui-sel-fg);
   --color-row-sel: var(--ui-row-sel);
   --color-modified: var(--ui-modified);
-  --color-warn: var(--ui-warn);
   --shadow-pop: var(--ui-shadow);
 }
 

@@ -44,7 +44,8 @@ export type Composer = {
 
 export type Selection = { path: string; side: Side; anchor: number; head: number; dragging: boolean };
 
-export type Banner = { title: string; detail: string; previous: string };
+/** `deleted` are the comments the move deleted; the rest are described as they are now (`moveDetail`). */
+export type Banner = { title: string; deleted: Comment[]; previous: string };
 
 export type Prefs = { format: Format; includeCode: boolean; includeNote: boolean };
 
@@ -80,6 +81,8 @@ type State = {
   composer: Composer | null;
   selection: Selection | null;
   openComment: string | null;
+  /** Whether the comments list is open. */
+  commentList: boolean;
   banner: Banner | null;
   copied: boolean;
   undo: Undo | null;
@@ -111,8 +114,8 @@ type Actions = {
   cancelComposer: () => void;
   saveComposer: () => void;
   deleteComment: (id: string) => void;
-  keepComment: (id: string) => void;
   toggleComment: (id: string | null) => void;
+  setCommentList: (open: boolean) => void;
   jumpComment: (step: 1 | -1) => void;
   /** Selects the comment's file and opens its card. */
   showComment: (id: string) => void;
@@ -190,6 +193,29 @@ async function fetchReview(base: Base, comments: Comment[], held: LoadedReview |
 
 export const sameBase = (a: Base, b: Base) => JSON.stringify(a) === JSON.stringify(b);
 
+/** Whether `after` has the branch `before` had checked out; a detached `HEAD` counts as one branch. */
+function sameBranch(before: LoadedReview, after: LoadedReview): boolean {
+  const [was, now] = [before.checkout.head, after.checkout.head];
+  return was.kind === "detached" ? now.kind === "detached" : now.kind === "branch" && now.name === was.name;
+}
+
+/**
+ * The move banner's detail: the comments a load deleted, by `deleted` description, and how many of
+ * the `total` left are not in this diff. Its wording is settled (`ux` skill, "Settled wording").
+ */
+export function moveDetail(deleted: string[], notInDiff: number, total: number): string {
+  const applying = total - notInDiff;
+  const one = deleted.length === 1;
+  return [
+    deleted.length > 0 &&
+      `${deleted.length} ${one ? "comment was" : "comments were"} deleted because ${one ? "its" : "their"} code changed: ${deleted.join("; ")}.`,
+    notInDiff > 0 && `${notInDiff} ${notInDiff === 1 ? "comment is" : "comments are"} not in this diff.`,
+    applying > 0 && `${applying} ${applying === 1 ? "comment still applies" : "comments still apply"}.`,
+  ]
+    .filter((part) => part !== false)
+    .join(" ");
+}
+
 /**
  * Whether `after` shows what `before` did: the same checkout, snapshot,
  * files and fingerprint, which a poll compares against. O(files): a file
@@ -225,6 +251,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   composer: null,
   selection: null,
   openComment: null,
+  commentList: false,
   banner: null,
   copied: false,
   undo: null,
@@ -303,10 +330,19 @@ export const useStore = create<State & Actions>()((set, get) => ({
       const review = await fetchReview(base, get().comments, held);
       if (!sameBase(get().base, base)) return;
       const moved = new Map(review.comments.map((c) => [c.id, c]));
+      const deletes = held !== null && sameBranch(held, review);
+      const editing = get().composer?.editing;
+      const deleted: Comment[] = [];
       // Comments written while loading are kept as they are.
-      const comments = get().comments.map((c) => {
+      const comments = get().comments.flatMap((c) => {
         const m = moved.get(c.id);
-        return m ? { ...m, text: c.text, suggestion: c.suggestion } : c;
+        if (!m) return [c];
+        // Its code is gone under the same base and branch (diff-loop-app.md Decision 16).
+        if (deletes && c.state === "current" && m.state === "outdated" && c.id !== editing) {
+          deleted.push(c);
+          return [];
+        }
+        return [{ ...m, text: c.text, suggestion: c.suggestion }];
       });
       // A watch event often changes nothing reviewed (a build writing ignored
       // files): then the window keeps its state, and nothing re-renders.
@@ -318,8 +354,11 @@ export const useStore = create<State & Actions>()((set, get) => ({
       const expanded = new Map([...get().expanded].filter(([path, e]) => review.signatures[path] === e.signature));
       const current = get().selected;
       const selected = current !== null && review.byPath.has(current) ? current : (review.order[0]?.path ?? null);
-      set({ review, comments, viewed, expanded, selected, loadProblem: null });
-      await announceMove(before, review, comments);
+      const open = get().openComment;
+      // A comment not in this diff has no card to stay open.
+      const openComment = comments.some((c) => c.id === open && c.state === "current") ? open : null;
+      set({ review, comments, viewed, expanded, selected, openComment, loadProblem: null });
+      await announceMove(before, review, deleted);
     } catch (error) {
       set({ loadProblem: describe(error) });
     } finally {
@@ -331,20 +370,14 @@ export const useStore = create<State & Actions>()((set, get) => ({
       }
     }
 
-    async function announceMove(before: LoadedReview | null, after: LoadedReview, comments: Comment[]) {
+    async function announceMove(before: LoadedReview | null, after: LoadedReview, deleted: Comment[]) {
       const previous = before?.checkout.commit;
       const now = after.checkout.commit;
       if (!previous || !now || previous === now) return;
-      const outdated = comments.filter((c) => c.state === "outdated").length;
-      const current = comments.length - outdated;
-      const detail =
-        comments.length === 0
-          ? ""
-          : `${outdated} ${outdated === 1 ? "comment is" : "comments are"} outdated, ${current} still ${current === 1 ? "applies" : "apply"}.`;
       const headBefore = before.checkout.head;
       const headNow = after.checkout.head;
       if (headBefore.kind === "branch" && headNow.kind === "branch" && headBefore.name !== headNow.name) {
-        set({ banner: { title: `Switched to ${headNow.name}`, detail, previous } });
+        set({ banner: { title: `Switched to ${headNow.name}`, deleted, previous } });
         return;
       }
       const count = await api.commitsBetween(previous, now).catch(() => null);
@@ -352,7 +385,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         count === null
           ? "The branch was rewritten"
           : `The branch moved: ${count} new ${count === 1 ? "commit" : "commits"}`;
-      set({ banner: { title, detail, previous } });
+      set({ banner: { title, deleted, previous } });
     }
   },
 
@@ -494,18 +527,8 @@ export const useStore = create<State & Actions>()((set, get) => ({
     });
   },
 
-  keepComment(id) {
-    const review = get().review;
-    set({
-      comments: get().comments.map((c) => {
-        if (c.id !== id || c.target.kind !== "lines") return c.id === id ? { ...c, state: "current" } : c;
-        const file = review?.byPath.get(c.path);
-        if (!file) return { ...c, state: "current" };
-        const { side, start } = c.target;
-        const end = withinHunk(file, side, start, lastLine(c.target));
-        return { ...c, state: "current", target: { kind: "lines", side, start, code: linesOn(file, side, start, end) } };
-      }),
-    });
+  setCommentList(open) {
+    set({ commentList: open });
   },
 
   toggleComment(id) {
@@ -514,7 +537,8 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   jumpComment(step) {
     const { review, comments, openComment } = get();
-    const list = orderedComments(review, comments);
+    // A comment not in this diff has no card to open (diff-loop-app.md Decision 16).
+    const list = orderedComments(review, comments).filter((c) => c.state === "current");
     if (list.length === 0) return;
     const at = list.findIndex((c) => c.id === openComment);
     const next = list[(at + step + list.length) % list.length]!;

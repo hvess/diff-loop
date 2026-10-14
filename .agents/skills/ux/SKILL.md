@@ -99,10 +99,32 @@ each as **pass** or the specific failure.
 5. **Errors say what happened and what to do.** In plain language, per
    `writing` — "Write clear error messages".
 6. **Nothing destructive by accident.** Irreversible actions need a
-   deliberate step; reversible ones can be undone.
+   deliberate step; reversible ones can be undone. One exception: a
+   comment whose code changed is deleted with no undo and no warning
+   first (diff-loop-app Decision 16), the developer's call, 2026-10-13.
+   It disagrees with the HIG `undo-and-redo` page (people expect to
+   undo what they did), the `feedback` page (warn before unexpected,
+   irreversible data loss), the Agency and Responsibility principles
+   above, and line 7, since a comment deleted by hand keeps its undo;
+   the app follows the exception.
 7. **Consistent.** The same thing looks, reads and behaves the same
    everywhere in the app.
 8. **Accessible.** Readable in light and dark, and meaning never carried
    by colour alone.
 9. **Checked by use, not by reading the code.** Run the app and walk the
    flow as a first-time user would.
+
+## Settled wording
+
+Wording the developer has decided. Judge it against the gate, not
+against other wording that would also do.
+
+- **Comments whose code is not in the diff** (diff-loop-app Decision
+  16; the developer's call, 2026-10-14). One term, "not in this diff",
+  everywhere: the comment count ("2 comments (1 not in this diff)"),
+  the list chip ("Not in this diff"), the list hint ("N / P to jump
+  between comments in this diff"), and the move banner. The banner
+  gives one sentence per group, each with "comment" as its subject:
+  "1 comment was deleted because its code changed: share.ts:2 “Read
+  the limit from config”.", "1 comment is not in this diff.", "1
+  comment still applies."

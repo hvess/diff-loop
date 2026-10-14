@@ -65,22 +65,20 @@ impl Target {
 pub enum AnchorState {
     /// It does, possibly at new line numbers.
     Current,
-    /// The code changed or left the diff; the target keeps the old position
-    /// and code for the reviewer to resolve or keep.
+    /// The code is not in this diff: it changed, or the base or branch
+    /// compared does not hold it. The target keeps its last position and
+    /// code, so a later load can find it again (diff-loop-core.md Decision 4).
     Outdated,
 }
 
 /// `comment` moved onto its code in `files`: kept where the code still is,
 /// moved to the nearest place it now is, or marked outdated when it is gone.
-/// An outdated comment stays as it is.
+/// An outdated comment is looked for again, and is current once found.
 ///
 /// Cost: O(f + L·k) for f changed files, L lines on the comment's side of
 /// its file and k commented lines.
 #[must_use]
 pub(crate) fn reanchor(comment: Comment, files: &[FileDiff]) -> Comment {
-    if comment.state == AnchorState::Outdated {
-        return comment;
-    }
     let Some(file) = files
         .iter()
         .find(|f| f.path == comment.path || f.old_path() == comment.path)
@@ -95,7 +93,11 @@ pub(crate) fn reanchor(comment: Comment, files: &[FileDiff]) -> Comment {
         side, start, code, ..
     } = &comment.target
     else {
-        return Comment { path, ..comment };
+        return Comment {
+            path,
+            state: AnchorState::Current,
+            ..comment
+        };
     };
     match nearest(file, *side, *start, code) {
         Some(found) => {
@@ -107,6 +109,7 @@ pub(crate) fn reanchor(comment: Comment, files: &[FileDiff]) -> Comment {
             Comment {
                 path,
                 target,
+                state: AnchorState::Current,
                 ..comment
             }
         }
@@ -223,8 +226,29 @@ mod tests {
     }
 
     #[test]
-    fn an_outdated_comment_stays_outdated() {
+    fn an_outdated_comment_is_current_again_where_its_code_is() {
+        let files = [text_file("a.ts", vec![add(1, "new"), add(2, "x")])];
+        let outdated = Comment {
+            state: AnchorState::Outdated,
+            ..on_lines("a.ts", 1, &["x"])
+        };
+        assert_eq!(reanchor(outdated, &files), on_lines("a.ts", 2, &["x"]));
+    }
+
+    #[test]
+    fn an_outdated_comment_on_a_file_back_in_the_diff_is_current_again() {
         let files = [text_file("a.ts", vec![add(1, "x")])];
+        let outdated = Comment {
+            target: Target::File,
+            state: AnchorState::Outdated,
+            ..on_lines("a.ts", 1, &["x"])
+        };
+        assert_eq!(reanchor(outdated, &files).state, AnchorState::Current);
+    }
+
+    #[test]
+    fn an_outdated_comment_whose_code_is_still_gone_stays_outdated() {
+        let files = [text_file("a.ts", vec![add(1, "y")])];
         let outdated = Comment {
             state: AnchorState::Outdated,
             ..on_lines("a.ts", 1, &["x"])

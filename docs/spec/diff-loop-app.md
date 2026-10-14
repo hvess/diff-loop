@@ -28,7 +28,9 @@ change, annotate, hand off to the agent, next round.
    window gains focus (ADR 0002, ADR 0005 §4); when `HEAD` moves, a banner: "The
    branch moved: N new commits", "The branch was rewritten" when the old
    commit is no longer an ancestor, or "Switched to <branch>" when another
-   branch is checked out. Each says how many comments are outdated, and
+   branch is checked out. Each names the comments it deleted, and says
+   how many of the rest are not in this diff or still apply (Decision
+   16), and
    "Show what changed" compares with the previous `HEAD` — done
    2026-10-13.
 6. Expand unchanged lines: "Show N unchanged lines" before a hunk, and
@@ -67,7 +69,7 @@ change, annotate, hand off to the agent, next round.
    are carried over from the last load (`fetchReview` in
    `app/src/store.ts`).
 6. **A comment range stays inside one hunk.** `withinHunk`
-   (`app/src/rows.ts`) clamps every drag, shift-click and kept comment, so
+   (`app/src/rows.ts`) clamps every drag and shift-click, so
    `Target::Lines` always has one `code` entry per line (diff-loop-core
    `anchor.rs`).
 7. **One watch per open repository.** `watch_repository` runs after a
@@ -133,6 +135,23 @@ change, annotate, hand off to the agent, next round.
     `v<version>` tag matching `tauri.conf.json`: an AppImage and a `.deb`
     on Ubuntu 22.04, an ad-hoc signed Apple Silicon `.dmg` on macOS
     (ADR 0009).
+16. **A comment whose code changed is deleted.** When a load against the
+    same base, with the same branch checked out (a detached `HEAD` counts
+    as one branch), finds a current comment's code gone (it changed, or
+    its file left the diff), `reload` deletes it, with no undo, and with
+    no notice unless `HEAD` moved too; one being edited is kept. After the
+    base or branch changed, or on opening a checkout, it is only outdated:
+    it draws no pin, and its list entry, the comment count and the move
+    banner say it is not in this diff, the banner with Show comments,
+    which opens the list below the banner (the banner names each comment
+    deleted at the move by its place and the start of its text, and counts
+    the rest as they are now), until a load finds its code again
+    (diff-loop-core Decision 4). Having no card, it is skipped by N / P,
+    as the list's hint says, and its list entry is muted, opens nothing
+    and has Delete, and an open card closes; it is still copied into the
+    instructions. Deleting without undo is an exception to the `ux`
+    skill's gate line 6, and the wording is the `ux` skill's "Settled
+    wording". The developer's calls, 2026-10-13 and 2026-10-14.
 
 ## Pitfalls
 
@@ -141,6 +160,11 @@ change, annotate, hand off to the agent, next round.
   them.
 - Code rows have an integer line height (25 px); a fractional one leaves
   hairline gaps between measured rows.
+
+## Progress (2026-10-13, comments deleted when their code changes)
+
+Comments whose code changed are deleted, and outdated ones are no longer
+drawn at line numbers that hold other code (Decision 16).
 
 ## Progress (2026-10-13, releases)
 
