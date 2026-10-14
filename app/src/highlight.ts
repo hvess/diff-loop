@@ -97,7 +97,7 @@ function getWorker(): Worker {
   return worker;
 }
 
-function tokenize(path: string, lines: Record<Side, Line[]>): Promise<HighlightReply["tokens"]> {
+function requestTokens(path: string, lines: Record<Side, Line[]>): Promise<HighlightReply["tokens"]> {
   if (failed) return Promise.resolve(null);
   const id = nextId++;
   const request: HighlightRequest = {
@@ -118,7 +118,7 @@ async function highlight(file: FileDiff, expanded: Expanded | undefined): Promis
   const hit = cache.get(file);
   if (hit && hit.expanded === expanded) return hit.highlights;
   const lines = linesOf(file, expanded);
-  const tokens = lines && (await tokenize(file.path, lines));
+  const tokens = lines && (await requestTokens(file.path, lines));
   const highlights = lines && tokens ? placed(lines, tokens) : null;
   // A file past MAX_LINES stays plain for this version; a null answer is asked again next time.
   if (!lines || highlights) cache.set(file, { expanded, highlights });
