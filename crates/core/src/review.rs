@@ -13,7 +13,6 @@ use crate::{
     base::{Base, BaseRef, default_base},
     diff::FileDiff,
     repository::{Changes, Checkout, RepoError, Repository, Snapshot, Touched},
-    role::{FileGroup, group},
     update::{Updated, covers, update},
 };
 
@@ -34,8 +33,6 @@ pub struct Review {
     /// Every changed file, in path order; in full only where the caller's
     /// copy is missing or stale.
     pub files: Vec<ReviewFile>,
-    /// `files` by role.
-    pub groups: Vec<FileGroup>,
     /// The comments passed in, moved onto their code.
     pub comments: Vec<Comment>,
 }
@@ -164,7 +161,6 @@ pub fn load(
             (diff.path.clone(), signature)
         })
         .collect();
-    let groups = group(&changes.files);
     let comments = comments
         .into_iter()
         .map(|c| reanchor(c, &changes.files))
@@ -196,7 +192,6 @@ pub fn load(
         fingerprint,
         snapshot: changes.snapshot.clone(),
         files,
-        groups,
         comments,
     };
     let loaded = Loaded {
@@ -228,7 +223,6 @@ pub(crate) mod tests {
             tests::{add, text_file},
         },
         repository::{Head, NewSide, OnChange, WatchGuard},
-        role::Role,
     };
 
     /// A repository with these changes, whose every blob is `one\r\ntwo\nthree\nfour`.
@@ -292,7 +286,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn load_groups_files_and_moves_comments_onto_their_code() {
+    fn load_moves_comments_onto_their_code() {
         let repo = Fixed(vec![
             text_file("src/a.test.ts", vec![]),
             text_file("src/a.ts", vec![add(1, "new"), add(2, "x")]),
@@ -311,10 +305,6 @@ pub(crate) mod tests {
         };
         let (review, _) = load(&repo, Base::Uncommitted, vec![comment], vec![], None).unwrap();
         assert_eq!(review.fingerprint.as_deref(), Some("f1"));
-        assert_eq!(
-            review.groups.iter().map(|g| g.role).collect::<Vec<_>>(),
-            [Role::Source, Role::Tests]
-        );
         assert!(matches!(
             review.comments[0].target,
             Target::Lines { start: 2, .. }

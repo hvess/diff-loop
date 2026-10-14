@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import type { Target } from "../bindings/Target";
 import { hasMod, modKey } from "../platform";
+import { dedent } from "../indent";
 import { lastLine } from "../rows";
-import { canSave, useStore } from "../store";
+import { canSave, suggestable, useStore } from "../store";
 
 export function targetLabel(target: Target): string {
   if (target.kind === "file") return "Whole file";
@@ -45,7 +46,7 @@ export function Composer({ floating = false }: { floating?: boolean }) {
   return (
     <div
       onKeyDown={onKeyDown}
-      className={`overflow-hidden rounded-2xl border border-ghost bg-bg text-[13.5px] leading-[1.55] ${floating ? "shadow-pop" : ""}`}
+      className={`overflow-hidden rounded-[14px] border border-ghost bg-bg text-[13.5px] leading-[1.55] ${floating ? "shadow-pop" : ""}`}
     >
       <AutoTextarea
         inputRef={text}
@@ -62,18 +63,18 @@ export function Composer({ floating = false }: { floating?: boolean }) {
         className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-1.5 outline-none placeholder:text-muted3"
       />
       {canSuggest && composer.suggestion !== null && (
-        <div className="mx-3 mt-1.5 mb-0.5 overflow-hidden rounded-xl border border-line font-mono text-[11.5px] leading-[1.9]">
+        <div className="mx-4 mt-1.5 mb-0.5 overflow-hidden rounded-[10px] border border-line font-mono text-[11.5px] leading-[1.9]">
           <div className="flex justify-between border-b border-border bg-hunk px-3 py-1.5 font-sans text-xs text-muted">
             <span>Suggested change</span>
-            <span>Edit the green lines</span>
+            <span>Edit the + {composer.suggestion.includes("\n") ? "lines" : "line"}</span>
           </div>
-          {target.code.map((line, i) => (
+          {dedent(target.code).map((line, i) => (
             <div key={i} className="flex bg-del-bg pr-3">
               <span className="w-6 flex-none text-center text-del">−</span>
               <span className="whitespace-pre-wrap">{line}</span>
             </div>
           ))}
-          <div className="flex bg-add-bg pr-3 shadow-[inset_0_0_0_1.5px_var(--ui-add-ring)]">
+          <div className="flex bg-add-bg pr-3">
             <span className="w-6 flex-none text-center text-add">+</span>
             <AutoTextarea
               inputRef={code}
@@ -86,18 +87,19 @@ export function Composer({ floating = false }: { floating?: boolean }) {
           </div>
         </div>
       )}
-      <div className="flex items-center gap-2.5 px-4 pt-2 pb-3 text-[12.5px]">
+      <div className="flex items-center gap-2.5 px-4 pt-2.5 pb-3 text-[12.5px]">
         <span className="text-faint">{targetLabel(target)}</span>
         {canSuggest && (
           <button
             type="button"
             aria-pressed={composer.suggestion !== null}
-            onClick={() => update({ suggestion: composer.suggestion === null ? target.code.join("\n") : null })}
-            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium ${
-              composer.suggestion !== null ? "bg-btn text-btn-fg" : "bg-chip text-muted2"
+            onClick={() => update({ suggestion: composer.suggestion === null ? suggestable(target.code) : null })}
+            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-[3px] font-medium ${
+              composer.suggestion !== null ? "border-muted2 bg-chip text-fg" : "border-line text-muted2"
             }`}
           >
-            <span className="font-mono text-[11.5px]">±</span>Suggest code
+            {/* On shows a tick, so the state is told by more than shade. */}
+            <span className="font-mono text-[11.5px]">{composer.suggestion !== null ? "✓" : "±"}</span>Suggest code
           </button>
         )}
         <button type="button" onClick={cancel} className="ml-auto text-muted3">

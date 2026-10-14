@@ -34,8 +34,9 @@ to a coding agent as instructions. The core also needs a way to read git.
 5. **Persisted on the viewer's machine:** the webview's `localStorage`
    keys `diff-loop.recent` (recently opened folders) and `diff-loop.prefs`
    (instruction format and toggles). Both are read defensively; a bad
-   value falls back to the default. Review comments are not persisted
-   (superseded by ADR 0004).
+   value falls back to the default. Since ADR 0013 §4 only
+   `diff-loop.recent` is read or written. Review comments are not
+   persisted (superseded by ADR 0004).
 
 ## Consequences
 

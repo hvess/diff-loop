@@ -1,10 +1,9 @@
 import * as Popover from "@radix-ui/react-popover";
 import { useEffect, useState } from "react";
-import type { Comment } from "../bindings/Comment";
-import { commentText, moveDetail, useStore } from "../store";
+import { bannerDetail, useStore } from "../store";
 import { BasePicker } from "./BasePicker";
 import { FilePane } from "./FilePane";
-import { location, ReviewActions } from "./ReviewActions";
+import { ReviewActions } from "./ReviewActions";
 import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
 
@@ -56,44 +55,46 @@ export function ReviewScreen() {
   );
 }
 
-/** A deleted comment as the banner names it: where it was, and the start of what it said. */
-function described(c: Comment): string {
-  // Without its closing stop, which the banner's sentence supplies.
-  const text = (commentText(c).split("\n")[0] ?? "").replace(/[.!?]+$/, "");
-  return `${location(c)} “${text.length > 40 ? `${text.slice(0, 40)}…` : text}”`;
-}
-
-/** The checkout moved under the review. */
+/** The code or the checkout changed under the review. */
 function Banner() {
   const banner = useStore((s) => s.banner);
   const showWhatChanged = useStore((s) => s.showWhatChanged);
+  const undoRemoved = useStore((s) => s.undoRemoved);
   const dismiss = useStore((s) => s.dismissBanner);
   const notInDiff = useStore((s) => (s.banner ? s.comments.filter((c) => c.state === "outdated").length : 0));
   const total = useStore((s) => (s.banner ? s.comments.length : 0));
   const setCommentList = useStore((s) => s.setCommentList);
   if (!banner) return null;
-  const detail = moveDetail(banner.deleted.map(described), notInDiff, total);
+  const detail = bannerDetail(banner.removed.length, notInDiff, total);
   return (
-    <div role="status" className="flex flex-none flex-col gap-0.5 border-b border-border bg-side px-6 py-2.5 text-[13px]">
-      <div className="flex items-center gap-3">
-        <span className="size-[7px] flex-none rounded-full bg-live" />
-        <span className="font-medium">{banner.title}</span>
-        <span className="ml-auto flex flex-none gap-3 whitespace-nowrap">
-          {notInDiff > 0 && (
-            <button type="button" className="font-medium" onClick={() => setCommentList(true)}>
-              Show comments
-            </button>
-          )}
+    <div role="status" className="flex flex-none items-center gap-3 border-b border-border bg-side px-6 py-2.5 text-[13px]">
+      <span className="size-[7px] flex-none rounded-full bg-live" />
+      <span className="flex-none font-medium">{banner.title}</span>
+      {detail && (
+        <span className="min-w-0 truncate text-muted3" title={detail}>
+          {detail}
+        </span>
+      )}
+      <span className="ml-auto flex flex-none gap-3 whitespace-nowrap">
+        {notInDiff > 0 && (
+          <button type="button" className="font-medium" onClick={() => setCommentList(true)}>
+            Show comments
+          </button>
+        )}
+        {banner.previous !== null && (
           <button type="button" className="font-medium" onClick={() => void showWhatChanged()}>
             Show what changed
           </button>
-          <button type="button" className="text-muted3" onClick={dismiss}>
-            Dismiss
+        )}
+        {banner.removed.length > 0 && (
+          <button type="button" className="text-muted3" onClick={undoRemoved}>
+            Undo removal
           </button>
-        </span>
-      </div>
-      {/* Under the title: past the dot (7 px) and its gap (12 px). */}
-      {detail && <span className="pl-[19px] text-muted">{detail}</span>}
+        )}
+        <button type="button" className="text-muted3" onClick={dismiss}>
+          Dismiss
+        </button>
+      </span>
     </div>
   );
 }

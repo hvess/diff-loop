@@ -1,4 +1,5 @@
 import type { Comment } from "../bindings/Comment";
+import { dedent } from "../indent";
 import { useStore } from "../store";
 import { targetLabel } from "./Composer";
 
@@ -6,7 +7,8 @@ import { targetLabel } from "./Composer";
 export function CommentCard({ comment, floating = false }: { comment: Comment; floating?: boolean }) {
   const editComment = useStore((s) => s.editComment);
   const deleteComment = useStore((s) => s.deleteComment);
-  const code = comment.target.kind === "lines" ? comment.target.code : [];
+  // Shown as "Suggest code" started from them (diff-loop-app.md Decision 26).
+  const code = comment.target.kind === "lines" ? dedent(comment.target.code) : [];
 
   return (
     <div

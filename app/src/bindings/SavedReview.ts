@@ -3,14 +3,11 @@ import type { Comment } from "./Comment";
 
 /**
  * A checkout's review as kept between runs: one per working tree, whatever
- * the base (ADR 0004 §1).
+ * the base (ADR 0004 §1). A `note` kept by an earlier version is ignored
+ * (ADR 0013 §3).
  */
 export type SavedReview = { 
 /**
  * As last saved; moved onto their code when the review next loads.
  */
-comments: Array<Comment>, 
-/**
- * The general note sent with the instructions.
- */
-note: string, };
+comments: Array<Comment>, };

@@ -1,12 +1,13 @@
 import * as Popover from "@radix-ui/react-popover";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Comment } from "../bindings/Comment";
+import { nameOf } from "../path";
 import { lastLine } from "../rows";
 import { commentText, orderedComments, useStore } from "../store";
 import { PreviewDialog } from "./PreviewDialog";
 
-export function location(c: Comment): string {
-  const name = c.path.split("/").pop() ?? c.path;
+function location(c: Comment): string {
+  const name = nameOf(c.path);
   if (c.target.kind === "file") return name;
   const { side, start } = c.target;
   const end = lastLine(c.target);
@@ -27,6 +28,11 @@ export function ReviewActions() {
   const deleteComment = useStore((s) => s.deleteComment);
   const setListOpen = useStore((s) => s.setCommentList);
   const [previewOpen, setPreviewOpen] = useState(false);
+  // The preview's edit outlasts closing it, for the comments it was made over (HIG `modality`).
+  const [draft, setDraft] = useState<{ comments: string; text: string } | null>(null);
+  // What the comments say, not the array: a load rebuilds it with the same comments.
+  // O(their text and code) per change of the comments, as saving them already costs.
+  const said = useMemo(() => JSON.stringify(comments), [comments]);
   const [copyError, setCopyError] = useState<string | null>(null);
   const list = orderedComments(review, comments);
   const count = comments.length;
@@ -173,7 +179,12 @@ export function ReviewActions() {
           Couldn’t copy to the clipboard: {copyError}
         </span>
       )}
-      <PreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} />
+      <PreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        edited={draft?.comments === said ? draft.text : null}
+        onEdit={(text) => setDraft(text === null ? null : { comments: said, text })}
+      />
     </div>
   );
 }

@@ -7,22 +7,21 @@ use ts_rs::TS;
 use crate::anchor::Comment;
 
 /// A checkout's review as kept between runs: one per working tree, whatever
-/// the base (ADR 0004 §1).
+/// the base (ADR 0004 §1). A `note` kept by an earlier version is ignored
+/// (ADR 0013 §3).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct SavedReview {
     /// As last saved; moved onto their code when the review next loads.
     pub comments: Vec<Comment>,
-    /// The general note sent with the instructions.
-    pub note: String,
 }
 
 impl SavedReview {
     /// Whether there is nothing to keep.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.comments.is_empty() && self.note.is_empty()
+        self.comments.is_empty()
     }
 }
 
@@ -62,13 +61,8 @@ mod tests {
     use crate::anchor::{AnchorState, Target};
 
     #[test]
-    fn a_review_with_a_comment_or_a_note_is_not_empty() {
+    fn a_review_with_a_comment_is_not_empty() {
         assert!(SavedReview::default().is_empty());
-        let note = SavedReview {
-            note: "n".into(),
-            ..SavedReview::default()
-        };
-        assert!(!note.is_empty());
         let comment = SavedReview {
             comments: vec![Comment {
                 id: "c".into(),
@@ -78,7 +72,6 @@ mod tests {
                 suggestion: None,
                 state: AnchorState::Current,
             }],
-            ..SavedReview::default()
         };
         assert!(!comment.is_empty());
     }

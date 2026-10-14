@@ -52,6 +52,15 @@ contradicts) and the entry says so before it goes.
     throttling (`app/src-tauri/tauri.conf.json`), and the beep rule
     (`wouldBeep`, `app/src/platform.ts`). Closes when each is walked on
     macOS and any fault fixed.
+16. **The design's pale greys fall below the HIG's contrast minimum**
+    (4.5:1 for text): `--ui-faint` and `--ui-muted` (`app/src/styles.css`)
+    draw the composer's and the card's line label ("Line 17"), the
+    suggestion box's header and a viewed file's name in the sidebar at
+    about 2–3.3:1 in light, 2.8–2.9:1 in dark (the UI judge's captures,
+    2026-10-14). The developer kept the design's palette for now
+    (`ux` skill, "Where the developer chose against the HIG"). Closes when
+    those tokens, or the text drawn in them, reach 4.5:1, or the developer
+    decides the palette stays.
 
 ## Distribution
 

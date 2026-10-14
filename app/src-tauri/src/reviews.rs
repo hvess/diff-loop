@@ -130,7 +130,6 @@ mod tests {
                 suggestion: None,
                 state: AnchorState::Current,
             }],
-            note: "note".into(),
         }
     }
 
@@ -148,6 +147,16 @@ mod tests {
         store.save("/b", &with_comment("two")).unwrap();
         assert_eq!(store.saved("/a").unwrap(), with_comment("one"));
         assert_eq!(reviews(&dir).saved("/b").unwrap(), with_comment("two"));
+    }
+
+    #[test]
+    fn a_note_kept_by_an_earlier_version_is_ignored() {
+        let dir = TempDir::new().unwrap();
+        let store = reviews(&dir);
+        fs::create_dir_all(store.path.parent().unwrap()).unwrap();
+        let earlier = r#"{"version":1,"reviews":{"/a":{"comments":[],"note":"Keep it small."}}}"#;
+        fs::write(&store.path, earlier).unwrap();
+        assert_eq!(store.saved("/a").unwrap(), SavedReview::default());
     }
 
     #[test]

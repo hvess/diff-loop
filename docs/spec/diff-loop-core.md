@@ -1,6 +1,6 @@
 # diff-loop-core
 
-The domain: what changed on a checkout, the files by role, review comments, and the instructions they become.
+The domain: what changed on a checkout, review comments, and the instructions they become.
 
 **Status:** active — first version landed.
 **Scope:** `crates/core`. Excludes reading git (`diff-loop-git.md`) and the UI (`diff-loop-app.md`).
@@ -9,16 +9,16 @@ The domain: what changed on a checkout, the files by role, review comments, and 
 
 ## Why
 
-The design's flows reduce to four pieces of logic that must not depend on
-git or Tauri: which base to start from, which role a file plays, keeping a
-comment on its code as the agent changes the checkout, and writing the
-review as instructions. Each is a pure function tested here.
+The design's flows reduce to three pieces of logic that must not depend on
+git or Tauri: which base to start from, keeping a comment on its code as
+the agent changes the checkout, and writing the review as instructions.
+Each is a pure function tested here.
 
 ## Steps
 
 1. Types and the `Repository` port (`repository.rs`, `diff.rs`, `base.rs`) — done 2026-10-13.
 2. `default_base` — done 2026-10-13.
-3. `Role::of` and `group` — done 2026-10-13.
+3. `Role::of` and `group` — done 2026-10-13; removed 2026-10-14 (ADR 0013 §1).
 4. `reanchor` — done 2026-10-13.
 5. `instructions` — done 2026-10-13.
 6. `open` and `load`, composing the above over a `Repository` — done 2026-10-13.
@@ -46,15 +46,17 @@ review as instructions. Each is a pure function tested here.
    found, it is current. Whether an outdated comment is deleted or only
    hidden is the front end's, which knows what the last load compared
    (diff-loop-app Decision 16).
-5. **Roles come from the path**, and binary content makes a file an
-   asset, whatever its path. Order: source, tests, config, docs, assets.
+5. **No roles** (ADR 0013 §1): the sidebar nests files by folder, in the
+   front end. Until 2026-10-14 the core grouped files by a role read from
+   the path.
 6. **Instructions** group comments by file in the order given (the front
    end passes sidebar order); within a file, whole-file comments come
    first, then removed-line comments, then the rest, each by line. They
    quote the first non-blank line of code cut to 60 characters, and
    dedent suggestions into a fenced block named for the file's language;
    a comment with no text (suggested code alone) has no `: text`.
-   `Format::Markdown` only adds `###` to headings.
+   They are Markdown, each file under a `###` heading, with no other
+   format, no switch for the quoted code and no note (ADR 0013 §2).
 7. **`open` and `load` take any `Repository`, sized or not**, so the app
    can hold its adapter as `dyn Repository`.
 8. **`load` returns only what the caller lacks.** Each file carries a
@@ -68,8 +70,8 @@ review as instructions. Each is a pure function tested here.
     A range past the file's end returns what exists.
 
 11. **A review is kept per working tree** (`ReviewStore`, ADR 0004 §1):
-    its comments and note, whatever the base. An empty `SavedReview`
-    removes the entry.
+    its comments, whatever the base; no note since ADR 0013 §3. An empty
+    `SavedReview` removes the entry.
 
 12. **`load` since the last load reads only what was touched**
     (`update`, ADR 0005 §3), by their top-level directories past
@@ -86,6 +88,11 @@ review as instructions. Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-14, the v2 design)
+
+Roles, the instructions' format and include-code switch, and the saved
+note were removed (ADR 0013); Decisions 5, 6 and 11 say what holds now.
 
 ## Progress (2026-10-13, comments deleted when their code changes)
 

@@ -1,4 +1,4 @@
-//! A review written out as plain-text instructions for a coding agent.
+//! A review written out as Markdown instructions for a coding agent.
 
 use std::fmt::Write as _;
 
@@ -12,17 +12,6 @@ use crate::{
     repository::Head,
 };
 
-/// How headings are written.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub enum Format {
-    /// Headings as bare lines.
-    Plain,
-    /// Headings as `###` lines.
-    Markdown,
-}
-
 /// Everything [`instructions`] writes from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -34,25 +23,15 @@ pub struct InstructionsRequest {
     pub base: Base,
     /// Grouped by file in order of first appearance; by line within a file.
     pub comments: Vec<Comment>,
-    /// A note on the review as a whole; written when not blank.
-    pub note: Option<String>,
-    /// How headings are written.
-    pub format: Format,
-    /// Whether each line comment quotes the code it is on.
-    pub include_code: bool,
 }
 
 /// Longest quoted code before it is cut with `…`, in characters.
 const QUOTE_MAX: usize = 60;
 
-/// The review as instructions an agent can act on.
+/// The review as Markdown instructions an agent can act on.
 #[must_use]
 pub fn instructions(request: &InstructionsRequest) -> String {
     let mut out = String::new();
-    let heading = |title: &str| match request.format {
-        Format::Plain => title.to_owned(),
-        Format::Markdown => format!("### {title}"),
-    };
     // `write!` to a String cannot fail.
     let _ = writeln!(
         out,
@@ -60,18 +39,10 @@ pub fn instructions(request: &InstructionsRequest) -> String {
         head_label(&request.head),
         base_label(&request.base)
     );
-    if let Some(note) = request
-        .note
-        .as_deref()
-        .map(str::trim)
-        .filter(|n| !n.is_empty())
-    {
-        let _ = write!(out, "\n{}\n{note}\n", heading("General"));
-    }
     for (path, comments) in by_file(&request.comments) {
-        let _ = write!(out, "\n{}\n", heading(path));
+        let _ = write!(out, "\n### {path}\n");
         for comment in comments {
-            write_comment(&mut out, comment, request.include_code);
+            write_comment(&mut out, comment);
         }
     }
     out.push_str("\nWhen done, reply with one line per comment saying what you changed.\n");
@@ -122,7 +93,7 @@ fn by_file(comments: &[Comment]) -> Vec<(&str, Vec<&Comment>)> {
     files
 }
 
-fn write_comment(out: &mut String, comment: &Comment, include_code: bool) {
+fn write_comment(out: &mut String, comment: &Comment) {
     let text = comment.text.trim();
     // Suggested code may stand without a reason.
     let text = if text.is_empty() {
@@ -140,10 +111,7 @@ fn write_comment(out: &mut String, comment: &Comment, include_code: bool) {
             } else {
                 format!("L{start}–{end}")
             };
-            let quote = include_code
-                .then(|| quote(code))
-                .flatten()
-                .unwrap_or_default();
+            let quote = quote(code).unwrap_or_default();
             writeln!(out, "- {removed}{lines}{quote}{text}")
         }
     };
@@ -241,9 +209,6 @@ mod tests {
                 name: "main".into(),
             },
             comments,
-            note: Some("Keep the change scoped to the share endpoint.".into()),
-            format: Format::Plain,
-            include_code: true,
         }
     }
 
@@ -282,10 +247,7 @@ mod tests {
         let expected = "\
 Please address these review comments on agent/share-rate-limit (compared with main).
 
-General
-Keep the change scoped to the share endpoint.
-
-src/api/share/handler.ts
+### src/api/share/handler.ts
 - L18 `res.setHeader('X-RateLimit-Remaining', x);`: Send the limit too.
 - L20 `log.warn('share rate limited', { userId });`: Don't log the raw userId. Hash it first.
   Suggested change:
@@ -294,7 +256,7 @@ src/api/share/handler.ts
   ```
 - L21–22 `return res.status(429).json({…`: Share the 429 body.
 
-config/limits.yaml
+### config/limits.yaml
 - L7 `maxPerWindow: 20`: Make it 50.
 
 When done, reply with one line per comment saying what you changed.
@@ -314,14 +276,9 @@ When done, reply with one line per comment saying what you changed.
     }
 
     #[test]
-    fn markdown_marks_headings_and_code_can_be_left_out() {
-        let mut request = request(vec![comment("a.rs", 3, &["let x = 1;"], "Name it.")]);
-        request.format = Format::Markdown;
-        request.include_code = false;
-        request.note = Some("   ".into());
-        let text = instructions(&request);
+    fn a_line_with_only_blanks_is_not_quoted() {
+        let text = instructions(&request(vec![comment("a.rs", 3, &["   "], "Name it.")]));
         assert!(text.contains("\n### a.rs\n- L3: Name it.\n"), "{text}");
-        assert!(!text.contains("General"), "{text}");
     }
 
     #[test]

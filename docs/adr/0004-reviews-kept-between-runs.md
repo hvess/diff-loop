@@ -15,7 +15,7 @@ review in progress.
 ## Decision
 
 1. **One saved review per working tree**, keyed by its root path: its
-   comments and the general note. Not per base: comments already follow
+   comments and the general note (no note since ADR 0013 §3). Not per base: comments already follow
    their code across base and branch changes (`reanchor`), and keying by
    base would hide them on every switch, "Show what changed" included.
    Viewed marks are not kept: their signatures are valid within one run
@@ -29,13 +29,14 @@ review in progress.
    reviewed repository.
 3. **The format:** `{"version": 1, "reviews": {"<root>": SavedReview}}`,
    with `SavedReview` as its `serde` form (`comments` as `Comment`,
-   `note`). An empty review removes its entry. A file whose version is
+   `note`; no `note` since ADR 0013 §3). An empty review removes its entry. A file whose version is
    not 1, or that does not parse, is reported and never overwritten. Each
    save writes `reviews.json.next` and renames it over the file.
 4. **When:** the front end reads the saved review before a checkout
    shows, and sets it with the checkout, so `load` moves its comments
    onto their code and opening is not a change. It saves on every change
-   to the comments at once, and to the note 300 ms after typing stops;
+   to the comments at once, and to the note 300 ms after typing stops
+   (no note since ADR 0013 §3);
    a save equal to what that checkout last saved or read is skipped, so
    a refresh that only moves comments onto the same code writes nothing.
    Saves for a checkout run one after another (`app/src/store.ts`,
@@ -43,7 +44,7 @@ review in progress.
 5. **A saved review that cannot be read stops saving** for that checkout:
    writing would replace a review never read. Try again reads it again
    and merges it into the window (comments by id, the window's note if it
-   has one) before saving.
+   has one, until ADR 0013 §3) before saving.
 6. **Front-end tests may test the store** (`app/src/store.test.ts`),
    with `api` mocked, besides plain functions (amends ADR 0003 §2).
 

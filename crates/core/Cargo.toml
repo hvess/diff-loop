@@ -1,7 +1,7 @@
 [package]
 name         = "diff-loop-core"
 version      = "0.1.0"
-description  = "Diff Loop's domain: diffs, files by role, review comments and the instructions they become."
+description  = "Diff Loop's domain: diffs, review comments and the instructions they become."
 edition.workspace      = true
 rust-version.workspace = true
 license.workspace      = true

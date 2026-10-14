@@ -21,7 +21,7 @@ const review = { byPath: new Map([["a.ts", {}]]) } as unknown as LoadedReview;
 
 describe("menuState", () => {
   it("disables everything with no review open", () => {
-    expect(menuState(store({}))).toEqual({ open: false, unified: true, viewed: null, hasComments: false, canComment: false });
+    expect(menuState(store({}))).toEqual({ open: false, unified: true, viewed: null, hasComments: false, canComment: false, finding: false });
   });
 
   it("reads the selected file's viewed mark, only for a file in the review", () => {
@@ -45,9 +45,9 @@ describe("menuState", () => {
 
 describe("sameMenuState", () => {
   it("tells any changed field", () => {
-    const base = { open: true, unified: true, viewed: null, hasComments: false, canComment: false };
+    const base = { open: true, unified: true, viewed: null, hasComments: false, canComment: false, finding: false };
     expect(sameMenuState(base, { ...base })).toBe(true);
-    for (const patch of [{ open: false }, { unified: false }, { viewed: false }, { hasComments: true }, { canComment: true }]) {
+    for (const patch of [{ open: false }, { unified: false }, { viewed: false }, { hasComments: true }, { canComment: true }, { finding: true }]) {
       expect(sameMenuState(base, { ...base, ...patch })).toBe(false);
     }
   });

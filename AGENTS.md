@@ -5,7 +5,7 @@
 Diff Loop is a desktop app for reviewing what a coding agent changed:
 it shows the diff of whatever branch or worktree is checked out, takes
 comments on lines, ranges or with suggested code, and copies them as
-plain-text instructions to paste into the agent's session. Do not invent
+Markdown instructions to paste into the agent's session. Do not invent
 product behaviour; where a decision is not recorded here, in a spec or in
 an ADR, ask the developer.
 
@@ -79,15 +79,17 @@ before reopening a decision they cover.
   with React 19, TypeScript, Vite, Tailwind 4, Radix, Zustand, TanStack
   Virtual and Shiki; Rust types reach TypeScript through `ts-rs`; git is
   read by running `git` with optional locks off; two `localStorage` keys
-  (recent folders, instruction preferences).
+  (recent folders, instruction preferences; the second unused since
+  0013).
 - **0002 — Watch the checkout instead of polling it.** `Repository::watch`
   on the port; `diff-loop-git` watches with `notify`; the app emits
   `repository-changed`, and polls every 2 s only when a watch cannot start.
 - **0003 — Vitest for the front end's tests.** `npm test` in `app/`;
   tests sit beside their module as `<module>.test.ts`.
-- **0004 — Reviews kept between runs.** One per working tree (comments
-  and note), through the core's `ReviewStore` port, in `reviews.json` in
-  the app-data directory; a file it cannot read is never overwritten.
+- **0004 — Reviews kept between runs.** One per working tree (comments;
+  a note until 0013), through the core's `ReviewStore` port, in
+  `reviews.json` in the app-data directory; a file it cannot read is
+  never overwritten.
 - **0005 — Read only what the watch saw touched.** The watch names
   touched paths; `Repository::changes_in` and the core's `update` read
   them again; the app keeps the last load only while watching.
@@ -118,6 +120,10 @@ before reopening a decision they cover.
 - **0012 — The review arrives in batches.** `load_review` sends its files
   through a `Channel` in batches of about 2000 diff lines, then the rest;
   `api.loadReview` joins them, and the core is unchanged.
+- **0013 — The v2 design.** The sidebar is a tree built in the front
+  end, and the core's roles are gone; instructions are always Markdown
+  with code quoted, edited in the preview for that copy; no general note
+  is kept, and an earlier `reviews.json`'s note is ignored.
 
 ## Key Constraints (non-negotiable)
 

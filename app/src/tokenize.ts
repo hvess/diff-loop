@@ -3,6 +3,7 @@ import { createCssVariablesTheme, createHighlighterCore, type HighlighterCore } 
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { bundledLanguages, type BundledLanguage } from "shiki/langs";
 import type { Side } from "./bindings/Side";
+import { nameOf } from "./path";
 import type { HighlightRequest, Token } from "./highlight";
 
 const theme = createCssVariablesTheme({ name: "diff-loop", variablePrefix: "--shiki-", fontStyle: true });
@@ -37,7 +38,7 @@ const ALIASES: Record<string, BundledLanguage> = {
 const NAMES: Record<string, BundledLanguage> = { Dockerfile: "docker", Makefile: "make" };
 
 function languageOf(path: string): BundledLanguage | null {
-  const name = path.split("/").pop() ?? path;
+  const name = nameOf(path);
   if (NAMES[name]) return NAMES[name];
   const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
   if (ALIASES[ext]) return ALIASES[ext];

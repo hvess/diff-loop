@@ -2,7 +2,7 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
-/* Values from the Agent Review design (claude.ai/design, "Agent Review.dc.html"). */
+/* Values from the Agent Review design (claude.ai/design, "Agent Review v2.dc.html"). */
 :root {
   color-scheme: light;
   --ui-bg: #ffffff;
@@ -27,7 +27,6 @@
   --ui-del-bg: #fdf2f2;
   --ui-add-gutter: #e2f4ea;
   --ui-del-gutter: #f9e3e3;
-  --ui-add-ring: #3faf7a;
   --ui-ok-bg: #e9f6f0;
   --ui-ok-fg: #0f7a5a;
   --ui-sel-bg: #e6ecfb;
@@ -35,6 +34,10 @@
   --ui-sel-fg: #2f4fb8;
   --ui-row-sel: #ededed;
   --ui-modified: #8a6a1f;
+  --ui-handle: rgba(47, 79, 184, 0.75);
+  --ui-find: #fff0b3;
+  --ui-find-current: #ffc933;
+  --ui-find-current-fg: #0d0d0d;
   --ui-shadow: 0 16px 40px rgba(0, 0, 0, 0.14);
 
   --shiki-foreground: #0d0d0d;
@@ -74,7 +77,6 @@
     --ui-del-bg: rgba(240, 96, 96, 0.09);
     --ui-add-gutter: rgba(43, 196, 138, 0.14);
     --ui-del-gutter: rgba(240, 96, 96, 0.14);
-    --ui-add-ring: #2bc48a;
     --ui-ok-bg: rgba(43, 196, 138, 0.14);
     --ui-ok-fg: #5bd3a2;
     --ui-sel-bg: rgba(110, 140, 255, 0.16);
@@ -82,6 +84,10 @@
     --ui-sel-fg: #b4c4ff;
     --ui-row-sel: #2a2a2a;
     --ui-modified: #e0b860;
+    --ui-handle: rgba(143, 166, 255, 0.85);
+    --ui-find: rgba(255, 214, 77, 0.22);
+    --ui-find-current: #e5b93a;
+    --ui-find-current-fg: #121212;
     --ui-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
 
     --shiki-foreground: #ececec;
@@ -122,7 +128,6 @@
   --color-del-bg: var(--ui-del-bg);
   --color-add-gutter: var(--ui-add-gutter);
   --color-del-gutter: var(--ui-del-gutter);
-  --color-add-ring: var(--ui-add-ring);
   --color-ok-bg: var(--ui-ok-bg);
   --color-ok: var(--ui-ok-fg);
   --color-sel: var(--ui-sel-bg);
@@ -130,6 +135,10 @@
   --color-sel-fg: var(--ui-sel-fg);
   --color-row-sel: var(--ui-row-sel);
   --color-modified: var(--ui-modified);
+  --color-handle: var(--ui-handle);
+  --color-find: var(--ui-find);
+  --color-find-current: var(--ui-find-current);
+  --color-find-current-fg: var(--ui-find-current-fg);
   --shadow-pop: var(--ui-shadow);
 }
 

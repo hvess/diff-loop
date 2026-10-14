@@ -8,7 +8,7 @@ import { installMenuBar } from "./menuBar";
 import { matchBackground, showWhenPainted } from "./nativeWindow";
 import { ReviewScreen } from "./components/ReviewScreen";
 import { Welcome } from "./components/Welcome";
-import { hasMod, isMac, typing, wouldBeep } from "./platform";
+import { dialogOpen, hasMod, isMac, typing, wouldBeep } from "./platform";
 import { useStore } from "./store";
 
 /** How often the checkout is polled while focused, only when it cannot be watched. */
@@ -57,17 +57,31 @@ export function App() {
         return;
       }
       const s = useStore.getState();
+      if (hasMod(e) && e.key.toLowerCase() === "f" && s.opening) {
+        // Under a dialog ⌘/Ctrl-F does nothing, and the menu's Find… is held back too.
+        e.preventDefault();
+        if (!dialogOpen()) s.openFind();
+        return;
+      }
+      // Find Next and Find Previous (HIG `keyboards`).
+      if (hasMod(e) && e.key.toLowerCase() === "g" && s.find) {
+        e.preventDefault();
+        s.stepFind(e.shiftKey ? -1 : 1);
+        return;
+      }
       // On macOS a key the webview leaves unhandled sounds the alert beep.
       if (isMac && wouldBeep(e)) e.preventDefault();
       if (!s.opening || typing(e.target) || e.altKey || e.metaKey || e.ctrlKey) return;
-      if (document.querySelector("[role=dialog]")) return;
+      if (dialogOpen()) return;
       const key = e.key.toLowerCase();
       if (key === "v") s.toggleViewed();
       else if (key === "n") s.jumpComment(1);
       else if (key === "p") s.jumpComment(-1);
       else if (key === "c" && s.selection) s.composeOnSelection();
       else if (key === "escape") {
-        if (s.openComment) s.toggleComment(null);
+        // The find field closes itself; this is Esc with focus elsewhere.
+        if (s.find) s.closeFind();
+        else if (s.openComment) s.toggleComment(null);
         else if (s.selection) s.setSelection(null);
         else return;
       } else return;

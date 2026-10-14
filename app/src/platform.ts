@@ -21,3 +21,8 @@ export function typing(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
 }
+
+/** Whether a dialog is open: the window's own keys and menu commands then wait. */
+export function dialogOpen(): boolean {
+  return document.querySelector("[role=dialog]") !== null;
+}

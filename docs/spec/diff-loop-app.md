@@ -1,6 +1,6 @@
 # diff-loop-app
 
-The desktop app: Tauri commands around `diff-loop-core`, and the React front end built from the "Agent Review" design.
+The desktop app: Tauri commands around `diff-loop-core`, and the React front end built from the "Agent Review" design, at "Agent Review v2" since 2026-10-14.
 
 **Status:** active — flows 1–5 of the design landed.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
@@ -19,34 +19,44 @@ change, annotate, hand off to the agent, next round.
    review" — done 2026-10-13.
 2. Read the change: files grouped by role with viewed progress (V),
    unified and split views, highlighting, base picker, cards for renamed,
-   deleted and binary files with image previews — done 2026-10-13.
+   deleted and binary files with image previews — done 2026-10-13; a
+   tree of folders and files since 2026-10-14 (step 11).
 3. Annotate: click a line's gutter (its numbers or sign) for one line,
    drag or shift-click for a range then C, Suggest code; edit, delete with
    undo — done 2026-10-13; the whole gutter, not only its numbers, since
    2026-10-14.
 4. Hand off: comment list (N / P to jump), Copy review, preview with
-   format and toggles, clear with undo — done 2026-10-13.
+   format and toggles, clear with undo — done 2026-10-13; the preview is
+   Markdown, edited in place, since 2026-10-14 (step 11).
 5. Next round: check for changes when the watch reports one or the
    window gains focus (ADR 0002, ADR 0005 §4); when `HEAD` moves, a banner: "The
    branch moved: N new commits", "The branch was rewritten" when the old
    commit is no longer an ancestor, or "Switched to <branch>" when another
-   branch is checked out. Each names the comments it deleted, and says
-   how many of the rest are not in this diff or still apply (Decision
-   16), and
-   "Show what changed" compares with the previous `HEAD` — done
-   2026-10-13.
+   branch is checked out, and "The agent updated the code" when only the
+   code changed and comments were removed. Each counts the comments it
+   removed, with Undo, and how many of the rest are not in this diff or
+   still open (Decision 16), and "Show what changed" compares with the
+   previous `HEAD` when it moved — done 2026-10-13; counting with Undo,
+   and the banner for code alone, since 2026-10-14 (step 11).
 6. Expand unchanged lines: "Show N unchanged lines" before a hunk, and
    "Show the rest of the file" after the last, read them (`file_lines`,
    diff-loop-core `lines`) and show them, highlighted, in place (Decisions
    9 and 10) — done 2026-10-13.
 7. Keep a review between runs (ADR 0004): comments and note are read
    before a checkout's first load and saved as they change — done
-   2026-10-13.
+   2026-10-13; comments only since 2026-10-14 (ADR 0013 §3).
 8. The base picker's notes: behind counts, the uncommitted file count
    and the last commit's id (Decision 12) — done 2026-10-13.
 9. The sidebar's captions: "tested by", "covers" and "new, imported by"
-   (Decision 13) — done 2026-10-13.
+   (Decision 13) — done 2026-10-13; removed 2026-10-14 with the role
+   groups (ADR 0013 §1).
 10. The app icon (Decision 14) — done 2026-10-13.
+11. The v2 design: the sidebar's tree and its progress header (Decisions
+    23 and 24), the composer's look and suggested code without its
+    shared indent (Decision 26), handles on the composer's range
+    (Decision 28), find in file (Decision 27), the preview edited in
+    place (Decision 25), and a banner with Undo for removed comments
+    (Decision 16) — done 2026-10-14.
 
 ## Decisions
 
@@ -63,7 +73,8 @@ change, annotate, hand off to the agent, next round.
    developer was told, 2026-10-13.
 3. **A general note** for the instructions is written in the preview
    dialog. The design toggles it but shows no field; this is the one
-   addition.
+   addition. Since 2026-10-14 there is none (ADR 0013 §3): the v2 design
+   has no toggle either, and the preview's text is edited instead.
 4. **Viewed marks reset** when a file's diff changes after a refresh,
    judged by the signature `load_review` sends per file.
 5. **A refresh sends only what changed.** The store passes the
@@ -90,8 +101,9 @@ change, annotate, hand off to the agent, next round.
    which bounds the highlighting worker since ADR 0011); the base
    picker lists 50 matches, an exactly named ref first, and asks to type
    to narrow (`SHOWN`); 8 recent
-   folders are kept (`recent.ts`, `LIMIT`); the preview rebuilds 150 ms
-   after the last change (`PREVIEW_DELAY_MS`).
+   folders are kept (`recent.ts`, `LIMIT`). The preview's 150 ms wait
+   after the last change (`PREVIEW_DELAY_MS`) went with the note it
+   waited for, 2026-10-14.
 
 9. **Expanded lines cannot be commented on**: they are context for
    reading. A comment's code comes from the diff (diff-loop-core
@@ -118,7 +130,8 @@ change, annotate, hand off to the agent, next round.
     and Last commit shows its short id, as the design does. Refs and the
     file count are read again each time the picker opens.
 
-13. **Captions are read from names**, in the front end
+13. **Captions are read from names** (removed 2026-10-14, ADR 0013 §1;
+    kept as history), in the front end
     (`app/src/links.ts`), so they suggest rather than prove: a test
     covers the source its name carries without its marker (`.test.`,
     `.spec.`, `_test.`, `_spec.`, `test_`), the one beside it first, else
@@ -139,23 +152,33 @@ change, annotate, hand off to the agent, next round.
     `v<version>` tag matching `tauri.conf.json`: an AppImage and a `.deb`
     on Ubuntu 22.04, an ad-hoc signed Apple Silicon `.dmg` on macOS
     (ADR 0009).
-16. **A comment whose code changed is deleted.** When a load against the
-    same base, with the same branch checked out (a detached `HEAD` counts
-    as one branch), finds a current comment's code gone (it changed, or
-    its file left the diff), `reload` deletes it, with no undo, and with
-    no notice unless `HEAD` moved too; one being edited is kept. After the
-    base or branch changed, or on opening a checkout, it is only outdated:
-    it draws no pin, and its list entry, the comment count and the move
+16. **A comment whose code changed is removed, and the banner says so.**
+    When a load against the same base, with the same branch checked out
+    (a detached `HEAD` counts as one branch), finds a current comment's
+    code gone (it changed, or its file left the diff), `reload` removes
+    it; one being edited is kept. The banner then reads "The agent
+    updated the code" (`CODE_UPDATED`), or keeps the title of one already
+    up, such as a moved `HEAD`'s, and adds the comments to those it
+    names; a banner for a moved `HEAD` takes over those a banner already
+    up had removed, so Undo still brings them back. Its detail counts them, "2 comments were addressed and
+    removed.", then the rest as they are now: "1 is not in this diff.",
+    "3 are still open." Undo removal (the design's "Undo", named for what
+    it undoes per the HIG `undo-and-redo` page; the developer's call,
+    2026-10-14) brings the removed ones back as not in this
+    diff, since as current the next load would remove them again, and
+    closes a banner that had only that to say; Show what changed appears
+    only when `HEAD` moved. After the base or branch changed, or on
+    opening a checkout, a comment whose code is gone is only outdated:
+    it draws no pin, and its list entry, the comment count and the
     banner say it is not in this diff, the banner with Show comments,
-    which opens the list below the banner (the banner names each comment
-    deleted at the move by its place and the start of its text, and counts
-    the rest as they are now), until a load finds its code again
-    (diff-loop-core Decision 4). Having no card, it is skipped by N / P,
-    as the list's hint says, and its list entry is muted, opens nothing
-    and has Delete, and an open card closes; it is still copied into the
-    instructions. Deleting without undo is an exception to the `ux`
-    skill's gate line 6, and the wording is the `ux` skill's "Settled
-    wording". The developer's calls, 2026-10-13 and 2026-10-14.
+    which opens the list below the banner, until a load finds its code
+    again (diff-loop-core Decision 4). Having no card, it is skipped by
+    N / P, as the list's hint says, and its list entry is muted, opens
+    nothing and has Delete, and an open card closes; it is still copied
+    into the instructions. The wording is the `ux` skill's "Settled
+    wording". The developer's calls, 2026-10-13 and 2026-10-14; until
+    2026-10-14 the removal had no undo and no notice unless `HEAD` moved,
+    and the banner named each comment.
 
 17. **The window behaves as a native one** (ADR 0010 §1): hidden until
     the front end's first paint, its size, position, maximized and
@@ -163,7 +186,8 @@ change, annotate, hand off to the agent, next round.
     Closing the window quits, on macOS too, as on Linux. The developer's
     call, 2026-10-14.
 18. **A menu bar on macOS only** (ADR 0010 §5, `app/src/menuBar.ts`):
-    the app menu, File (Open Folder… ⌘O, Close Window), Edit, View
+    the app menu, File (Open Folder… ⌘O, Close Window), Edit (with Find…,
+    Find Next and Find Previous since 2026-10-14), View
     (Unified, Split, Enter Full Screen), Review (Comment on Selection…,
     Next Comment, Previous Comment, Viewed) and Window, so the context
     menus' commands are in the menu bar too (HIG `context-menus`). Linux keeps none, so its layout stays
@@ -192,15 +216,120 @@ change, annotate, hand off to the agent, next round.
     not, "Change the code, or say why"; the field has no label, since
     with any text Comment is enabled (ux skill, Settled wording). A
     comment that is only code shows no text on its card, and "Suggested
-    change" in the comment list and the banner (`commentText`). The
+    change" in the comment list (`commentText`); the banner named one so
+    too until it only counted them (Decision 16, 2026-10-14). The
     developer's calls, 2026-10-14.
 
+23. **The sidebar is a tree of the changed files** (`app/src/tree.ts`,
+    ADR 0013 §1): only their folders, nested as on disk, not merged when
+    a folder has one child, each folder before its files and both by
+    name, numbers by value. Folders are labels: they do not collapse,
+    against the HIG `sidebars` page and as the design draws them (the
+    developer's call, 2026-10-14; the `ux` skill records it, under
+    "Where the developer chose against the HIG"), and
+    cannot be selected; the arrows, N / P and the comment order follow
+    the files as the tree lists them (`order`). A row shows the file's
+    icon, name and change letter; a viewed one is dimmed, its page icon
+    ticked so colour is not all that says so, and it says "viewed" in its
+    tooltip and its accessible name. Comment counts and
+    the ✓ column are gone, as in the design. The developer's call,
+    2026-10-14.
+24. **The sidebar's header counts what is left**: a ring for the changed
+    lines in viewed files out of all (`viewedLines`, kept by V and each
+    load, so the header never sums them), "N files left" or "All files
+    viewed", then "L lines to review" before any is reviewed, else "R of
+    L lines reviewed", counted up as the ring fills (the design's "R of L
+    lines to review" counted down beside it; the developer's call,
+    2026-10-14), or "L lines reviewed", and nothing under it when no file
+    has a changed line; the lines added and removed beside it. With no changed files
+    it reads "No changed files". The wording past the design's states
+    (all viewed, no lines) is the developer's call, 2026-10-14. The ring stays as
+    a lasting meter, against the HIG `progress-indicators` page, which
+    keeps a determinate ring for an operation under way: the developer's
+    call, 2026-10-14 (`ux` skill, "Where the developer chose against the
+    HIG").
+25. **The preview is edited in place** (ADR 0013 §2): Markdown, in a
+    panel that looks like the code panels until it has focus, as the
+    design draws it, against the HIG `entering-data` page (the
+    developer's call, 2026-10-14), with "You can edit the text before
+    copying." under it; focused, it has the focus ring; typing marks it
+    "Edited · Edits change this text, not your comments." (the
+    design's "Changes apply to this copy only." read as the clipboard's
+    copy beside Copy to clipboard; the developer's call, 2026-10-14) with
+    Reset to original, a bordered button so it is not taken for Cancel (the design's "Reset to generated" left unclear
+    what it went back to; the developer's call, 2026-10-14),
+    and Copy to clipboard copies what is shown. Closing the dialog keeps
+    the edit (HIG `modality`: closing loses nothing typed) until it is
+    copied, reset, or what the comments say changes (a load that rebuilds
+    them unchanged keeps it), when the text is generated
+    afresh. The text is read-only until it has arrived.
+26. **Suggested code starts without its shared indent** (`suggestable`,
+    `app/src/store.ts`): "Suggest code" fills the + lines with the
+    commented lines less the leading whitespace they share, the red
+    lines and a saved comment's card show them the same way, and the
+    code is saved and sent as typed, with nothing added back. While on,
+    the button shows ✓ in place of ±, so its state is told by more than
+    shade (HIG `accessibility`). The editable + line has no ring of its
+    own, as the design draws it, against the HIG `focus-and-selection`
+    page; the header's "Edit the + line" and the caret say it takes
+    typing. The developer's call, 2026-10-14 (`ux` skill, "Where the
+    developer chose against the HIG"). The agent
+    is trusted to place it. This is presentation, what the composer shows
+    and starts from (`dedent`, `app/src/indent.ts`); writing a suggestion
+    into the instructions stays the core's, which dedents any it is given,
+    an earlier comment's indented code too (diff-loop-core Decision 6).
+    The developer's call, 2026-10-14.
+27. **Find in file** (`app/src/find.ts`, `FindBar.tsx`): ⌘/Ctrl-F, or
+    Edit › Find… in the macOS menu bar, opens a field over the diff's top
+    right, or selects its text again. It matches the text the open file
+    shows, ignoring case: a unified row's one line, both sides of a split
+    row, expanded lines too; a line whose lower case has another length
+    (a few non-Latin letters) is not searched, since its spans would not
+    line up. Every match is marked and the current one
+    more strongly, with an outline; Return, ⌘/Ctrl-G (Edit › Find Next)
+    and the ↓ button go to the next, Shift-Return, Shift-⌘/Ctrl-G (Find
+    Previous) and the ↑ button to the previous, wrapping, with "N of M"
+    or "No matches"; Esc in the field, or with focus on no other text
+    field and no dialog open, and ✕ close it (another field's Esc is its
+    own, as the composer's cancels it). While the field has focus, the bar has the focus ring.
+    The query stays while another file is shown. A new query
+    reads the open file's text once, deferred behind typing
+    (`useDeferredValue`); one that extends a query typed on the way reads
+    only the lines that one matched, and one typed on the way (Backspace)
+    is not searched again (`findTyped`, which keeps one result per prefix
+    of the query being typed), so typing costs what was found, not the
+    file. Stepping only moves the current match, and the marks
+    are built once per query. ⌘/Ctrl-F and Edit › Find… do nothing while
+    a dialog is open (`dialogOpen`).
+28. **The composer's range has handles** at its first line's top edge and
+    its last line's bottom edge, over the line numbers, while the
+    composer is open on lines. Dragging one down the gutter moves that
+    end, inside the hunk (Decision 6), past the other end too; the draft
+    is kept, and suggested code still as "Suggest code" made it follows
+    the lines, while code the user changed stays (`resizeComposer`). The
+    selection follows the pointer, and the composer reads the lines once,
+    on release, as a drag-selection does. A drag released outside the
+    window, where no mouseup reaches it, ends when the pointer comes back
+    over the gutter with no button down, a drag-selection too. Each handle is a 4 px bar in a
+    28 × 20 px target (HIG `accessibility`, minimum control size); the
+    bar keeps the design's look, the developer's call, 2026-10-14. The
+    header of the suggestion box says "Edit the + line" ("Edit the +
+    lines" once the suggested code has more than one line), not the
+    colour.
+
 ## Pitfalls
+
+- A load answers for the comments it was sent. One changed while it ran
+  (a handle drag, an edit) must keep its change: `reload` takes the
+  load's version only of comments still the objects it sent, and leaves
+  the rest for the next load. Until 2026-10-14 a comment moved during a
+  load went back to where the load put it, keeping only its new text.
 
 - Overlays (composer, comment card, range pill) live inside virtualized
   rows; their row is lifted with `z-index`, or the next row paints over
   them.
-- Code rows have an integer line height (25 px); a fractional one leaves
+- Code rows have an integer line height (24 px, the v2 design's; 25 px
+  until 2026-10-14); a fractional one leaves
   hairline gaps between measured rows.
 - A native context menu needs the pointer's position (`showMenu` passes
   `clientX`/`clientY`): without one, GTK on Wayland opens it at a corner
@@ -208,6 +337,12 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-14, the v2 design)
+
+Step 11 landed: the design's "Agent Review v2" for the sidebar, the
+composer, find in file, the range handles, the preview and the banner
+(ADR 0013). Decisions 3, 8, 13 and 16 say what changed in each.
 
 ## Progress (2026-10-14, suggestions without a reason)
 

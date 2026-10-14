@@ -231,6 +231,9 @@ export function linesOn(file: FileDiff, side: Side, start: number, end: number):
   return out;
 }
 
+/** A line's key on one side, `side:no`: how the diff's marks and find's matches name a line. */
+export const lineKey = (side: Side, no: number) => `${side}:${no}`;
+
 type Counts = { added: number; removed: number };
 
 /** Per file, built on first use, like `boundsCache`: a refresh carries unchanged files over. */
@@ -250,4 +253,10 @@ export function counts(file: FileDiff): Counts {
     countsCache.set(file, cached);
   }
   return cached;
+}
+
+/** Added and removed lines together in `file`. */
+export function changedLines(file: FileDiff): number {
+  const c = counts(file);
+  return c.added + c.removed;
 }

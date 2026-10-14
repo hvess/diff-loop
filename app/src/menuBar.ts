@@ -1,6 +1,7 @@
 // The macOS menu bar (diff-loop-app.md Decision 18). Item names are title case, per the HIG's `menus` page.
 import { CheckMenuItem, Menu, MenuItem, Submenu } from "@tauri-apps/api/menu";
 import { chooseFolder } from "./choose";
+import { dialogOpen } from "./platform";
 import { useStore } from "./store";
 
 type Store = ReturnType<typeof useStore.getState>;
@@ -14,6 +15,8 @@ export type MenuState = {
   hasComments: boolean;
   /** Whether lines are selected to comment on, with no comment being written. */
   canComment: boolean;
+  /** Whether find in file is open. */
+  finding: boolean;
 };
 
 export function menuState(s: Store): MenuState {
@@ -24,6 +27,7 @@ export function menuState(s: Store): MenuState {
     viewed: selected === null ? null : s.viewed.has(selected),
     hasComments: s.comments.some((c) => c.state === "current"),
     canComment: s.selection !== null && s.composer === null,
+    finding: s.find !== null,
   };
 }
 
@@ -39,6 +43,19 @@ export async function installMenuBar(): Promise<() => void> {
   const next = await MenuItem.new({ text: "Next Comment", action: act((s) => s.jumpComment(1)) });
   const previous = await MenuItem.new({ text: "Previous Comment", action: act((s) => s.jumpComment(-1)) });
   const comment = await MenuItem.new({ text: "Comment on Selection…", action: act((s) => s.composeOnSelection()) });
+  const find = await MenuItem.new({
+    text: "Find…",
+    accelerator: "CmdOrCtrl+F",
+    action: act((s) => {
+      if (!dialogOpen()) s.openFind();
+    }),
+  });
+  const findNext = await MenuItem.new({ text: "Find Next", accelerator: "CmdOrCtrl+G", action: act((s) => s.stepFind(1)) });
+  const findPrevious = await MenuItem.new({
+    text: "Find Previous",
+    accelerator: "CmdOrCtrl+Shift+G",
+    action: act((s) => s.stepFind(-1)),
+  });
   const windowMenu = await Submenu.new({
     text: "Window",
     items: [{ item: "Minimize" }, { item: "Maximize", text: "Zoom" }, { item: "Separator" }, { item: "BringAllToFront" }],
@@ -77,6 +94,10 @@ export async function installMenuBar(): Promise<() => void> {
           { item: "Copy" },
           { item: "Paste" },
           { item: "SelectAll" },
+          { item: "Separator" },
+          find,
+          findNext,
+          findPrevious,
         ],
       }),
       await Submenu.new({ text: "View", items: [unified, split, { item: "Separator" }, { item: "Fullscreen", text: "Enter Full Screen" }] }),
@@ -92,6 +113,9 @@ export async function installMenuBar(): Promise<() => void> {
     return Promise.all([
       unified.setEnabled(now.open),
       split.setEnabled(now.open),
+      find.setEnabled(now.open),
+      findNext.setEnabled(now.finding),
+      findPrevious.setEnabled(now.finding),
       unified.setChecked(now.unified),
       split.setChecked(!now.unified),
       viewed.setEnabled(now.viewed !== null),
@@ -118,6 +142,7 @@ export function sameMenuState(a: MenuState, b: MenuState): boolean {
     a.unified === b.unified &&
     a.viewed === b.viewed &&
     a.hasComments === b.hasComments &&
-    a.canComment === b.canComment
+    a.canComment === b.canComment &&
+    a.finding === b.finding
   );
 }

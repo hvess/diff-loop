@@ -6,7 +6,6 @@ import type { Base } from "./bindings/Base";
 import type { BaseRef } from "./bindings/BaseRef";
 import type { Comment } from "./bindings/Comment";
 import type { FileDiff } from "./bindings/FileDiff";
-import type { Format } from "./bindings/Format";
 import type { InstructionsRequest } from "./bindings/InstructionsRequest";
 import type { Opening } from "./bindings/Opening";
 import type { Review } from "./bindings/Review";
@@ -15,7 +14,9 @@ import type { Snapshot } from "./bindings/Snapshot";
 import type { Side } from "./bindings/Side";
 import type { Target } from "./bindings/Target";
 import { rememberRecent } from "./recent";
-import { type Expanded, type Gap, lastLine, linesOn, withinHunk } from "./rows";
+import { dedent } from "./indent";
+import { changedLines, type Expanded, type Gap, lastLine, linesOn, withinHunk } from "./rows";
+import { type TreeRow, treeRows } from "./tree";
 
 export type Problem = { title: string; detail: string };
 
@@ -26,7 +27,9 @@ export type LoadedReview = Omit<Review, "files" | "snapshot"> & {
   signatures: Record<string, string>;
   /** Built once per load, so a key press never scans the file list. */
   byPath: Map<string, FileDiff>;
-  /** Files in sidebar order: by role group, then path. */
+  /** The sidebar's rows, built once per load. */
+  tree: TreeRow[];
+  /** Files in sidebar order: as `tree` nests them. */
   order: FileDiff[];
   /** Path → index in `order`. */
   position: Map<string, number>;
@@ -49,7 +52,12 @@ export type Composer = {
 export function canSave(composer: Composer): boolean {
   if (composer.text.trim() !== "") return true;
   const { suggestion, target } = composer;
-  return suggestion !== null && target.kind === "lines" && suggestion !== target.code.join("\n");
+  return suggestion !== null && target.kind === "lines" && suggestion !== suggestable(target.code);
+}
+
+/** Lines as "Suggest code" starts from them: without their shared indent (diff-loop-app.md Decision 26). */
+export function suggestable(code: string[]): string {
+  return dedent(code).join("\n");
 }
 
 /** A comment's text, or what it is when it is only suggested code. */
@@ -59,10 +67,15 @@ export function commentText(c: Comment): string {
 
 export type Selection = { path: string; side: Side; anchor: number; head: number; dragging: boolean };
 
-/** `deleted` are the comments the move deleted; the rest are described as they are now (`moveDetail`). */
-export type Banner = { title: string; deleted: Comment[]; previous: string };
+/**
+ * What the last loads changed under the review. `removed` are the comments
+ * they removed, which Undo removal brings back; the rest are described as they are
+ * now (`bannerDetail`). `previous` is the commit before `HEAD` moved, if it did.
+ */
+export type Banner = { title: string; removed: Comment[]; previous: string | null };
 
-export type Prefs = { format: Format; includeCode: boolean; includeNote: boolean };
+/** The banner's title when the code changed and `HEAD` did not move. */
+export const CODE_UPDATED = "The agent updated the code";
 
 type Undo = { label: string; comments: Comment[] };
 
@@ -87,6 +100,8 @@ type State = {
    * opening and reloading replace it whole.
    */
   viewed: Map<string, string>;
+  /** Changed lines in the files `viewed` holds, kept with it so the sidebar never sums them. */
+  viewedLines: number;
   /**
    * Path → the gaps expanded in that file, kept while its signature holds.
    * Replaced, never mutated: DiffView selects one file's entry.
@@ -101,9 +116,13 @@ type State = {
   banner: Banner | null;
   copied: boolean;
   undo: Undo | null;
-  note: string;
-  prefs: Prefs;
-  /** Why the open checkout's comments and note are not being kept, if they are not. */
+  /**
+   * Find in file: what is searched for, a count that grows each time ⌘/Ctrl-F
+   * asks for the field, and steps taken from the first match, which DiffView
+   * wraps to the matches it has.
+   */
+  find: { query: string; focus: number; step: number } | null;
+  /** Why the open checkout's comments are not being kept, if they are not. */
   saveProblem: Problem | null;
 };
 
@@ -122,6 +141,8 @@ type Actions = {
   setMode: (mode: State["mode"]) => void;
   setSelection: (selection: Selection | null) => void;
   composeOnSelection: () => void;
+  /** Moves the composer's range so `head` is the line dragged to and `anchor` the other end. */
+  resizeComposer: (anchor: number, head: number) => void;
   composeOnLines: (path: string, side: Side, start: number, end: number) => void;
   composeOnFile: (path: string) => void;
   editComment: (id: string) => void;
@@ -138,38 +159,24 @@ type Actions = {
   clearComments: () => void;
   undoLast: () => void;
   dismissBanner: () => void;
+  /** Brings back the comments the banner says were removed, as not in this diff. */
+  undoRemoved: () => void;
   showWhatChanged: () => Promise<void>;
-  setNote: (note: string) => void;
-  setPrefs: (prefs: Partial<Prefs>) => void;
-  instructionsRequest: (prefs?: Prefs) => InstructionsRequest | null;
+  openFind: () => void;
+  setFindQuery: (query: string) => void;
+  /** To the next match, or with -1 the previous: Return, ⌘/Ctrl-G and the bar's arrows. */
+  stepFind: (by: 1 | -1) => void;
+  closeFind: () => void;
+  instructionsRequest: () => InstructionsRequest | null;
   copyReview: () => Promise<void>;
   copyText: (text: string) => Promise<void>;
   setCopied: (copied: boolean) => void;
   /**
-   * Saves the open checkout's comments and note now. When its saved review
+   * Saves the open checkout's comments now. When its saved review
    * could not be read, reads it again first and merges it into the window.
    */
   retrySave: () => Promise<void>;
 };
-
-const PREFS_KEY = "diff-loop.prefs";
-
-/** Stored preferences, each field checked; anything invalid takes its default. */
-function loadPrefs(): Prefs {
-  const prefs: Prefs = { format: "markdown", includeCode: true, includeNote: true };
-  let stored: unknown;
-  try {
-    stored = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}");
-  } catch {
-    return prefs;
-  }
-  if (typeof stored !== "object" || stored === null) return prefs;
-  const s = stored as Record<string, unknown>;
-  if (s.format === "plain" || s.format === "markdown") prefs.format = s.format;
-  if (typeof s.includeCode === "boolean") prefs.includeCode = s.includeCode;
-  if (typeof s.includeNote === "boolean") prefs.includeNote = s.includeNote;
-  return prefs;
-}
 
 /** Comments in sidebar file order, then by line. */
 export function orderedComments(review: LoadedReview | null, comments: Comment[]): Comment[] {
@@ -195,12 +202,14 @@ async function fetchReview(base: Base, comments: Comment[], held: LoadedReview |
     files.push(file);
     signatures[file.path] = entry.signature;
   }
-  const order = rest.groups.flatMap((g) => g.files.map((i) => files[i]!));
+  const tree = treeRows(files);
+  const order = tree.flatMap((row) => (row.kind === "file" ? [row.file] : []));
   return {
     ...rest,
     changes: { snapshot, files },
     signatures,
     byPath: new Map(files.map((f) => [f.path, f])),
+    tree,
     order,
     position: new Map(order.map((f, i) => [f.path, i])),
   };
@@ -215,19 +224,20 @@ function sameBranch(before: LoadedReview, after: LoadedReview): boolean {
 }
 
 /**
- * The move banner's detail: the comments a load deleted, by `deleted` description, and how many of
- * the `total` left are not in this diff. Its wording is settled (`ux` skill, "Settled wording").
+ * The banner's detail: how many comments loads removed, and how many of the `total` left are not
+ * in this diff or still open. Its wording is settled (`ux` skill, "Settled wording"): only the
+ * first sentence names comments.
  */
-export function moveDetail(deleted: string[], notInDiff: number, total: number): string {
-  const applying = total - notInDiff;
-  const one = deleted.length === 1;
-  return [
-    deleted.length > 0 &&
-      `${deleted.length} ${one ? "comment was" : "comments were"} deleted because ${one ? "its" : "their"} code changed: ${deleted.join("; ")}.`,
-    notInDiff > 0 && `${notInDiff} ${notInDiff === 1 ? "comment is" : "comments are"} not in this diff.`,
-    applying > 0 && `${applying} ${applying === 1 ? "comment still applies" : "comments still apply"}.`,
-  ]
-    .filter((part) => part !== false)
+export function bannerDetail(removed: number, notInDiff: number, total: number): string {
+  const open = total - notInDiff;
+  const parts: [number, string, string][] = [
+    [removed, "was addressed and removed", "were addressed and removed"],
+    [notInDiff, "is not in this diff", "are not in this diff"],
+    [open, "is still open", "are still open"],
+  ];
+  return parts
+    .filter(([n]) => n > 0)
+    .map(([n, one, many], i) => `${n}${i === 0 ? (n === 1 ? " comment" : " comments") : ""} ${n === 1 ? one : many}.`)
     .join(" ");
 }
 
@@ -261,6 +271,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   comments: [],
   selected: null,
   viewed: new Map(),
+  viewedLines: 0,
   expanded: new Map(),
   mode: "unified",
   composer: null,
@@ -270,8 +281,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   banner: null,
   copied: false,
   undo: null,
-  note: "",
-  prefs: loadPrefs(),
+  find: null,
   saveProblem: null,
 
   async open(path) {
@@ -296,6 +306,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         review: null,
         comments: saved.review.comments,
         viewed: new Map(),
+        viewedLines: 0,
         expanded: new Map(),
         watching: false,
         selected: null,
@@ -304,7 +315,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         openComment: null,
         banner: null,
         undo: null,
-        note: saved.review.note,
+        find: null,
         saveProblem: saved.problem,
       });
       await get().reload();
@@ -342,16 +353,19 @@ export const useStore = create<State & Actions>()((set, get) => ({
     set({ loading: true });
     try {
       const held = before && sameBase(before.base, base) ? before : null;
-      const review = await fetchReview(base, get().comments, held);
+      const sent = get().comments;
+      const review = await fetchReview(base, sent, held);
       if (!sameBase(get().base, base)) return;
       const moved = new Map(review.comments.map((c) => [c.id, c]));
       const deletes = held !== null && sameBranch(held, review);
       const editing = get().composer?.editing;
       const deleted: Comment[] = [];
-      // Comments written while loading are kept as they are.
+      // Comments written or changed while loading are kept as they are: a comment is
+      // replaced, never mutated, so one not among those sent changed since.
+      const unchanged = new Set(sent);
       const comments = get().comments.flatMap((c) => {
         const m = moved.get(c.id);
-        if (!m) return [c];
+        if (!m || !unchanged.has(c)) return [c];
         // Its code is gone under the same base and branch (diff-loop-app.md Decision 16).
         if (deletes && c.state === "current" && m.state === "outdated" && c.id !== editing) {
           deleted.push(c);
@@ -372,7 +386,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
       const open = get().openComment;
       // A comment not in this diff has no card to stay open.
       const openComment = comments.some((c) => c.id === open && c.state === "current") ? open : null;
-      set({ review, comments, viewed, expanded, selected, openComment, loadProblem: null });
+      let viewedLines = 0;
+      // Kept marks are for files in this load: their signatures matched.
+      for (const path of viewed.keys()) viewedLines += changedLines(review.byPath.get(path)!);
+      set({ review, comments, viewed, viewedLines, expanded, selected, openComment, loadProblem: null });
       await announceMove(before, review, deleted);
     } catch (error) {
       set({ loadProblem: describe(error) });
@@ -388,11 +405,25 @@ export const useStore = create<State & Actions>()((set, get) => ({
     async function announceMove(before: LoadedReview | null, after: LoadedReview, deleted: Comment[]) {
       const previous = before?.checkout.commit;
       const now = after.checkout.commit;
-      if (!previous || !now || previous === now) return;
+      if (!previous || !now || previous === now) {
+        // The code changed under the same commit; a banner already up keeps its title and adds these.
+        if (deleted.length === 0) return;
+        const shown = get().banner;
+        set({
+          banner: {
+            title: shown?.title ?? CODE_UPDATED,
+            removed: [...(shown?.removed ?? []), ...deleted],
+            previous: shown?.previous ?? null,
+          },
+        });
+        return;
+      }
       const headBefore = before.checkout.head;
       const headNow = after.checkout.head;
+      // A new title, but Undo still brings back what a banner already up had removed.
+      const removed = [...(get().banner?.removed ?? []), ...deleted];
       if (headBefore.kind === "branch" && headNow.kind === "branch" && headBefore.name !== headNow.name) {
-        set({ banner: { title: `Switched to ${headNow.name}`, deleted, previous } });
+        set({ banner: { title: `Switched to ${headNow.name}`, removed, previous } });
         return;
       }
       const count = await api.commitsBetween(previous, now).catch(() => null);
@@ -400,7 +431,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         count === null
           ? "The branch was rewritten"
           : `The branch moved: ${count} new ${count === 1 ? "commit" : "commits"}`;
-      set({ banner: { title, deleted, previous } });
+      set({ banner: { title, removed, previous } });
     }
   },
 
@@ -429,15 +460,36 @@ export const useStore = create<State & Actions>()((set, get) => ({
     set({ selected: path, selection: null, openComment: null });
   },
 
+  openFind() {
+    const find = get().find;
+    set({ find: { query: find?.query ?? "", focus: (find?.focus ?? 0) + 1, step: find?.step ?? 0 } });
+  },
+
+  setFindQuery(query) {
+    const find = get().find;
+    if (find) set({ find: { ...find, query, step: 0 } });
+  },
+
+  stepFind(by) {
+    const find = get().find;
+    if (find) set({ find: { ...find, step: find.step + by } });
+  },
+
+  closeFind() {
+    set({ find: null });
+  },
+
   toggleViewed(path) {
     const { review, viewed, selected } = get();
     const target = path ?? selected;
     const signature = target === null ? undefined : review?.signatures[target];
-    if (target === null || signature === undefined) return;
-    if (viewed.has(target)) viewed.delete(target);
-    else viewed.set(target, signature);
+    const file = target === null ? undefined : review?.byPath.get(target);
+    if (target === null || signature === undefined || !file) return;
+    const lines = changedLines(file);
+    const was = viewed.delete(target);
+    if (!was) viewed.set(target, signature);
     // Same Map: `set` still notifies, and selectors read it afresh.
-    set({ viewed });
+    set({ viewed, viewedLines: get().viewedLines + (was ? -lines : lines) });
   },
 
   async expandGap(path, key, gap) {
@@ -475,6 +527,23 @@ export const useStore = create<State & Actions>()((set, get) => ({
     if (!s) return;
     const [start, end] = s.anchor <= s.head ? [s.anchor, s.head] : [s.head, s.anchor];
     get().composeOnLines(s.path, s.side, start, end);
+  },
+
+  resizeComposer(anchor, head) {
+    const { composer, review } = get();
+    const file = composer && review?.byPath.get(composer.path);
+    if (!composer || !file || composer.target.kind !== "lines") return;
+    const { side } = composer.target;
+    head = withinHunk(file, side, anchor, head);
+    const [start, end] = anchor <= head ? [anchor, head] : [head, anchor];
+    const code = linesOn(file, side, start, end);
+    const was = composer.target.code;
+    // Untouched suggested code follows the lines; code the user changed stays theirs.
+    const suggestion = composer.suggestion === suggestable(was) ? suggestable(code) : composer.suggestion;
+    set({
+      composer: { ...composer, target: { kind: "lines", side, start, code }, suggestion },
+      selection: { path: composer.path, side, anchor, head, dragging: false },
+    });
   },
 
   composeOnLines(path, side, start, end) {
@@ -589,37 +658,27 @@ export const useStore = create<State & Actions>()((set, get) => ({
     set({ banner: null });
   },
 
+  undoRemoved() {
+    const banner = get().banner;
+    if (!banner || banner.removed.length === 0) return;
+    // As not in this diff: their code is gone, so as current the next load would remove them again.
+    const back = banner.removed.map((c) => ({ ...c, state: "outdated" as const }));
+    set({
+      comments: [...get().comments, ...back],
+      banner: banner.previous === null ? null : { ...banner, removed: [] },
+    });
+  },
+
   async showWhatChanged() {
     const banner = get().banner;
-    if (!banner) return;
+    if (banner?.previous == null) return;
     await get().setBase({ kind: "ref", name: banner.previous });
   },
 
-  setNote(note) {
-    set({ note });
-  },
-
-  setPrefs(prefs) {
-    const next = { ...get().prefs, ...prefs };
-    try {
-      localStorage.setItem(PREFS_KEY, JSON.stringify(next));
-    } catch {
-      // Storage unavailable: preferences last for this session.
-    }
-    set({ prefs: next });
-  },
-
-  instructionsRequest(prefs = get().prefs) {
-    const { review, comments, base, note } = get();
+  instructionsRequest() {
+    const { review, comments, base } = get();
     if (!review) return null;
-    return {
-      head: review.checkout.head,
-      base,
-      comments: orderedComments(review, comments),
-      note: prefs.includeNote ? note : null,
-      format: prefs.format,
-      includeCode: prefs.includeCode,
-    };
+    return { head: review.checkout.head, base, comments: orderedComments(review, comments) };
   },
 
   async copyReview() {
@@ -642,7 +701,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
     if (!opening) return;
     const root = opening.checkout.root;
     if (savings.get(root)?.last !== null) {
-      await save(root, { comments: get().comments, note: get().note });
+      await save(root, { comments: get().comments });
       return;
     }
     const saved = await readSaved(root);
@@ -653,13 +712,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
     // Comment ids are unique, so the saved ones the window lacks are added.
     const ids = new Set(get().comments.map((c) => c.id));
     const comments = [...saved.review.comments.filter((c) => !ids.has(c.id)), ...get().comments];
-    set({ comments, note: get().note || saved.review.note, saveProblem: null });
+    set({ comments, saveProblem: null });
     await get().reload();
   },
 }));
-
-/** Typing pauses this long before the note is saved; comments save at once. */
-const NOTE_SAVE_DELAY_MS = 300;
 
 /** How saving stands for one working tree. */
 type Saving = {
@@ -667,8 +723,6 @@ type Saving = {
   last: string | null;
   /** Saves run one after another, so an older one never lands after a newer. */
   queue: Promise<void>;
-  /** A note save waiting for typing to pause. */
-  note?: ReturnType<typeof setTimeout>;
 };
 
 /** By working-tree root, for each checkout opened in this window. */
@@ -685,7 +739,7 @@ async function readSaved(root: string): Promise<{ review: SavedReview; problem: 
   } catch (error) {
     // Saving stays stopped: writing now would replace a review never read.
     saving.last = null;
-    return { review: { comments: [], note: "" }, problem: describe(error) };
+    return { review: { comments: [] }, problem: describe(error) };
   }
 }
 
@@ -693,7 +747,6 @@ async function readSaved(root: string): Promise<{ review: SavedReview; problem: 
 function save(root: string, review: SavedReview): Promise<void> {
   const saving = savings.get(root);
   if (!saving || saving.last === null) return Promise.resolve();
-  clearTimeout(saving.note);
   saving.queue = saving.queue.then(async () => {
     const json = JSON.stringify(review);
     if (json === saving.last) return;
@@ -709,21 +762,11 @@ function save(root: string, review: SavedReview): Promise<void> {
   return saving.queue;
 }
 
-// Saves the open checkout's review when its comments or note change (ADR
-// 0004 §4); `open` sets the checkout and its saved review together, so
-// opening is never seen as a change.
+// Saves the open checkout's review when its comments change (ADR 0004 §4);
+// `open` sets the checkout and its saved review together, so opening is
+// never seen as a change.
 useStore.subscribe((now, before) => {
   const opening = now.opening;
-  if (!opening || opening !== before.opening) return;
-  if (now.comments === before.comments && now.note === before.note) return;
-  const root = opening.checkout.root;
-  const review = { comments: now.comments, note: now.note };
-  if (now.comments !== before.comments) {
-    void save(root, review);
-    return;
-  }
-  const saving = savings.get(root);
-  if (!saving) return;
-  clearTimeout(saving.note);
-  saving.note = setTimeout(() => void save(root, review), NOTE_SAVE_DELAY_MS);
+  if (!opening || opening !== before.opening || now.comments === before.comments) return;
+  void save(opening.checkout.root, { comments: now.comments });
 });

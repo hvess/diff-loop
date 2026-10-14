@@ -6,9 +6,9 @@ description: The idioms of Diff Loop's front end (app/src) — React 19, TypeScr
 # Front end
 
 The front end draws what the Rust core decides. It holds no domain rule
-the core owns — roles, anchoring, instructions, what changed — and asks
-for it instead. Its own logic is presentation: rows, highlighting,
-captions, what to send and when.
+the core owns — anchoring, instructions, what changed — and asks for it
+instead. Its own logic is presentation: rows, the file tree,
+highlighting, find, what to send and when.
 
 ## Data from Rust
 
@@ -46,7 +46,7 @@ event and per IPC call, nothing proportional to a whole diff.
   `getItemKey` set to a stable key, so measured heights follow the item.
 - **A `FileDiff` is never mutated**, and a refresh carries unchanged ones
   over as the same object. Per-file work is cached in a `WeakMap` keyed
-  by the `FileDiff` (`counts`, `boundsOf`, `importWords`), so it runs once
+  by the `FileDiff` (`counts`, `boundsOf`), so it runs once
   per version and the cache empties itself.
 - **Memoize per load**, not per render: `useMemo` on the review, not on
   derived arrays rebuilt each time. The React Compiler memoizes

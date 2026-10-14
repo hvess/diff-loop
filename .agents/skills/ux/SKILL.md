@@ -99,20 +99,52 @@ each as **pass** or the specific failure.
 5. **Errors say what happened and what to do.** In plain language, per
    `writing` — "Write clear error messages".
 6. **Nothing destructive by accident.** Irreversible actions need a
-   deliberate step; reversible ones can be undone. One exception: a
-   comment whose code changed is deleted with no undo and no warning
-   first (diff-loop-app Decision 16), the developer's call, 2026-10-13.
-   It disagrees with the HIG `undo-and-redo` page (people expect to
-   undo what they did), the `feedback` page (warn before unexpected,
-   irreversible data loss), the Agency and Responsibility principles
-   above, and line 7, since a comment deleted by hand keeps its undo;
-   the app follows the exception.
+   deliberate step; reversible ones can be undone. A comment whose code
+   changed is removed without asking, and the banner that says so has
+   Undo (diff-loop-app Decision 16); until 2026-10-14 it had none, an
+   exception the developer has since withdrawn.
 7. **Consistent.** The same thing looks, reads and behaves the same
    everywhere in the app.
 8. **Accessible.** Readable in light and dark, and meaning never carried
    by colour alone.
 9. **Checked by use, not by reading the code.** Run the app and walk the
    flow as a first-time user would.
+
+## Where the developer chose against the HIG
+
+The HIG stays the authority for behaviour; these are the developer's
+own decisions to depart from it, each recorded with both halves.
+
+- **The sidebar's tree does not fold** (diff-loop-app Decision 23; the
+  developer's call, 2026-10-14). The HIG `sidebars` page says to show no
+  more than two levels and to group deeper ones under disclosure
+  controls. The developer chose the v2 design's tree, which nests
+  changed files as deep as their folders go, with no disclosure
+  triangles: only changed paths are listed, so the tree stays short.
+- **The design's pale greys stay, for now** (the developer's call,
+  2026-10-14; open-tasks 16). The HIG `accessibility` page asks for
+  4.5:1 contrast for text; `--ui-faint` and `--ui-muted` draw line
+  labels, the suggestion box's header and viewed files' names below it.
+- **The range handles look as the design draws them** (diff-loop-app
+  Decision 28; the developer's call, 2026-10-14): a 4 px bar on the
+  row's edge, in a 28 × 20 px target. The HIG `accessibility` page asks
+  for controls that are easy to see and hit; the target meets its size,
+  the bar is the design's.
+- **The sidebar's progress ring stays** (diff-loop-app Decision 24; the
+  developer's call, 2026-10-14). The HIG `progress-indicators` page keeps
+  a determinate ring for an operation under way; the design uses one as
+  a lasting meter of the lines reviewed, with the count beside it in
+  words.
+- **The editable + line has no ring of its own** (diff-loop-app Decision
+  26; the developer's call, 2026-10-14). The HIG `focus-and-selection`
+  page asks for a focus ring on a text field; the v2 design draws the
+  editable + line like the code around it, and says "Edit the + line"
+  in the box's header, with the caret in the line.
+- **The preview's text looks like the code panels until it has focus**
+  (diff-loop-app Decision 25; the developer's call, 2026-10-14). The HIG
+  `entering-data` page asks that a field look like one; the v2 design
+  draws the instructions as a panel, and its footer says "You can edit
+  the text before copying." Focused, it has the focus ring.
 
 ## Settled wording
 
@@ -123,11 +155,14 @@ against other wording that would also do.
   16; the developer's call, 2026-10-14). One term, "not in this diff",
   everywhere: the comment count ("2 comments (1 not in this diff)"),
   the list chip ("Not in this diff"), the list hint ("N / P to jump
-  between comments in this diff"), and the move banner. The banner
-  gives one sentence per group, each with "comment" as its subject:
-  "1 comment was deleted because its code changed: share.ts:2 “Read
-  the limit from config”.", "1 comment is not in this diff.", "1
-  comment still applies."
+  between comments in this diff"), and the banner.
+- **The banner's detail** (diff-loop-app Decision 16; the design's
+  words, the developer's call, 2026-10-14). One sentence per group, only
+  the first naming comments: "2 comments were addressed and removed.",
+  "1 is not in this diff.", "3 are still open."; with nothing removed,
+  "2 comments are not in this diff. 1 is still open." Its title, when
+  `HEAD` did not move, is "The agent updated the code"; its button,
+  "Undo removal".
 - **The reason for suggested code** (diff-loop-app Decision 22; the
   developer's call, 2026-10-14). The composer's text field has no label:
   its placeholder says what it needs, "Why this change? (optional)"

@@ -2,7 +2,6 @@
 import type { Base } from "./Base";
 import type { Checkout } from "./Checkout";
 import type { Comment } from "./Comment";
-import type { FileGroup } from "./FileGroup";
 import type { ReviewFile } from "./ReviewFile";
 import type { Snapshot } from "./Snapshot";
 
@@ -32,10 +31,6 @@ snapshot: Snapshot,
  * copy is missing or stale.
  */
 files: Array<ReviewFile>, 
-/**
- * `files` by role.
- */
-groups: Array<FileGroup>, 
 /**
  * The comments passed in, moved onto their code.
  */
