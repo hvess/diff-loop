@@ -20,14 +20,16 @@ mod renderer;
 mod reviews;
 
 use diff_loop_core::{
-    Base, BaseRef, Comment, InstructionsRequest, KnownFile, Loaded, Opening, RepoError, Repository,
-    Review, ReviewStore, SavedReview, Side, Snapshot, StoreError, Touched, WatchGuard,
+    Base, BaseRef, Comment, Content, InstructionsRequest, KnownFile, Loaded, Opening, RepoError,
+    Repository, Review, ReviewFile, ReviewStore, SavedReview, Side, Snapshot, StoreError, Touched,
+    WatchGuard,
 };
 use diff_loop_git::Git;
 use serde::Serialize;
 use tauri::{
-    AppHandle, Emitter, Manager, Result as TauriResult, State, WebviewWindow,
-    async_runtime::spawn_blocking, ipc::Response,
+    AppHandle, Emitter, Error as TauriError, Manager, Result as TauriResult, State, WebviewWindow,
+    async_runtime::spawn_blocking,
+    ipc::{Channel, Response},
 };
 use tauri_plugin_window_state::StateFlags;
 use thiserror::Error;
@@ -41,6 +43,11 @@ type Opener = fn(&Path) -> Result<Shared, RepoError>;
 
 /// The event the front end hears when the open checkout may have changed.
 const CHANGED: &str = "repository-changed";
+
+/// The most a [`ReviewPart::Files`] message weighs ([`batches`]), so the
+/// webview parses a large review in pieces (ADR 0012); a file heavier on its
+/// own is still one piece.
+const BATCH_LINES: usize = 2000;
 
 /// How long the hidden window waits for the front end's first paint, which
 /// shows it (ADR 0010 §1), before it is shown anyway.
@@ -101,12 +108,71 @@ pub(crate) enum CommandError {
         /// Why.
         error: StoreError,
     },
-    /// The work panicked; a defect in the app, not in the repository.
+    /// The work panicked, or its answer could not be sent back: a defect in
+    /// the app or a window closing, not the repository.
     #[error("{message}")]
     Internal {
         /// The runtime's description.
         message: String,
     },
+}
+
+impl From<TauriError> for CommandError {
+    fn from(error: TauriError) -> Self {
+        Self::Internal {
+            message: error.to_string(),
+        }
+    }
+}
+
+/// What [`load_review`] sends through its channel, in order: the files in
+/// batches, then the rest of the review.
+#[derive(Debug, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) enum ReviewPart {
+    /// The next files, in path order.
+    Files {
+        /// As [`batches`] splits them.
+        files: Vec<ReviewFile>,
+    },
+    /// The review, last.
+    Rest {
+        /// Its `files` are empty: every one came in a `Files` part before it.
+        review: Box<Review>,
+    },
+}
+
+/// `files` in order, in batches that each weigh at most [`BATCH_LINES`],
+/// except a file heavier on its own, which goes alone. A file weighs one,
+/// plus its diff lines.
+fn batches(files: Vec<ReviewFile>) -> Vec<Vec<ReviewFile>> {
+    let weight = |file: &ReviewFile| match file {
+        ReviewFile::Changed { diff, .. } => match &diff.content {
+            Content::Text { hunks } => 1 + hunks.iter().map(|h| h.lines.len()).sum::<usize>(),
+            Content::Binary { .. } => 1,
+        },
+        ReviewFile::Unchanged { .. } => 1,
+    };
+    files
+        .into_iter()
+        .fold(
+            (Vec::<Vec<ReviewFile>>::new(), 0),
+            |(mut out, held), file| {
+                let adds = weight(&file);
+                match out.last_mut() {
+                    Some(batch) if held + adds <= BATCH_LINES => {
+                        batch.push(file);
+                        (out, held + adds)
+                    }
+                    _ => {
+                        out.push(vec![file]);
+                        (out, adds)
+                    }
+                }
+            },
+        )
+        .0
 }
 
 impl From<RepoError> for CommandError {
@@ -279,24 +345,31 @@ async fn refs(session: State<'_, Session>) -> Result<Vec<BaseRef>, CommandError>
     blocking(move || repository.refs()).await
 }
 
-/// The open checkout against `base`, with `comments` moved onto their code;
-/// files the front end already holds (`known`) are named, not sent. While a
-/// watch runs, a load after the first reads again only what it saw touched,
-/// unless that needs everything (ADR 0005 §3).
+/// Sends the open checkout against `base` through `parts`, with `comments`
+/// moved onto their code; files the front end already holds (`known`) are
+/// named, not sent. While a watch runs, a load after the first reads again
+/// only what it saw touched, unless that needs everything (ADR 0005 §3).
 #[tauri::command]
 async fn load_review(
     base: Base,
     comments: Vec<Comment>,
     known: Vec<KnownFile>,
+    parts: Channel<ReviewPart>,
     session: State<'_, Session>,
-) -> Result<Review, CommandError> {
+) -> Result<(), CommandError> {
     let repository = session.current()?;
     let (number, since) = session.begin_load(&repository);
     let reading = Arc::clone(&repository);
-    let (review, loaded) =
+    let (mut review, loaded) =
         blocking(move || diff_loop_core::load(&*reading, base, comments, known, since)).await?;
     session.keep_loaded(&repository, number, loaded);
-    Ok(review)
+    for files in batches(mem::take(&mut review.files)) {
+        parts.send(ReviewPart::Files { files })?;
+    }
+    parts.send(ReviewPart::Rest {
+        review: Box::new(review),
+    })?;
+    Ok(())
 }
 
 /// A value that changes whenever [`load_review`] for `base` would.
@@ -465,10 +538,82 @@ mod tests {
         sync::atomic::{AtomicBool, Ordering},
     };
 
+    use diff_loop_core::{FileDiff, Hunk, Line, Status};
     use tauri::async_runtime::block_on;
     use tempfile::TempDir;
 
     use super::*;
+
+    /// A changed text file whose one hunk adds `lines` lines.
+    fn changed(path: &str, lines: u32) -> ReviewFile {
+        let hunk = Hunk {
+            old_start: 0,
+            new_start: 1,
+            section: String::new(),
+            lines: (1..=lines)
+                .map(|new| Line::Added {
+                    new,
+                    text: String::new(),
+                })
+                .collect(),
+        };
+        ReviewFile::Changed {
+            signature: path.to_owned(),
+            diff: FileDiff {
+                path: path.to_owned(),
+                status: Status::Added,
+                content: Content::Text { hunks: vec![hunk] },
+            },
+        }
+    }
+
+    fn paths(batches: &[Vec<ReviewFile>]) -> Vec<Vec<&str>> {
+        batches
+            .iter()
+            .map(|batch| {
+                batch
+                    .iter()
+                    .map(|file| match file {
+                        ReviewFile::Changed { diff, .. } => diff.path.as_str(),
+                        ReviewFile::Unchanged { path, .. } => path.as_str(),
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn no_files_make_no_batches() {
+        assert!(batches(vec![]).is_empty());
+    }
+
+    #[test]
+    fn files_share_a_batch_until_the_next_would_pass_batch_lines() {
+        // Each weighs half a batch: one, plus its lines.
+        let half = u32::try_from(BATCH_LINES / 2 - 1).unwrap();
+        let files = vec![changed("a", half), changed("b", half), changed("c", 0)];
+        assert_eq!(paths(&batches(files)), vec![vec!["a", "b"], vec!["c"]]);
+    }
+
+    /// Regression: a large file after a small one joined the small one's batch.
+    #[test]
+    fn a_file_heavier_than_a_batch_goes_alone_wherever_it_comes() {
+        let big = u32::try_from(BATCH_LINES * 3).unwrap();
+        let unchanged = ReviewFile::Unchanged {
+            path: "d".to_owned(),
+            signature: "s".to_owned(),
+        };
+        let files = vec![
+            changed("a", 10),
+            changed("b", big),
+            changed("c", big),
+            unchanged,
+        ];
+        assert_eq!(
+            paths(&batches(files)),
+            vec![vec!["a"], vec!["b"], vec!["c"], vec!["d"]]
+        );
+    }
 
     #[test]
     fn a_session_without_a_repository_says_so() {

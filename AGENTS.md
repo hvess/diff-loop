@@ -115,6 +115,9 @@ before reopening a decision they cover.
   Shiki tokenizes in a Web Worker from its fine-grained modules, cached
   per file version; the React Compiler memoizes at build time; the
   selected file renders deferred.
+- **0012 — The review arrives in batches.** `load_review` sends its files
+  through a `Channel` in batches of about 2000 diff lines, then the rest;
+  `api.loadReview` joins them, and the core is unchanged.
 
 ## Key Constraints (non-negotiable)
 

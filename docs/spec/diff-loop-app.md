@@ -63,11 +63,12 @@ change, annotate, hand off to the agent, next round.
    dialog. The design toggles it but shows no field; this is the one
    addition.
 4. **Viewed marks reset** when a file's diff changes after a refresh,
-   judged by the signature `load_review` returns per file.
+   judged by the signature `load_review` sends per file.
 5. **A refresh sends only what changed.** The store passes the
    signatures it holds as `known`; unchanged files come back named and
    are carried over from the last load (`fetchReview` in
-   `app/src/store.ts`).
+   `app/src/store.ts`). They arrive in batches (ADR 0012), which
+   `api.loadReview` joins.
 6. **A comment range stays inside one hunk.** `withinHunk`
    (`app/src/rows.ts`) clamps every drag and shift-click, so
    `Target::Lines` always has one `code` entry per line (diff-loop-core
@@ -196,6 +197,11 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-14, the review in batches)
+
+`load_review` streams its files through a `Channel` (ADR 0012), so a large
+review is parsed in pieces; Decision 5 still holds, batch by batch.
 
 ## Progress (2026-10-14, rendering off the UI thread)
 

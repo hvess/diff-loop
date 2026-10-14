@@ -1,5 +1,44 @@
-import { describe as group, expect, it } from "vitest";
-import { describe } from "./api";
+import { describe as group, expect, it, vi } from "vitest";
+import { api, describe } from "./api";
+import type { Review } from "./bindings/Review";
+import type { ReviewFile } from "./bindings/ReviewFile";
+import type { ReviewPart } from "./bindings/ReviewPart";
+
+/** What the fake `load_review` sends through its channel, and whether it then fails. */
+const sent: { parts: ReviewPart[]; fails: boolean } = { parts: [], fails: false };
+
+vi.mock("@tauri-apps/api/core", () => ({
+  Channel: class {
+    constructor(public onmessage: (part: unknown) => void) {}
+  },
+  invoke: (_command: string, args: { parts: { onmessage: (part: unknown) => void } }) => {
+    for (const part of sent.parts) args.parts.onmessage(part);
+    return sent.fails ? Promise.reject(new Error("gone")) : Promise.resolve(null);
+  },
+}));
+
+const unchanged = (path: string): ReviewFile => ({ kind: "unchanged", path, signature: path });
+const rest = { checkout: { name: "r" }, files: [] } as unknown as Review;
+
+group("api.loadReview", () => {
+  it("joins the batches, in order, under the rest of the review", async () => {
+    sent.parts = [
+      { kind: "files", files: [unchanged("a"), unchanged("b")] },
+      { kind: "files", files: [unchanged("c")] },
+      { kind: "rest", review: rest },
+    ];
+    sent.fails = false;
+    const review = await api.loadReview({ kind: "uncommitted" }, [], []);
+    expect(review.files.map((f) => (f.kind === "unchanged" ? f.path : ""))).toEqual(["a", "b", "c"]);
+    expect(review.checkout).toBe(rest.checkout);
+  });
+
+  it("fails when the command does", async () => {
+    sent.parts = [];
+    sent.fails = true;
+    await expect(api.loadReview({ kind: "uncommitted" }, [], [])).rejects.toThrow("gone");
+  });
+});
 
 group("describe", () => {
   it("shows a failure from the IPC layer as it came", () => {

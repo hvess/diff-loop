@@ -1,6 +1,6 @@
 // Typed calls to the Tauri commands in src-tauri/src/lib.rs; argument names
 // must match the commands' parameter names (Tauri converts them to camelCase).
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Base } from "./bindings/Base";
 import type { BaseRef } from "./bindings/BaseRef";
 import type { CommandError } from "./bindings/CommandError";
@@ -10,6 +10,8 @@ import type { KnownFile } from "./bindings/KnownFile";
 import type { Opening } from "./bindings/Opening";
 import type { RepoError } from "./bindings/RepoError";
 import type { Review } from "./bindings/Review";
+import type { ReviewFile } from "./bindings/ReviewFile";
+import type { ReviewPart } from "./bindings/ReviewPart";
 import type { SavedReview } from "./bindings/SavedReview";
 import type { Side } from "./bindings/Side";
 import type { Snapshot } from "./bindings/Snapshot";
@@ -18,7 +20,15 @@ export const api = {
   openRepository: (path: string) => invoke<Opening>("open_repository", { path }),
   refs: () => invoke<BaseRef[]>("refs"),
   loadReview: (base: Base, comments: Comment[], known: KnownFile[]) =>
-    invoke<Review>("load_review", { base, comments, known }),
+    new Promise<Review>((resolve, reject) => {
+      const files: ReviewFile[] = [];
+      // In order: batches of files, then the rest (ADR 0012); each is parsed as it arrives.
+      const parts = new Channel<ReviewPart>((part) => {
+        if (part.kind === "files") files.push(...part.files);
+        else resolve({ ...part.review, files });
+      });
+      invoke<null>("load_review", { base, comments, known, parts }).catch(reject);
+    }),
   fingerprint: (base: Base) => invoke<string>("fingerprint", { base }),
   uncommittedFiles: () => invoke<number>("uncommitted_files"),
   commitsBetween: (from: string, to: string) =>
