@@ -83,7 +83,8 @@ change, annotate, hand off to the agent, next round.
    `load_review` reads only that (ADR 0005 §4).
 8. **Limits that keep the UI responsive**, chosen by the author for the
    first version (2026-10-13), not by the design: files showing over 5000 lines,
-   expanded ones included, show without highlighting (`highlight.ts`, `MAX_LINES`); the base
+   expanded ones included, show without highlighting (`highlight.ts`, `MAX_LINES`,
+   which bounds the highlighting worker since ADR 0011); the base
    picker lists 50 matches, an exactly named ref first, and asks to type
    to narrow (`SHOWN`); 8 recent
    folders are kept (`recent.ts`, `LIMIT`); the preview rebuilds 150 ms
@@ -195,6 +196,11 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-14, rendering off the UI thread)
+
+Highlighting moved to a Web Worker and the React Compiler builds the
+components (ADR 0011). Decision 8's `MAX_LINES` now bounds the worker.
 
 ## Progress (2026-10-14, native behaviour)
 

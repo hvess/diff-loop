@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { api } from "../api";
 import type { FileDiff } from "../bindings/FileDiff";
 import type { Side } from "../bindings/Side";
@@ -17,7 +17,8 @@ export function FilePane({ onCompareWithAnother }: { onCompareWithAnother: () =>
   const loading = useStore((s) => s.loading);
   const problem = useStore((s) => s.loadProblem);
   const base = useStore((s) => s.base);
-  const selected = useStore((s) => s.selected);
+  // The sidebar marks a new selection at once; its diff renders after, without holding up the next key.
+  const selected = useDeferredValue(useStore((s) => s.selected));
   const slow = useDelayed(loading);
 
   if (problem) {

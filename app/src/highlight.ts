@@ -1,13 +1,6 @@
 // Syntax highlighting with Shiki, coloured through the --shiki-* variables in styles.css.
+// Tokenizing runs in highlight.worker.ts (ADR 0011 §1); this module sends it lines and keeps the results.
 import { useEffect, useState } from "react";
-import {
-  bundledLanguages,
-  createCssVariablesTheme,
-  createHighlighter,
-  type BundledLanguage,
-  type Highlighter,
-} from "shiki";
-import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import type { FileDiff } from "./bindings/FileDiff";
 import type { Side } from "./bindings/Side";
 import { type Expanded, type Gap, gapAfter, gapBefore, gapKey, hunksOf, REST } from "./rows";
@@ -16,53 +9,19 @@ export type Token = { content: string; color: string | undefined; italic: boolea
 /** Line number → tokens, per side. */
 export type Highlights = Record<Side, Map<number, Token[]>>;
 
-/** Past this many shown lines, expanded ones included, a file is plain: tokenizing runs on the UI thread. */
+/** What the worker is sent: each side's lines, in file order. */
+export type HighlightRequest = { id: number; path: string; sides: Record<Side, string[]> };
+/** Its answer: tokens per line sent, or null when the language is unknown or tokenizing failed. */
+export type HighlightReply = { id: number; tokens: Record<Side, Token[][]> | null };
+
+/** Past this many shown lines, expanded ones included, a file is plain: it bounds the worker's time and the tokens sent back. */
 const MAX_LINES = 5000;
 
-const theme = createCssVariablesTheme({ name: "diff-loop", variablePrefix: "--shiki-", fontStyle: true });
+type Line = { no: number; text: string };
 
-let highlighter: Promise<Highlighter> | null = null;
-function getHighlighter(): Promise<Highlighter> {
-  // The JavaScript engine needs no WebAssembly, which the CSP does not allow.
-  highlighter ??= createHighlighter({
-    themes: [theme],
-    langs: [],
-    engine: createJavaScriptRegexEngine({ forgiving: true }),
-  });
-  return highlighter;
-}
-
-const ALIASES: Record<string, BundledLanguage> = {
-  rs: "rust",
-  py: "python",
-  rb: "ruby",
-  yml: "yaml",
-  md: "markdown",
-  sh: "bash",
-  mts: "typescript",
-  cts: "typescript",
-  mjs: "javascript",
-  cjs: "javascript",
-  kt: "kotlin",
-  h: "c",
-  hpp: "cpp",
-  cc: "cpp",
-};
-const NAMES: Record<string, BundledLanguage> = { Dockerfile: "docker", Makefile: "make" };
-
-function languageOf(path: string): BundledLanguage | null {
-  const name = path.split("/").pop() ?? path;
-  if (NAMES[name]) return NAMES[name];
-  const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
-  if (ALIASES[ext]) return ALIASES[ext];
-  return ext in bundledLanguages ? (ext as BundledLanguage) : null;
-}
-
-async function highlight(file: FileDiff, expanded: Expanded | undefined): Promise<Highlights | null> {
-  const lang = languageOf(file.path);
-  if (!lang) return null;
-  // Each side in file order: a gap's expanded lines precede their hunk.
-  const sides: Record<Side, { no: number; text: string }[]> = { old: [], new: [] };
+/** Each side's shown lines in file order, a gap's expanded lines before their hunk; null past `MAX_LINES`. */
+export function linesOf(file: FileDiff, expanded: Expanded | undefined): Record<Side, Line[]> | null {
+  const sides: Record<Side, Line[]> = { old: [], new: [] };
   let shown = 0;
   const addGap = (gap: Gap | null, key: string) => {
     const texts = expanded?.[key];
@@ -82,25 +41,71 @@ async function highlight(file: FileDiff, expanded: Expanded | undefined): Promis
     }
   });
   addGap(gapAfter(file), REST);
-  if (shown > MAX_LINES) return null;
-  const hl = await getHighlighter();
-  await hl.loadLanguage(lang);
+  return shown > MAX_LINES ? null : sides;
+}
+
+/** The worker's tokens placed at the line numbers they were sent for. */
+export function placed(lines: Record<Side, Line[]>, tokens: Record<Side, Token[][]>): Highlights {
   const out: Highlights = { old: new Map(), new: new Map() };
   for (const side of ["old", "new"] as const) {
-    const lines = sides[side];
-    if (lines.length === 0) continue;
-    const tokens = hl.codeToTokensBase(lines.map((l) => l.text).join("\n"), { lang, theme });
-    tokens.forEach((row, i) => {
-      const at = lines[i];
-      if (at) {
-        out[side].set(
-          at.no,
-          row.map((t) => ({ content: t.content, color: t.color, italic: ((t.fontStyle ?? 0) & 1) === 1 })),
-        );
-      }
+    tokens[side].forEach((row, i) => {
+      const at = lines[side][i];
+      if (at) out[side].set(at.no, row);
     });
   }
   return out;
+}
+
+/** The worker; null before first use, and once it has failed, when everything stays plain. */
+let worker: Worker | null = null;
+let failed = false;
+let nextId = 0;
+const waiting = new Map<number, (tokens: HighlightReply["tokens"]) => void>();
+
+/** The worker, started on first use. When it fails, the requests waiting and every later one are answered plain. */
+function getWorker(): Worker {
+  if (worker) return worker;
+  worker = new Worker(new URL("./highlight.worker.ts", import.meta.url), { type: "module" });
+  worker.onmessage = (e: MessageEvent<HighlightReply>) => {
+    waiting.get(e.data.id)?.(e.data.tokens);
+    waiting.delete(e.data.id);
+  };
+  worker.onerror = () => {
+    failed = true;
+    worker?.terminate();
+    worker = null;
+    for (const resolve of waiting.values()) resolve(null);
+    waiting.clear();
+  };
+  return worker;
+}
+
+function tokenize(path: string, lines: Record<Side, Line[]>): Promise<HighlightReply["tokens"]> {
+  if (failed) return Promise.resolve(null);
+  const id = nextId++;
+  const request: HighlightRequest = {
+    id,
+    path,
+    sides: { old: lines.old.map((l) => l.text), new: lines.new.map((l) => l.text) },
+  };
+  return new Promise((resolve) => {
+    waiting.set(id, resolve);
+    getWorker().postMessage(request);
+  });
+}
+
+/** Highlights per file version and its expansions, so coming back to a file shows them at once. */
+const cache = new WeakMap<FileDiff, { expanded: Expanded | undefined; highlights: Highlights | null }>();
+
+async function highlight(file: FileDiff, expanded: Expanded | undefined): Promise<Highlights | null> {
+  const hit = cache.get(file);
+  if (hit && hit.expanded === expanded) return hit.highlights;
+  const lines = linesOf(file, expanded);
+  const tokens = lines && (await tokenize(file.path, lines));
+  const highlights = lines && tokens ? placed(lines, tokens) : null;
+  // A file past MAX_LINES stays plain for this version; a null answer is asked again next time.
+  if (!lines || highlights) cache.set(file, { expanded, highlights });
+  return highlights;
 }
 
 /**
@@ -122,5 +127,7 @@ export function useHighlights(file: FileDiff | undefined, expanded?: Expanded): 
       live = false;
     };
   }, [file, expanded]);
+  const hit = file && cache.get(file);
+  if (hit && hit.expanded === expanded) return hit.highlights;
   return state && state.file === file ? state.highlights : null;
 }

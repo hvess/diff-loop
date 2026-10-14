@@ -49,7 +49,13 @@ event and per IPC call, nothing proportional to a whole diff.
   by the `FileDiff` (`counts`, `boundsOf`, `importWords`), so it runs once
   per version and the cache empties itself.
 - **Memoize per load**, not per render: `useMemo` on the review, not on
-  derived arrays rebuilt each time.
+  derived arrays rebuilt each time. The React Compiler memoizes
+  components and hooks besides (ADR 0011 §2); a `useMemo` stays where it
+  names the cost it bounds.
+- **Tokenizing runs in a worker** (`highlight.worker.ts`, ADR 0011 §1):
+  the UI thread only collects lines and places tokens.
+- **Work a key starts that can wait is deferred**: `useDeferredValue`
+  lets the selection show at once and the diff follow (`FilePane`).
 - **Send what changed.** A refresh sends the signatures it holds (`known`)
   and gets back only what differs.
 

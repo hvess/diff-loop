@@ -111,6 +111,10 @@ before reopening a decision they cover.
   LTO; on Linux, shared-memory buffers under NVIDIA and the portal's
   colour scheme (`gio`); native menus (a menu bar on macOS only, context
   menus); indicators after 200 ms; no beep on macOS.
+- **0011 — Highlighting off the UI thread, and the React Compiler.**
+  Shiki tokenizes in a Web Worker from its fine-grained modules, cached
+  per file version; the React Compiler memoizes at build time; the
+  selected file renders deferred.
 
 ## Key Constraints (non-negotiable)
 
