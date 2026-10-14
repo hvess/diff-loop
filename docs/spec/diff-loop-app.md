@@ -183,6 +183,15 @@ change, annotate, hand off to the agent, next round.
     there would clash with V, N, P and C; and a translucent macOS sidebar,
     which would replace the design's sidebar colour and needs
     `macOSPrivateApi`. The developer's calls, 2026-10-14.
+22. **Suggested code needs no reason** (`canSave`, `app/src/store.ts`):
+    the composer saves a comment with text, or suggested code that differs
+    from its lines; unchanged code still needs a reason. While the code
+    differs, the reason's placeholder says it is optional; while it does
+    not, "Change the code, or say why"; the field has no label, since
+    with any text Comment is enabled (ux skill, Settled wording). A
+    comment that is only code shows no text on its card, and "Suggested
+    change" in the comment list and the banner (`commentText`). The
+    developer's calls, 2026-10-14.
 
 ## Pitfalls
 
@@ -197,6 +206,13 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-14, suggestions without a reason)
+
+The composer could not save suggested code until its text field had
+text, and focus went to the code, so the Comment button looked broken.
+It now saves either (Decision 22). Text fields' placeholders, which now
+say what is needed, use `muted3`: `faint` read at about 2.8:1 in dark.
 
 ## Progress (2026-10-14, the review in batches)
 

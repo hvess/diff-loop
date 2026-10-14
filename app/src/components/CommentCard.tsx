@@ -23,7 +23,7 @@ export function CommentCard({ comment, floating = false }: { comment: Comment; f
           </button>
         </span>
       </div>
-      <span className="code text-pretty whitespace-pre-wrap">{comment.text}</span>
+      {comment.text !== "" && <span className="code text-pretty whitespace-pre-wrap">{comment.text}</span>}
       {comment.suggestion !== null && (
         <div className="code mt-1.5 overflow-hidden rounded-[10px] border border-card-border font-mono text-xs leading-[1.85]">
           {code.map((line, i) => (

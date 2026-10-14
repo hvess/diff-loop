@@ -2,7 +2,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { useEffect, useState } from "react";
 import type { Comment } from "../bindings/Comment";
 import { lastLine } from "../rows";
-import { orderedComments, useStore } from "../store";
+import { commentText, orderedComments, useStore } from "../store";
 import { PreviewDialog } from "./PreviewDialog";
 
 export function location(c: Comment): string {
@@ -114,7 +114,7 @@ export function ReviewActions() {
                         className="flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 py-2 text-left"
                       >
                         <span className="font-mono text-[11.5px] text-muted">{location(c)}</span>
-                        <span className="truncate text-[13px] leading-[1.45]">{c.text}</span>
+                        <span className="truncate text-[13px] leading-[1.45]">{commentText(c)}</span>
                       </button>
                     ) : (
                       // A comment not in this diff has no card to show or delete it from.
@@ -126,7 +126,7 @@ export function ReviewActions() {
                               Not in this diff
                             </span>
                           </span>
-                          <span className="truncate text-[13px] leading-[1.45] text-muted3">{c.text}</span>
+                          <span className="truncate text-[13px] leading-[1.45] text-muted3">{commentText(c)}</span>
                         </div>
                         <button
                           type="button"

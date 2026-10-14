@@ -4,7 +4,7 @@ import type { Comment } from "./bindings/Comment";
 import type { Opening } from "./bindings/Opening";
 import type { Review } from "./bindings/Review";
 import type { SavedReview } from "./bindings/SavedReview";
-import { moveDetail, useStore } from "./store";
+import { type Composer, canSave, commentText, moveDetail, useStore } from "./store";
 
 vi.mock("./api", () => ({
   api: {
@@ -359,5 +359,35 @@ describe("the move banner's detail", () => {
 
   it("is empty when there are no comments", () => {
     expect(moveDetail([], 0, 0)).toBe("");
+  });
+});
+
+describe("what the composer can save", () => {
+  const lines = (text: string, suggestion: string | null): Composer => ({
+    path: "a.rs",
+    target: { kind: "lines", side: "new", start: 3, code: ["let x = 1;"] },
+    text,
+    suggestion,
+    editing: null,
+  });
+
+  it("saves a comment with text", () => {
+    expect(canSave(lines("Name it.", null))).toBe(true);
+    expect(canSave(lines("  ", null))).toBe(false);
+  });
+
+  it("saves suggested code that changes the lines without a reason", () => {
+    expect(canSave(lines("", "let x = 2;"))).toBe(true);
+  });
+
+  it("saves no suggestion that leaves the lines as they are, unless it says why", () => {
+    expect(canSave(lines("", "let x = 1;"))).toBe(false);
+    expect(canSave(lines("Keep it.", "let x = 1;"))).toBe(true);
+  });
+
+  it("names a comment that is only suggested code", () => {
+    const only = { ...comment("a"), text: "", suggestion: "let x = 2;" };
+    expect(commentText(only)).toBe("Suggested change");
+    expect(commentText(comment("a"))).toBe("t");
   });
 });

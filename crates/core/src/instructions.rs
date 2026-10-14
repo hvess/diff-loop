@@ -124,8 +124,14 @@ fn by_file(comments: &[Comment]) -> Vec<(&str, Vec<&Comment>)> {
 
 fn write_comment(out: &mut String, comment: &Comment, include_code: bool) {
     let text = comment.text.trim();
+    // Suggested code may stand without a reason.
+    let text = if text.is_empty() {
+        String::new()
+    } else {
+        format!(": {text}")
+    };
     let _ = match &comment.target {
-        Target::File => writeln!(out, "- The whole file: {text}"),
+        Target::File => writeln!(out, "- The whole file{text}"),
         target @ Target::Lines { side, start, code } => {
             let removed = if *side == Side::Old { "removed " } else { "" };
             let end = target.end().unwrap_or(*start);
@@ -138,7 +144,7 @@ fn write_comment(out: &mut String, comment: &Comment, include_code: bool) {
                 .then(|| quote(code))
                 .flatten()
                 .unwrap_or_default();
-            writeln!(out, "- {removed}{lines}{quote}: {text}")
+            writeln!(out, "- {removed}{lines}{quote}{text}")
         }
     };
     if let Some(suggestion) = &comment.suggestion {
@@ -294,6 +300,17 @@ config/limits.yaml
 When done, reply with one line per comment saying what you changed.
 ";
         assert_eq!(instructions(&request(comments)), expected);
+    }
+
+    #[test]
+    fn a_suggestion_without_a_reason_has_no_trailing_colon() {
+        let mut only_code = comment("a.rs", 3, &["let x = 1;"], "");
+        only_code.suggestion = Some("let x = 2;".into());
+        let text = instructions(&request(vec![only_code]));
+        assert!(
+            text.contains("\n- L3 `let x = 1;`\n  Suggested change:\n"),
+            "{text}"
+        );
     }
 
     #[test]

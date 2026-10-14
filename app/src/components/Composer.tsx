@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { Target } from "../bindings/Target";
 import { hasMod, modKey } from "../platform";
 import { lastLine } from "../rows";
-import { useStore } from "../store";
+import { canSave, useStore } from "../store";
 
 export function targetLabel(target: Target): string {
   if (target.kind === "file") return "Whole file";
@@ -28,6 +28,8 @@ export function Composer({ floating = false }: { floating?: boolean }) {
   if (!composer) return null;
   const { target } = composer;
   const canSuggest = target.kind === "lines" && target.side === "new";
+  // Code that changes the lines saves without a reason (diff-loop-app.md Decision 22).
+  const reasonOptional = composer.suggestion !== null && canSave({ ...composer, text: "" });
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -50,8 +52,14 @@ export function Composer({ floating = false }: { floating?: boolean }) {
         autoFocus
         value={composer.text}
         onChange={(value) => update({ text: value })}
-        placeholder={composer.suggestion !== null ? "Why this change?" : "Leave a comment for the agent"}
-        className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-1.5 outline-none placeholder:text-faint"
+        placeholder={
+          reasonOptional
+            ? "Why this change? (optional)"
+            : composer.suggestion !== null
+              ? "Change the code, or say why"
+              : "Leave a comment for the agent"
+        }
+        className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-1.5 outline-none placeholder:text-muted3"
       />
       {canSuggest && composer.suggestion !== null && (
         <div className="mx-3 mt-1.5 mb-0.5 overflow-hidden rounded-xl border border-line font-mono text-[11.5px] leading-[1.9]">
@@ -98,7 +106,7 @@ export function Composer({ floating = false }: { floating?: boolean }) {
         <button
           type="button"
           onClick={save}
-          disabled={composer.text.trim() === ""}
+          disabled={!canSave(composer)}
           title={`${modKey}Return`}
           className="rounded-full bg-btn px-3.5 py-1.5 font-medium text-btn-fg disabled:opacity-50"
         >

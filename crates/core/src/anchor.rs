@@ -16,7 +16,7 @@ pub struct Comment {
     pub path: String,
     /// What the comment is on.
     pub target: Target,
-    /// What the reviewer wrote.
+    /// What the reviewer wrote; empty when the comment is only suggested code.
     pub text: String,
     /// Code proposed to replace the target lines, if any.
     pub suggestion: Option<String>,

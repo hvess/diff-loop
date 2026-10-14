@@ -5,7 +5,7 @@ The domain: what changed on a checkout, the files by role, review comments, and 
 **Status:** active — first version landed.
 **Scope:** `crates/core`. Excludes reading git (`diff-loop-git.md`) and the UI (`diff-loop-app.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-13
+**Last Updated:** 2026-10-14
 
 ## Why
 
@@ -52,7 +52,8 @@ review as instructions. Each is a pure function tested here.
    end passes sidebar order); within a file, whole-file comments come
    first, then removed-line comments, then the rest, each by line. They
    quote the first non-blank line of code cut to 60 characters, and
-   dedent suggestions into a fenced block named for the file's language.
+   dedent suggestions into a fenced block named for the file's language;
+   a comment with no text (suggested code alone) has no `: text`.
    `Format::Markdown` only adds `###` to headings.
 7. **`open` and `load` take any `Repository`, sized or not**, so the app
    can hold its adapter as `dyn Repository`.

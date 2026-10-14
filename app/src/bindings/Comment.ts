@@ -19,7 +19,7 @@ path: string,
  */
 target: Target, 
 /**
- * What the reviewer wrote.
+ * What the reviewer wrote; empty when the comment is only suggested code.
  */
 text: string, 
 /**

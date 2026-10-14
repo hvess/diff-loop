@@ -169,7 +169,7 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
               }}
               placeholder="Branch, tag or commit"
               aria-label="Branch, tag or commit"
-              className="w-full rounded-[10px] bg-chip px-3 py-2 outline-none placeholder:text-faint"
+              className="w-full rounded-[10px] bg-chip px-3 py-2 outline-none placeholder:text-muted3"
             />
           </div>
           <div role="listbox" className="flex max-h-[360px] flex-col gap-px overflow-auto p-1.5">

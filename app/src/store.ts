@@ -42,6 +42,21 @@ export type Composer = {
   editing: string | null;
 };
 
+/**
+ * Whether the composer holds something to save: a comment, or suggested code
+ * that changes the lines, whose reason is optional.
+ */
+export function canSave(composer: Composer): boolean {
+  if (composer.text.trim() !== "") return true;
+  const { suggestion, target } = composer;
+  return suggestion !== null && target.kind === "lines" && suggestion !== target.code.join("\n");
+}
+
+/** A comment's text, or what it is when it is only suggested code. */
+export function commentText(c: Comment): string {
+  return c.text === "" && c.suggestion !== null ? "Suggested change" : c.text;
+}
+
 export type Selection = { path: string; side: Side; anchor: number; head: number; dragging: boolean };
 
 /** `deleted` are the comments the move deleted; the rest are described as they are now (`moveDetail`). */
@@ -503,7 +518,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   saveComposer() {
     const composer = get().composer;
-    if (!composer || composer.text.trim() === "") return;
+    if (!composer || !canSave(composer)) return;
     const comment: Comment = {
       id: composer.editing ?? crypto.randomUUID(),
       path: composer.path,

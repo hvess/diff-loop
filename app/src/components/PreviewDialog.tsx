@@ -90,7 +90,7 @@ export function PreviewDialog({ open, onOpenChange }: { open: boolean; onOpenCha
               onChange={(e) => setNote(e.target.value)}
               placeholder="General note for the agent, e.g. keep the change scoped to the share endpoint"
               rows={2}
-              className="mx-6 mb-3 resize-none rounded-xl border border-line bg-bg px-3.5 py-2.5 text-[13.5px] leading-[1.5] outline-none placeholder:text-faint focus:border-ghost"
+              className="mx-6 mb-3 resize-none rounded-xl border border-line bg-bg px-3.5 py-2.5 text-[13.5px] leading-[1.5] outline-none placeholder:text-muted3 focus:border-ghost"
             />
           )}
           <pre className="mx-6 my-0 min-h-0 flex-1 overflow-auto rounded-xl border border-border bg-side px-[18px] py-4 font-mono text-[12.5px] leading-[1.65] whitespace-pre-wrap">

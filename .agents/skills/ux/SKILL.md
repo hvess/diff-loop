@@ -128,3 +128,11 @@ against other wording that would also do.
   "1 comment was deleted because its code changed: share.ts:2 “Read
   the limit from config”.", "1 comment is not in this diff.", "1
   comment still applies."
+- **The reason for suggested code** (diff-loop-app Decision 22; the
+  developer's call, 2026-10-14). The composer's text field has no label:
+  its placeholder says what it needs, "Why this change? (optional)"
+  while the code differs from its lines and "Change the code, or say
+  why" while it does not. Once the field holds text, Comment is enabled
+  whatever the code, so nothing is left to explain when the placeholder
+  goes; the HIG `text-fields` advice to add a separate label is passed
+  over here.

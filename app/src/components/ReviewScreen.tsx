@@ -1,7 +1,7 @@
 import * as Popover from "@radix-ui/react-popover";
 import { useEffect, useState } from "react";
 import type { Comment } from "../bindings/Comment";
-import { moveDetail, useStore } from "../store";
+import { commentText, moveDetail, useStore } from "../store";
 import { BasePicker } from "./BasePicker";
 import { FilePane } from "./FilePane";
 import { location, ReviewActions } from "./ReviewActions";
@@ -59,7 +59,7 @@ export function ReviewScreen() {
 /** A deleted comment as the banner names it: where it was, and the start of what it said. */
 function described(c: Comment): string {
   // Without its closing stop, which the banner's sentence supplies.
-  const text = (c.text.split("\n")[0] ?? "").replace(/[.!?]+$/, "");
+  const text = (commentText(c).split("\n")[0] ?? "").replace(/[.!?]+$/, "");
   return `${location(c)} “${text.length > 40 ? `${text.slice(0, 40)}…` : text}”`;
 }
 
