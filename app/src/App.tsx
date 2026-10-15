@@ -8,7 +8,7 @@ import { installMenuBar } from "./menuBar";
 import { matchBackground, showWhenPainted } from "./nativeWindow";
 import { ReviewScreen } from "./components/ReviewScreen";
 import { Welcome } from "./components/Welcome";
-import { dialogOpen, hasMod, isMac, typing, wouldBeep } from "./platform";
+import { dialogOpen, findShown, hasMod, isMac, typing, wouldBeep } from "./platform";
 import { useStore } from "./store";
 
 /** How often the checkout is polled while focused, only when it cannot be watched. */
@@ -79,9 +79,9 @@ export function App() {
       else if (key === "p") s.jumpComment(-1);
       else if (key === "c" && s.selection) s.composeOnSelection();
       else if (key === "escape") {
-        // The find field closes itself; this is Esc with focus elsewhere.
-        if (s.find) s.closeFind();
-        else if (s.openComment) s.toggleComment(null);
+        // The open card first, then a find bar the reader can see (its field closes it itself).
+        if (s.openComment) s.toggleComment(null);
+        else if (s.find && findShown()) s.closeFind();
         else if (s.selection) s.setSelection(null);
         else return;
       } else return;

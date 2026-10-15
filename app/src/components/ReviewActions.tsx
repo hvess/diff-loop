@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Comment } from "../bindings/Comment";
 import { nameOf } from "../path";
 import { lastLine } from "../rows";
-import { commentText, orderedComments, useStore } from "../store";
+import { commentText, keptEdit, orderedComments, requestOf, reviewKey, useStore } from "../store";
 import { PreviewDialog } from "./PreviewDialog";
 
 function location(c: Comment): string {
@@ -28,13 +28,15 @@ export function ReviewActions() {
   const deleteComment = useStore((s) => s.deleteComment);
   const setListOpen = useStore((s) => s.setCommentList);
   const [previewOpen, setPreviewOpen] = useState(false);
-  // The preview's edit outlasts closing it, for the comments it was made over (HIG `modality`).
-  const [draft, setDraft] = useState<{ comments: string; text: string } | null>(null);
-  // What the comments say, not the array: a load rebuilds it with the same comments.
-  // O(their text and code) per change of the comments, as saving them already costs.
-  const said = useMemo(() => JSON.stringify(comments), [comments]);
-  const [copyError, setCopyError] = useState<string | null>(null);
   const list = orderedComments(review, comments);
+  // The preview's edit outlasts closing it (HIG `modality`). The review's key is worked out once per
+  // change of the comments, the base or a load, O(the comments' text), so typing costs a compare.
+  const base = useStore((s) => s.base);
+  const previewEdit = useStore((s) => s.previewEdit);
+  const key = useMemo(() => reviewKey(requestOf({ review, comments, base })), [review, comments, base]);
+  const edited = keptEdit(previewEdit, key);
+  const setPreviewEdit = useStore((s) => s.setPreviewEdit);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const count = comments.length;
   const notInDiff = comments.filter((c) => c.state === "outdated").length;
 
@@ -182,8 +184,8 @@ export function ReviewActions() {
       <PreviewDialog
         open={previewOpen}
         onOpenChange={setPreviewOpen}
-        edited={draft?.comments === said ? draft.text : null}
-        onEdit={(text) => setDraft(text === null ? null : { comments: said, text })}
+        edited={edited}
+        onEdit={(text) => setPreviewEdit(text === null ? null : { key, text })}
       />
     </div>
   );

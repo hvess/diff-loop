@@ -26,3 +26,8 @@ export function typing(target: EventTarget | null): boolean {
 export function dialogOpen(): boolean {
   return document.querySelector("[role=dialog]") !== null;
 }
+
+/** Whether the find bar is drawn (its `role="search"`, FindBar.tsx): a file without a diff has none, though find stays open. */
+export function findShown(): boolean {
+  return document.querySelector("[role=search]") !== null;
+}

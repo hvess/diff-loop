@@ -20,15 +20,17 @@ export function FindBar({
   const setFindQuery = useStore((s) => s.setFindQuery);
   const closeFind = useStore((s) => s.closeFind);
   const stepFind = useStore((s) => s.stepFind);
+  const findFocused = useStore((s) => s.findFocused);
   const input = useRef<HTMLInputElement>(null);
-  const focus = find?.focus;
+  const pending = find?.focusPending === true;
 
-  // Each ⌘/Ctrl-F, the field again, its text selected to type over.
+  // Only when ⌘/Ctrl-F asked: the bar is drawn again for each file, and must not take the focus then.
   useEffect(() => {
-    if (focus === undefined) return;
+    if (!pending) return;
     input.current?.focus();
     input.current?.select();
-  }, [focus]);
+    findFocused();
+  }, [pending, findFocused]);
 
   if (!find) return null;
   const status = searched === "" ? "" : count === 0 ? "No matches" : `${current + 1} of ${count}`;

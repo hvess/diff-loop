@@ -5,7 +5,8 @@ import { useStore } from "../store";
 
 /**
  * What Copy review puts on the clipboard, editable for this copy only. An
- * edit is the caller's, so closing the dialog keeps it; copying drops it.
+ * edit is the caller's, so closing the dialog keeps it; copying drops it
+ * (`copyText`).
  */
 export function PreviewDialog({
   open,
@@ -27,10 +28,7 @@ export function PreviewDialog({
           <Instructions
             edited={edited}
             onEdit={onEdit}
-            onCopied={() => {
-              onEdit(null);
-              onOpenChange(false);
-            }}
+            onCopied={() => onOpenChange(false)}
           />
         </Dialog.Content>
       </Dialog.Portal>

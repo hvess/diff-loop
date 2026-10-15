@@ -117,11 +117,16 @@ type State = {
   copied: boolean;
   undo: Undo | null;
   /**
-   * Find in file: what is searched for, a count that grows each time ⌘/Ctrl-F
-   * asks for the field, and steps taken from the first match, which DiffView
-   * wraps to the matches it has.
+   * Find in file: what is searched for, whether ⌘/Ctrl-F asked for the field
+   * and it has not taken focus yet, and steps taken from the open file's first
+   * match, which DiffView wraps to the matches it has.
    */
-  find: { query: string; focus: number; step: number } | null;
+  find: { query: string; focusPending: boolean; step: number } | null;
+  /**
+   * Text typed over the preview's generated instructions, kept while the dialog
+   * is closed, for the review it was written over (`reviewKey`).
+   */
+  previewEdit: { key: string; text: string } | null;
   /** Why the open checkout's comments are not being kept, if they are not. */
   saveProblem: Problem | null;
 };
@@ -163,11 +168,15 @@ type Actions = {
   undoRemoved: () => void;
   showWhatChanged: () => Promise<void>;
   openFind: () => void;
+  /** The find field took the focus ⌘/Ctrl-F asked for. */
+  findFocused: () => void;
   setFindQuery: (query: string) => void;
   /** To the next match, or with -1 the previous: Return, ⌘/Ctrl-G and the bar's arrows. */
   stepFind: (by: 1 | -1) => void;
   closeFind: () => void;
   instructionsRequest: () => InstructionsRequest | null;
+  /** Keeps an edit of the preview, for the review `key` names (`reviewKey`), or drops it with null. */
+  setPreviewEdit: (edit: { key: string; text: string } | null) => void;
   copyReview: () => Promise<void>;
   copyText: (text: string) => Promise<void>;
   setCopied: (copied: boolean) => void;
@@ -183,6 +192,31 @@ export function orderedComments(review: LoadedReview | null, comments: Comment[]
   const at = (c: Comment) => review?.position.get(c.path) ?? Number.MAX_SAFE_INTEGER;
   const line = (c: Comment) => (c.target.kind === "lines" ? c.target.start : 0);
   return [...comments].sort((a, b) => at(a) - at(b) || line(a) - line(b));
+}
+
+/** Find opened afresh on another file: its count of steps starts again at the first match. */
+function firstMatch(find: State["find"]): State["find"] {
+  return find && find.step !== 0 ? { ...find, step: 0 } : find;
+}
+
+/**
+ * The key of a request the instructions are written from (`requestOf`): the
+ * comments in their order, the base and what is checked out. O(the comments'
+ * text and code) per call.
+ */
+export function reviewKey(request: InstructionsRequest | null): string {
+  return JSON.stringify(request);
+}
+
+/** What the instructions are written from; the one place it is put together. */
+export function requestOf(s: Pick<State, "review" | "comments" | "base">): InstructionsRequest | null {
+  if (!s.review) return null;
+  return { head: s.review.checkout.head, base: s.base, comments: orderedComments(s.review, s.comments) };
+}
+
+/** The preview's edit, if one is kept for the review `key` names; the one rule the preview and Copy review share. */
+export function keptEdit(edit: State["previewEdit"], key: string): string | null {
+  return edit?.key === key ? edit.text : null;
 }
 
 /**
@@ -282,6 +316,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   copied: false,
   undo: null,
   find: null,
+  previewEdit: null,
   saveProblem: null,
 
   async open(path) {
@@ -316,6 +351,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         banner: null,
         undo: null,
         find: null,
+        previewEdit: null,
         saveProblem: saved.problem,
       });
       await get().reload();
@@ -457,12 +493,18 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   select(path) {
-    set({ selected: path, selection: null, openComment: null });
+    const find = path === get().selected ? get().find : firstMatch(get().find);
+    set({ selected: path, selection: null, openComment: null, find });
   },
 
   openFind() {
     const find = get().find;
-    set({ find: { query: find?.query ?? "", focus: (find?.focus ?? 0) + 1, step: find?.step ?? 0 } });
+    set({ find: { query: find?.query ?? "", focusPending: true, step: find?.step ?? 0 } });
+  },
+
+  findFocused() {
+    const find = get().find;
+    if (find?.focusPending) set({ find: { ...find, focusPending: false } });
   },
 
   setFindQuery(query) {
@@ -570,7 +612,14 @@ export const useStore = create<State & Actions>()((set, get) => ({
         ? { path: c.path, side: c.target.side, anchor: c.target.start, head: lastLine(c.target), dragging: false }
         : null;
     set({
-      composer: { path: c.path, target: c.target, text: c.text, suggestion: c.suggestion, editing: id },
+      // A suggestion saved before diff-loop-app.md Decision 26 still has its indent: shown and compared without it.
+      composer: {
+        path: c.path,
+        target: c.target,
+        text: c.text,
+        suggestion: c.suggestion === null ? null : dedent(c.suggestion.split("\n")).join("\n"),
+        editing: id,
+      },
       selection,
       openComment: null,
     });
@@ -631,7 +680,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   showComment(id) {
     const c = get().comments.find((x) => x.id === id);
-    if (c) set({ selected: c.path, openComment: id, selection: null, composer: null });
+    if (c) {
+      const find = c.path === get().selected ? get().find : firstMatch(get().find);
+      set({ selected: c.path, openComment: id, selection: null, composer: null, find });
+    }
   },
 
   clearUndo() {
@@ -676,20 +728,25 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   instructionsRequest() {
-    const { review, comments, base } = get();
-    if (!review) return null;
-    return { head: review.checkout.head, base, comments: orderedComments(review, comments) };
+    return requestOf(get());
   },
 
   async copyReview() {
     const request = get().instructionsRequest();
     if (!request || request.comments.length === 0) return;
-    await get().copyText(await api.instructions(request));
+    // What the preview shows is what is copied: its edit, when one is kept for this review.
+    const edit = keptEdit(get().previewEdit, reviewKey(request));
+    await get().copyText(edit ?? (await api.instructions(request)));
   },
 
   async copyText(text) {
     await writeText(text);
-    set({ copied: true });
+    // Copied, the edit has done its job (diff-loop-app.md Decision 25).
+    set({ copied: true, previewEdit: null });
+  },
+
+  setPreviewEdit(edit) {
+    set({ previewEdit: edit });
   },
 
   setCopied(copied) {

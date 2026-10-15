@@ -34,7 +34,8 @@ export function CommentCard({ comment, floating = false }: { comment: Comment; f
               <span className="whitespace-pre-wrap">{line}</span>
             </div>
           ))}
-          {comment.suggestion.split("\n").map((line, i) => (
+          {/* A suggestion saved before diff-loop-app.md Decision 26 still has its indent; shown without it, as the − lines are. */}
+          {dedent(comment.suggestion.split("\n")).map((line, i) => (
             <div key={`n${i}`} className="flex bg-add-bg pr-2.5">
               <span className="w-[22px] flex-none text-center text-add">+</span>
               <span className="whitespace-pre-wrap">{line}</span>

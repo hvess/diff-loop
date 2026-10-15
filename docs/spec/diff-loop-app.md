@@ -5,7 +5,7 @@ The desktop app: Tauri commands around `diff-loop-core`, and the React front end
 **Status:** active — flows 1–5 of the design landed.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-14
+**Last Updated:** 2026-10-15
 
 ## Why
 
@@ -260,14 +260,22 @@ change, annotate, hand off to the agent, next round.
     what it went back to; the developer's call, 2026-10-14),
     and Copy to clipboard copies what is shown. Closing the dialog keeps
     the edit (HIG `modality`: closing loses nothing typed) until it is
-    copied, reset, or what the comments say changes (a load that rebuilds
-    them unchanged keeps it), when the text is generated
-    afresh. The text is read-only until it has arrived.
+    copied, reset, or what the instructions are written from changes:
+    the comments in the order they are written, the base or what is
+    checked out (`reviewKey`; a load
+    that rebuilds the comments unchanged keeps it), when the text is
+    generated afresh. Copy review copies a kept edit, as the preview
+    would show it, and any copy drops it (`keptEdit`, `copyText`): the
+    author's call, 2026-10-15, so a copy never leaves out what was typed.
+    The text is read-only until it has arrived.
 26. **Suggested code starts without its shared indent** (`suggestable`,
     `app/src/store.ts`): "Suggest code" fills the + lines with the
     commented lines less the leading whitespace they share, the red
     lines and a saved comment's card show them the same way, and the
-    code is saved and sent as typed, with nothing added back. While on,
+    code is saved and sent as typed, with nothing added back. A
+    suggestion saved before this, indent and all, is shown on its card and
+    opened for editing without its shared indent too, so its − and +
+    lines line up and unchanged code still needs a reason. While on,
     the button shows ✓ in place of ±, so its state is told by more than
     shade (HIG `accessibility`). The editable + line has no ring of its
     own, as the design draws it, against the HIG `focus-and-selection`
@@ -291,8 +299,15 @@ change, annotate, hand off to the agent, next round.
     Previous) and the ↑ button to the previous, wrapping, with "N of M"
     or "No matches"; Esc in the field, or with focus on no other text
     field and no dialog open, and ✕ close it (another field's Esc is its
-    own, as the composer's cancels it). While the field has focus, the bar has the focus ring.
-    The query stays while another file is shown. A new query
+    own, as the composer's cancels it; an open comment card takes Esc
+    first, and a file without a diff, which draws no bar, leaves find
+    open for Esc to pass by). While the field has focus, the bar has the
+    focus ring; it takes focus only when ⌘/Ctrl-F asks (`focusPending`),
+    not each time the bar is drawn for another file, so the file list
+    keeps the arrows. The view scrolls to the current match only when the
+    reader steps or types, not when the rows change under find (expanded
+    lines, Unified and Split, a refresh). The query stays while another
+    file is shown, from its first match. A new query
     reads the open file's text once, deferred behind typing
     (`useDeferredValue`); one that extends a query typed on the way reads
     only the lines that one matched, and one typed on the way (Backspace)
@@ -337,6 +352,15 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-15, the v2 audit)
+
+An audit of the v2 change fixed seven faults: the find bar took focus
+whenever it was drawn for another file, find scrolled back to its match
+when the rows changed, its place carried over to the next file, Esc went
+to a find bar not shown, Copy review left out a kept preview edit, that
+edit outlived a change of base, and suggestions saved with their indent
+showed misaligned (Decisions 25, 26 and 27).
 
 ## Progress (2026-10-14, the v2 design)
 

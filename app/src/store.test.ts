@@ -5,7 +5,7 @@ import type { Opening } from "./bindings/Opening";
 import type { Review } from "./bindings/Review";
 import type { SavedReview } from "./bindings/SavedReview";
 import type { FileDiff } from "./bindings/FileDiff";
-import { CODE_UPDATED, type Composer, canSave, commentText, bannerDetail, useStore } from "./store";
+import { CODE_UPDATED, type Composer, canSave, commentText, bannerDetail, keptEdit, requestOf, reviewKey, useStore } from "./store";
 
 vi.mock("./api", () => ({
   api: {
@@ -570,13 +570,89 @@ describe("find in file", () => {
     useStore.getState().stepFind(1);
     useStore.getState().stepFind(1);
     useStore.getState().stepFind(-1);
-    expect(useStore.getState().find).toEqual({ query: "user", focus: 1, step: 1 });
+    expect(useStore.getState().find).toEqual({ query: "user", focusPending: true, step: 1 });
+    useStore.getState().findFocused();
+    expect(useStore.getState().find?.focusPending).toBe(false);
     useStore.getState().openFind();
-    expect(useStore.getState().find).toEqual({ query: "user", focus: 2, step: 1 });
+    expect(useStore.getState().find).toEqual({ query: "user", focusPending: true, step: 1 });
     useStore.getState().setFindQuery("userId");
     expect(useStore.getState().find?.step).toBe(0);
     useStore.getState().closeFind();
     useStore.getState().stepFind(1);
     expect(useStore.getState().find).toBeNull();
+  });
+});
+
+describe("find across files", () => {
+  it("starts at the first match of a file opened next, and keeps its place when the open file is selected again", () => {
+    useStore.setState({ find: { query: "user", focusPending: false, step: 3 }, selected: "a.ts" });
+    useStore.getState().select("a.ts");
+    expect(useStore.getState().find?.step).toBe(3);
+    useStore.getState().select("b.ts");
+    expect(useStore.getState().find).toEqual({ query: "user", focusPending: false, step: 0 });
+  });
+
+  it("starts again too when a comment in another file is shown, but not one in the same file", () => {
+    const other: Comment = { ...comment("o"), path: "b.ts" };
+    useStore.setState({ comments: [comment("c"), other], find: { query: "user", focusPending: false, step: 3 }, selected: "a.ts" });
+    useStore.getState().showComment("c");
+    expect(useStore.getState().find?.step).toBe(3);
+    useStore.getState().showComment("o");
+    expect(useStore.getState().find?.step).toBe(0);
+  });
+});
+
+describe("the preview's kept edit", () => {
+  beforeEach(async () => {
+    await openWith("/a", { comments: [comment("c")] });
+  });
+
+  const kept = () => keptEdit(useStore.getState().previewEdit, reviewKey(requestOf(useStore.getState())));
+  /** As the preview does: the edit under the key of the review it was typed over. */
+  const setEdit = (text: string) => useStore.getState().setPreviewEdit({ key: reviewKey(requestOf(useStore.getState())), text });
+
+  it("is kept while the review is rebuilt unchanged", () => {
+    setEdit("mine");
+    useStore.setState({ comments: useStore.getState().comments.map((c) => ({ ...c })) });
+    expect(kept()).toBe("mine");
+  });
+
+  it("is not kept once the comments, the base or what is checked out change", () => {
+    const start = useStore.getState();
+    for (const change of [
+      { comments: [{ ...comment("c"), text: "other" }] },
+      { base: { kind: "ref", name: "main" } as const },
+      { review: { ...start.review!, checkout: { ...start.review!.checkout, head: { kind: "branch", name: "agent/y" } as const } } },
+    ]) {
+      useStore.setState({ comments: start.comments, base: start.base, review: start.review });
+      setEdit("mine");
+      expect(kept()).toBe("mine");
+      useStore.setState(change);
+      expect(kept()).toBeNull();
+    }
+  });
+
+  it("is what Copy review copies, and is dropped once copied", async () => {
+    const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+    setEdit("mine");
+    await useStore.getState().copyReview();
+    expect(writeText).toHaveBeenLastCalledWith("mine");
+    expect(useStore.getState().previewEdit).toBeNull();
+  });
+});
+
+describe("editing a comment saved with an indented suggestion", () => {
+  it("shows and compares the suggestion without its indent, so unchanged code still needs a reason", async () => {
+    const old: Comment = {
+      ...comment("c"),
+      text: "",
+      target: { kind: "lines", side: "new", start: 3, code: ["    a();"] },
+      suggestion: "    a();",
+    };
+    await openWith("/a", { comments: [old] });
+    useStore.getState().editComment("c");
+    const composer = useStore.getState().composer!;
+    expect(composer.suggestion).toBe("a();");
+    expect(canSave(composer)).toBe(false);
   });
 });

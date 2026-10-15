@@ -117,9 +117,15 @@ export function DiffView({ file }: { file: FileDiff }) {
   }, [matches]);
   const currentMatch = current < 0 ? null : matches[current]!;
   const currentRow = currentMatch?.row ?? -1;
+  // Scrolled to only when the reader steps or types; not when the rows change under find
+  // (expanded lines, Unified and Split, a refresh), which would undo their scrolling.
+  const asked = `${step}\u0000${query}`;
+  const scrolledFor = useRef<string | null>(null);
   useEffect(() => {
+    if (scrolledFor.current === asked) return;
+    scrolledFor.current = asked;
     if (currentRow >= 0) virtual.scrollToIndex(currentRow, { align: "center" });
-  }, [currentRow, matches, virtual]);
+  }, [asked, currentRow, virtual]);
 
   /**
    * Whether a handle is being dragged: the selection follows the pointer down
