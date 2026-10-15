@@ -15,7 +15,7 @@ import type { Side } from "./bindings/Side";
 import type { Target } from "./bindings/Target";
 import { rememberRecent } from "./recent";
 import { dedent } from "./indent";
-import { changedLines, type Expanded, type Gap, lastLine, linesOn, withinHunk } from "./rows";
+import { changedLines, type Expanded, type Gap, gapsOf, lastLine, linesOn, withinHunk } from "./rows";
 import { type TreeRow, treeRows } from "./tree";
 
 export type Problem = { title: string; detail: string };
@@ -89,8 +89,8 @@ type State = {
   base: Base;
   review: LoadedReview | null;
   loading: boolean;
-  /** A check asked for while loading; it runs when the load ends. */
-  recheck: boolean;
+  /** A check asked for while loading, run when the load ends: a full read once ⌘/Ctrl-R asked for one. */
+  recheck: "changes" | "everything" | null;
   loadProblem: Problem | null;
   comments: Comment[];
   selected: string | null;
@@ -113,8 +113,14 @@ type State = {
   openComment: string | null;
   /** Whether the comments list is open. */
   commentList: boolean;
+  /** Whether the base picker is open. */
+  basePicker: boolean;
+  /** Whether the preview of the instructions is open. */
+  preview: boolean;
   banner: Banner | null;
   copied: boolean;
+  /** Why the last Copy review failed, if it did. */
+  copyProblem: Problem | null;
   undo: Undo | null;
   /**
    * Find in file: what is searched for, whether ⌘/Ctrl-F asked for the field
@@ -137,12 +143,23 @@ type Actions = {
   setBase: (base: Base) => Promise<void>;
   /** Reads the branches and tags again, with their behind counts. */
   refreshRefs: () => void;
-  reload: () => Promise<void>;
+  /** Loads the review again; `full` reads everything, even what a running watch saw untouched (ADR 0014 §1). */
+  reload: (full?: boolean) => Promise<void>;
   poll: () => Promise<void>;
+  /** Checks for changes now, reading the whole checkout again (⌘/Ctrl-R). */
+  refresh: () => Promise<void>;
   select: (path: string) => void;
+  /** Selects the file `step` away in sidebar order, stopping at either end. */
+  stepFile: (step: 1 | -1) => void;
+  /** Selects the next file not viewed in sidebar order, or with -1 the previous, wrapping; with none, nothing changes. */
+  stepUnviewed: (step: 1 | -1) => void;
   toggleViewed: (path?: string) => void;
-  /** Reads and shows the unchanged lines of `gap`, expanded under `key` (`gapKey`, or `REST`). */
-  expandGap: (path: string, key: string, gap: Gap) => Promise<void>;
+  /** Marks the selected file viewed, then selects the next one not viewed. */
+  viewedAndNext: () => void;
+  /** Reads and shows the unchanged lines of each gap, expanded under its key (`gapKey`, or `REST`), in one read. */
+  expandGaps: (path: string, gaps: { key: string; gap: Gap }[]) => Promise<void>;
+  /** Shows every unchanged line `path`'s diff leaves out that is not shown yet. */
+  showAllLines: (path: string) => Promise<void>;
   setMode: (mode: State["mode"]) => void;
   setSelection: (selection: Selection | null) => void;
   composeOnSelection: () => void;
@@ -157,6 +174,8 @@ type Actions = {
   deleteComment: (id: string) => void;
   toggleComment: (id: string | null) => void;
   setCommentList: (open: boolean) => void;
+  setBasePicker: (open: boolean) => void;
+  setPreview: (open: boolean) => void;
   jumpComment: (step: 1 | -1) => void;
   /** Selects the comment's file and opens its card. */
   showComment: (id: string) => void;
@@ -221,18 +240,18 @@ export function keptEdit(edit: State["previewEdit"], key: string): string | null
 
 /**
  * load_review for `base`, sending only the versions `held` already has, and
- * filling the files it names back in from `held`.
+ * filling the files it names back in from `held`; `full` reads everything again.
  */
-async function fetchReview(base: Base, comments: Comment[], held: LoadedReview | null): Promise<LoadedReview> {
+async function fetchReview(base: Base, comments: Comment[], held: LoadedReview | null, full: boolean): Promise<LoadedReview> {
   const known = held ? Object.entries(held.signatures).map(([path, signature]) => ({ path, signature })) : [];
-  const { files: entries, snapshot, ...rest } = await api.loadReview(base, comments, known);
+  const { files: entries, snapshot, ...rest } = await api.loadReview(base, comments, known, full);
   const previous = new Map(held?.changes.files.map((f) => [f.path, f]));
   const files: FileDiff[] = [];
   const signatures: Record<string, string> = {};
   for (const entry of entries) {
     const file = entry.kind === "changed" ? entry.diff : previous.get(entry.path);
-    // Unreachable while `known` comes from `held`; a full load repairs it if not.
-    if (!file) return fetchReview(base, comments, null);
+    // Unreachable while `known` comes from `held`; a load that names nothing known repairs it if not.
+    if (!file) return fetchReview(base, comments, null, full);
     files.push(file);
     signatures[file.path] = entry.signature;
   }
@@ -300,7 +319,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   base: { kind: "uncommitted" },
   review: null,
   loading: false,
-  recheck: false,
+  recheck: null,
   loadProblem: null,
   comments: [],
   selected: null,
@@ -312,8 +331,11 @@ export const useStore = create<State & Actions>()((set, get) => ({
   selection: null,
   openComment: null,
   commentList: false,
+  basePicker: false,
+  preview: false,
   banner: null,
   copied: false,
+  copyProblem: null,
   undo: null,
   find: null,
   previewEdit: null,
@@ -348,6 +370,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
         composer: null,
         selection: null,
         openComment: null,
+        commentList: false,
+        basePicker: false,
+        preview: false,
+        copyProblem: null,
         banner: null,
         undo: null,
         find: null,
@@ -370,7 +396,18 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   closeRepository() {
-    set({ opening: null, review: null, comments: [], composer: null, selection: null });
+    // The lists, dialogs and copy failure are the review screen's, which goes with the checkout.
+    set({
+      opening: null,
+      review: null,
+      comments: [],
+      composer: null,
+      selection: null,
+      commentList: false,
+      basePicker: false,
+      preview: false,
+      copyProblem: null,
+    });
   },
 
   async setBase(base) {
@@ -384,13 +421,13 @@ export const useStore = create<State & Actions>()((set, get) => ({
     api.refs().then((refs) => set({ refs }), () => {});
   },
 
-  async reload() {
+  async reload(full = false) {
     const { base, review: before } = get();
     set({ loading: true });
     try {
       const held = before && sameBase(before.base, base) ? before : null;
       const sent = get().comments;
-      const review = await fetchReview(base, sent, held);
+      const review = await fetchReview(base, sent, held, full);
       if (!sameBase(get().base, base)) return;
       const moved = new Map(review.comments.map((c) => [c.id, c]));
       const deletes = held !== null && sameBranch(held, review);
@@ -432,9 +469,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
     } finally {
       set({ loading: false });
       // A watch event during the load: its touched paths wait in Rust.
-      if (get().recheck) {
-        set({ recheck: false });
-        void get().poll();
+      const again = get().recheck;
+      if (again) {
+        set({ recheck: null });
+        void (again === "everything" ? get().reload(true) : get().poll());
       }
     }
 
@@ -475,7 +513,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
     const { review, loading, base, opening, watching } = get();
     if (!opening || !review) return;
     if (loading) {
-      set({ recheck: true });
+      if (get().recheck === null) set({ recheck: "changes" });
       return;
     }
     // While watching, a load reads only what the watch saw touched, so it is
@@ -490,6 +528,13 @@ export const useStore = create<State & Actions>()((set, get) => ({
     } catch {
       // The next reload reports it; polling stays quiet.
     }
+  },
+
+  async refresh() {
+    const { review, loading, opening } = get();
+    if (!opening || !review) return;
+    if (loading) set({ recheck: "everything" });
+    else await get().reload(true);
   },
 
   select(path) {
@@ -521,6 +566,36 @@ export const useStore = create<State & Actions>()((set, get) => ({
     set({ find: null });
   },
 
+  stepFile(step) {
+    const { review, selected } = get();
+    if (!review) return;
+    const at = selected === null ? -1 : (review.position.get(selected) ?? -1);
+    const next = review.order[Math.min(review.order.length - 1, Math.max(0, at + step))];
+    if (next && next.path !== selected) get().select(next.path);
+  },
+
+  stepUnviewed(step) {
+    const { review, selected, viewed } = get();
+    if (!review) return;
+    const { order } = review;
+    const at = selected === null ? -1 : (review.position.get(selected) ?? -1);
+    // O(files viewed in a row from `at`): it stops at the first not viewed, and at `at` itself.
+    for (let i = 1; i <= order.length; i++) {
+      const file = order[(((at + step * i) % order.length) + order.length) % order.length]!;
+      if (file.path === selected) return;
+      if (!viewed.has(file.path)) {
+        get().select(file.path);
+        return;
+      }
+    }
+  },
+
+  viewedAndNext() {
+    const { selected, viewed } = get();
+    if (selected !== null && !viewed.has(selected)) get().toggleViewed(selected);
+    get().stepUnviewed(1);
+  },
+
   toggleViewed(path) {
     const { review, viewed, selected } = get();
     const target = path ?? selected;
@@ -534,26 +609,40 @@ export const useStore = create<State & Actions>()((set, get) => ({
     set({ viewed, viewedLines: get().viewedLines + (was ? -lines : lines) });
   },
 
-  async expandGap(path, key, gap) {
+  async expandGaps(path, gaps) {
     const review = get().review;
     const signature = review?.signatures[path];
-    if (!review || signature === undefined || gap.count === 0) return;
+    const wanted = gaps.filter(({ gap }) => gap.count !== 0);
+    if (!review || signature === undefined || wanted.length === 0) return;
     // After the last hunk the file's length is unknown: `lines` stops at its end.
-    const last = gap.count === null ? 0xffffffff : gap.newFirst + gap.count - 1;
-    const mark = (state: Expanded[string]) => {
+    const end = (gap: Gap) => (gap.count === null ? 0xffffffff : gap.newFirst + gap.count - 1);
+    // One read spanning every gap: each read reads the file again, so one per gap would cost gaps × file.
+    const first = wanted.reduce((lo, { gap }) => Math.min(lo, gap.newFirst), Infinity);
+    const last = wanted.reduce((hi, { gap }) => Math.max(hi, end(gap)), 0);
+    const mark = (state: (gap: Gap) => Expanded[string]) => {
       const now = get().review;
       // A reload since asking may have changed the file: its lines no longer fit.
       if (now?.signatures[path] !== signature) return;
       const before = get().expanded.get(path);
-      const gaps = before?.signature === signature ? before.gaps : {};
-      set({ expanded: new Map(get().expanded).set(path, { signature, gaps: { ...gaps, [key]: state } }) });
+      const shown = { ...(before?.signature === signature ? before.gaps : {}) };
+      for (const { key, gap } of wanted) shown[key] = state(gap);
+      set({ expanded: new Map(get().expanded).set(path, { signature, gaps: shown }) });
     };
-    mark("loading");
+    mark(() => "loading");
     try {
-      mark(await api.fileLines(review.changes.snapshot, "new", path, gap.newFirst, last));
+      const lines = await api.fileLines(review.changes.snapshot, "new", path, first, last);
+      mark((gap) => lines.slice(gap.newFirst - first, end(gap) - first + 1));
     } catch {
-      mark("failed");
+      mark(() => "failed");
     }
+  },
+
+  async showAllLines(path) {
+    const file = get().review?.byPath.get(path);
+    if (!file) return;
+    const gaps = get().expanded.get(path)?.gaps;
+    // Shown or being read already: only the rest are asked for.
+    await get().expandGaps(path, gapsOf(file).filter(({ key }) => gaps?.[key] === undefined || gaps[key] === "failed"));
   },
 
   setMode(mode) {
@@ -566,7 +655,8 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   composeOnSelection() {
     const s = get().selection;
-    if (!s) return;
+    // A comment being written keeps its draft: its lines move only by its handles.
+    if (!s || get().composer) return;
     const [start, end] = s.anchor <= s.head ? [s.anchor, s.head] : [s.head, s.anchor];
     get().composeOnLines(s.path, s.side, start, end);
   },
@@ -664,6 +754,14 @@ export const useStore = create<State & Actions>()((set, get) => ({
     set({ commentList: open });
   },
 
+  setBasePicker(open) {
+    set({ basePicker: open });
+  },
+
+  setPreview(open) {
+    set({ preview: open });
+  },
+
   toggleComment(id) {
     set({ openComment: get().openComment === id ? null : id });
   },
@@ -734,9 +832,16 @@ export const useStore = create<State & Actions>()((set, get) => ({
   async copyReview() {
     const request = get().instructionsRequest();
     if (!request || request.comments.length === 0) return;
-    // What the preview shows is what is copied: its edit, when one is kept for this review.
-    const edit = keptEdit(get().previewEdit, reviewKey(request));
-    await get().copyText(edit ?? (await api.instructions(request)));
+    const opening = get().opening;
+    set({ copyProblem: null });
+    try {
+      // What the preview shows is what is copied: its edit, when one is kept for this review.
+      const edit = keptEdit(get().previewEdit, reviewKey(request));
+      await get().copyText(edit ?? (await api.instructions(request)));
+    } catch (error) {
+      // A failure that settles after the checkout closed is not the next one's to show.
+      if (get().opening === opening) set({ copyProblem: describe(error) });
+    }
   },
 
   async copyText(text) {

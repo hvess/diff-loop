@@ -19,7 +19,8 @@ import type { Snapshot } from "./bindings/Snapshot";
 export const api = {
   openRepository: (path: string) => invoke<Opening>("open_repository", { path }),
   refs: () => invoke<BaseRef[]>("refs"),
-  loadReview: (base: Base, comments: Comment[], known: KnownFile[]) =>
+  /** `full` reads everything again, even while a watch runs (ADR 0014 §1). */
+  loadReview: (base: Base, comments: Comment[], known: KnownFile[], full: boolean) =>
     new Promise<Review>((resolve, reject) => {
       const files: ReviewFile[] = [];
       // In order: batches of files, then the rest (ADR 0012); each is parsed as it arrives.
@@ -27,7 +28,7 @@ export const api = {
         if (part.kind === "files") files.push(...part.files);
         else resolve({ ...part.review, files });
       });
-      invoke<null>("load_review", { base, comments, known, parts }).catch(reject);
+      invoke<null>("load_review", { base, comments, known, full, parts }).catch(reject);
     }),
   fingerprint: (base: Base) => invoke<string>("fingerprint", { base }),
   uncommittedFiles: () => invoke<number>("uncommitted_files"),

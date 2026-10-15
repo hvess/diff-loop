@@ -95,6 +95,15 @@ export function gapAfter(file: FileDiff): Gap | null {
   return { oldFirst, newFirst, count: null };
 }
 
+/** Every gap with lines to show that `file`'s rows offer, with the key it is expanded under, in order. */
+export function gapsOf(file: FileDiff): { key: string; gap: Gap }[] {
+  const all = hunksOf(file);
+  const gaps = all.map((hunk, h) => ({ key: gapKey(hunk), gap: gapBefore(hunk, all[h - 1]) }));
+  const rest = gapAfter(file);
+  if (rest) gaps.push({ key: REST, gap: rest });
+  return gaps.filter(({ gap }) => gap.count !== 0);
+}
+
 /** `gap`'s rows: its lines once read, else the row offering to read them. */
 function gapRows(gap: Gap, key: string, section: string, expanded: Expanded | undefined): UnifiedRow[] {
   const texts = expanded?.[key];

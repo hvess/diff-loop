@@ -1,5 +1,5 @@
 import * as Popover from "@radix-ui/react-popover";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import type { Comment } from "../bindings/Comment";
 import { nameOf } from "../path";
 import { lastLine } from "../rows";
@@ -27,7 +27,8 @@ export function ReviewActions() {
   const showComment = useStore((s) => s.showComment);
   const deleteComment = useStore((s) => s.deleteComment);
   const setListOpen = useStore((s) => s.setCommentList);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const previewOpen = useStore((s) => s.preview);
+  const setPreviewOpen = useStore((s) => s.setPreview);
   const list = orderedComments(review, comments);
   // The preview's edit outlasts closing it (HIG `modality`). The review's key is worked out once per
   // change of the comments, the base or a load, O(the comments' text), so typing costs a compare.
@@ -36,7 +37,7 @@ export function ReviewActions() {
   const key = useMemo(() => reviewKey(requestOf({ review, comments, base })), [review, comments, base]);
   const edited = keptEdit(previewEdit, key);
   const setPreviewEdit = useStore((s) => s.setPreviewEdit);
-  const [copyError, setCopyError] = useState<string | null>(null);
+  const copyProblem = useStore((s) => s.copyProblem);
   const count = comments.length;
   const notInDiff = comments.filter((c) => c.state === "outdated").length;
 
@@ -45,11 +46,6 @@ export function ReviewActions() {
     const timer = window.setTimeout(() => setCopied(false), 6000);
     return () => window.clearTimeout(timer);
   }, [copied, setCopied]);
-
-  const copy = () => {
-    setCopyError(null);
-    copyReview().catch((e: unknown) => setCopyError(String(e)));
-  };
 
   return (
     <div className="relative flex items-center gap-4">
@@ -171,14 +167,14 @@ export function ReviewActions() {
               </div>
             </Popover.Content>
           </Popover.Portal>
-          <button type="button" disabled={count === 0} onClick={copy} className="py-2 pr-4 pl-3 disabled:opacity-60">
+          <button type="button" disabled={count === 0} onClick={() => void copyReview()} className="py-2 pr-4 pl-3 disabled:opacity-60">
             Copy review
           </button>
         </div>
       )}
-      {copyError && (
+      {copyProblem && (
         <span role="alert" className="absolute top-full right-0 mt-2 w-[300px] rounded-[14px] border border-line bg-bg px-4 py-3 text-[13px] shadow-pop">
-          Couldn’t copy to the clipboard: {copyError}
+          Couldn’t copy to the clipboard: {copyProblem.detail}
         </span>
       )}
       <PreviewDialog

@@ -17,6 +17,7 @@ vi.mock("./api", () => ({
     commitsBetween: vi.fn(() => Promise.resolve(1)),
     refs: vi.fn(() => Promise.resolve([])),
     watchRepository: vi.fn(() => Promise.resolve(true)),
+    fileLines: vi.fn(),
   },
   describe: (error: unknown) => ({ title: "Saved comments are unavailable", detail: String(error) }),
 }));
@@ -654,5 +655,192 @@ describe("editing a comment saved with an indented suggestion", () => {
     const composer = useStore.getState().composer!;
     expect(composer.suggestion).toBe("a();");
     expect(canSave(composer)).toBe(false);
+  });
+});
+
+/** Opens `/a` with `files`, nothing viewed, the first file selected. */
+async function openFiles(files: FileDiff[]) {
+  answerWithFiles("/a", files);
+  vi.mocked(api.openRepository).mockResolvedValue(opening("/a"));
+  vi.mocked(api.savedReview).mockResolvedValue({ comments: [] });
+  await useStore.getState().open("/a");
+}
+
+describe("moving between files by key", () => {
+  beforeEach(() => openFiles([added("a.ts", 1), added("b.ts", 1), added("c.ts", 1)]));
+  const selected = () => useStore.getState().selected;
+
+  it("steps through the sidebar's order and stops at either end, keeping the selection there", () => {
+    useStore.getState().stepFile(1);
+    useStore.getState().stepFile(1);
+    expect(selected()).toBe("c.ts");
+    const lines = { path: "c.ts", side: "new" as const, anchor: 1, head: 1, dragging: false };
+    useStore.setState({ selection: lines });
+    useStore.getState().stepFile(1);
+    expect(selected()).toBe("c.ts");
+    expect(useStore.getState().selection).toBe(lines);
+    useStore.getState().stepFile(-1);
+    expect(selected()).toBe("b.ts");
+  });
+
+  it("goes to the next or previous file not viewed, wrapping round", () => {
+    useStore.getState().toggleViewed("b.ts");
+    useStore.getState().stepUnviewed(1);
+    expect(selected()).toBe("c.ts");
+    useStore.getState().stepUnviewed(1);
+    expect(selected()).toBe("a.ts");
+    useStore.getState().stepUnviewed(-1);
+    expect(selected()).toBe("c.ts");
+  });
+
+  it("stays put, keeping the selection, when no other file is left to view", () => {
+    useStore.getState().toggleViewed("b.ts");
+    useStore.getState().toggleViewed("c.ts");
+    const lines = { path: "a.ts", side: "new" as const, anchor: 1, head: 1, dragging: false };
+    useStore.setState({ selection: lines });
+    useStore.getState().stepUnviewed(1);
+    expect(selected()).toBe("a.ts");
+    expect(useStore.getState().selection).toBe(lines);
+  });
+
+  it("marks the file viewed and goes on to the next not viewed, never unmarking one", () => {
+    useStore.getState().viewedAndNext();
+    expect(useStore.getState().viewed.has("a.ts")).toBe(true);
+    expect(selected()).toBe("b.ts");
+    useStore.getState().toggleViewed("c.ts");
+    useStore.getState().select("c.ts");
+    useStore.getState().viewedAndNext();
+    expect(useStore.getState().viewed.has("c.ts")).toBe(true);
+    expect(selected()).toBe("b.ts");
+    useStore.getState().toggleViewed("b.ts");
+    useStore.getState().viewedAndNext();
+    expect(useStore.getState().viewed.size).toBe(3);
+    expect(selected()).toBe("b.ts");
+  });
+});
+
+describe("showing every unchanged line", () => {
+  // Line 3 changed and line 8 added, each with a line of context: gaps 1, 5–6 and after 9.
+  const file: FileDiff = {
+    path: "m.ts",
+    status: { kind: "modified" },
+    content: {
+      kind: "text",
+      hunks: [
+        { oldStart: 2, newStart: 2, section: "", lines: [{ kind: "context", old: 2, new: 2, text: "2" }, { kind: "removed", old: 3, text: "-" }, { kind: "added", new: 3, text: "3" }, { kind: "context", old: 4, new: 4, text: "4" }] },
+        { oldStart: 7, newStart: 7, section: "", lines: [{ kind: "context", old: 7, new: 7, text: "7" }, { kind: "added", new: 8, text: "8" }, { kind: "context", old: 8, new: 9, text: "9" }] },
+      ],
+    },
+  };
+  const gaps = () => useStore.getState().expanded.get("m.ts")?.gaps;
+
+  beforeEach(async () => {
+    await openFiles([file]);
+    vi.mocked(api.fileLines).mockReset();
+  });
+
+  it("reads the file once, from the first gap on, and shows each gap's own lines", async () => {
+    vi.mocked(api.fileLines).mockResolvedValue(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"]);
+    await useStore.getState().showAllLines("m.ts");
+    expect(api.fileLines).toHaveBeenCalledTimes(1);
+    expect(api.fileLines).toHaveBeenCalledWith({ old: null, new: { kind: "workingTree" } }, "new", "m.ts", 1, 0xffffffff);
+    expect(gaps()).toEqual({ "h:2:2": ["1"], "h:7:7": ["5", "6"], rest: ["10", "11"] });
+    await useStore.getState().showAllLines("m.ts");
+    expect(api.fileLines).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads again only the gaps not shown, a failed read among them", async () => {
+    vi.mocked(api.fileLines).mockResolvedValueOnce(["5", "6"]);
+    await useStore.getState().expandGaps("m.ts", [{ key: "h:7:7", gap: { oldFirst: 5, newFirst: 5, count: 2 } }]);
+    expect(api.fileLines).toHaveBeenLastCalledWith(expect.anything(), "new", "m.ts", 5, 6);
+    vi.mocked(api.fileLines).mockRejectedValueOnce(new Error("gone"));
+    await useStore.getState().showAllLines("m.ts");
+    expect(api.fileLines).toHaveBeenLastCalledWith(expect.anything(), "new", "m.ts", 1, 0xffffffff);
+    expect(gaps()).toEqual({ "h:2:2": "failed", "h:7:7": ["5", "6"], rest: "failed" });
+    vi.mocked(api.fileLines).mockResolvedValueOnce(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+    await useStore.getState().showAllLines("m.ts");
+    expect(gaps()).toEqual({ "h:2:2": ["1"], "h:7:7": ["5", "6"], rest: ["10"] });
+  });
+});
+
+describe("checking for changes now", () => {
+  beforeEach(async () => {
+    await openWith("/a", { comments: [] });
+    useStore.setState({ watching: true });
+    vi.mocked(api.loadReview).mockClear();
+  });
+  const fullReads = () => vi.mocked(api.loadReview).mock.calls.filter((call) => call[3]).length;
+
+  it("reads everything again, even while a watch runs", async () => {
+    await useStore.getState().refresh();
+    expect(api.loadReview).toHaveBeenCalledTimes(1);
+    expect(fullReads()).toBe(1);
+    await useStore.getState().reload();
+    expect(fullReads()).toBe(1);
+  });
+
+  it("asked for during a load, reads everything once it ends, whatever a poll asked for since", async () => {
+    const loading = useStore.getState().reload();
+    void useStore.getState().refresh();
+    void useStore.getState().poll();
+    expect(api.loadReview).toHaveBeenCalledTimes(1);
+    await loading;
+    await vi.waitFor(() => expect(api.loadReview).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.loadReview).mock.calls[1]![3]).toBe(true);
+  });
+});
+
+describe("keys that would lose work", () => {
+  it("commenting on the selection keeps a comment being written", async () => {
+    await openFiles([added("a.ts", 4)]);
+    useStore.getState().composeOnLines("a.ts", "new", 1, 2);
+    useStore.getState().updateComposer({ text: "draft" });
+    useStore.getState().composeOnSelection();
+    expect(useStore.getState().composer?.text).toBe("draft");
+  });
+});
+
+describe("Copy review", () => {
+  it("says why it failed, until a copy succeeds", async () => {
+    const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+    await openWith("/a", { comments: [comment("c")] });
+    useStore.getState().setPreviewEdit({ key: reviewKey(requestOf(useStore.getState())), text: "mine" });
+    vi.mocked(writeText).mockRejectedValueOnce(new Error("no clipboard"));
+    await useStore.getState().copyReview();
+    // Described as the window's other problems are (`describe`, mocked above).
+    expect(useStore.getState().copyProblem).toEqual({ title: "Saved comments are unavailable", detail: "Error: no clipboard" });
+    await useStore.getState().copyReview();
+    expect(useStore.getState().copyProblem).toBeNull();
+  });
+
+  it("drops a failure that settles once the checkout is closed", async () => {
+    const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+    await openWith("/a", { comments: [comment("c")] });
+    useStore.getState().setPreviewEdit({ key: reviewKey(requestOf(useStore.getState())), text: "mine" });
+    let fail: (error: Error) => void = () => {};
+    vi.mocked(writeText).mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)));
+    const copying = useStore.getState().copyReview();
+    useStore.getState().closeRepository();
+    fail(new Error("no clipboard"));
+    await copying;
+    expect(useStore.getState().copyProblem).toBeNull();
+  });
+});
+
+describe("closing the checkout", () => {
+  it("closes its lists and dialogs, and forgets a failed copy, so the next one opens without them", async () => {
+    await openWith("/a", { comments: [] });
+    const left = { commentList: true, basePicker: true, preview: true, copyProblem: { title: "t", detail: "no clipboard" } };
+    useStore.setState(left);
+    useStore.getState().closeRepository();
+    const now = () => {
+      const { commentList, basePicker, preview, copyProblem } = useStore.getState();
+      return [commentList, basePicker, preview, copyProblem];
+    };
+    expect(now()).toEqual([false, false, false, null]);
+    // Opening another without closing the first does the same.
+    useStore.setState(left);
+    await openWith("/b", { comments: [] });
+    expect(now()).toEqual([false, false, false, null]);
   });
 });

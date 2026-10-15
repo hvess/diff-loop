@@ -57,6 +57,9 @@ change, annotate, hand off to the agent, next round.
     (Decision 28), find in file (Decision 27), the preview edited in
     place (Decision 25), and a banner with Undo for removed comments
     (Decision 16) — done 2026-10-14.
+12. Keyboard shortcuts for moving through a review, commenting and
+    handing off (Decision 29) — done 2026-10-15. A list of them in the
+    window is not built yet (open task 17).
 
 ## Decisions
 
@@ -94,7 +97,8 @@ change, annotate, hand off to the agent, next round.
    only answers for the repository still open; until one confirms a watch,
    or if watching fails, `App` polls every 2 s. While a watch runs,
    `Session` keeps the last load and what the watch touched, and
-   `load_review` reads only that (ADR 0005 §4).
+   `load_review` reads only that (ADR 0005 §4), unless it is asked to
+   read everything (`full`, ⌘/Ctrl-R; ADR 0014).
 8. **Limits that keep the UI responsive**, chosen by the author for the
    first version (2026-10-13), not by the design: files showing over 5000 lines,
    expanded ones included, show without highlighting (`highlight.ts`, `MAX_LINES`,
@@ -206,7 +210,7 @@ change, annotate, hand off to the agent, next round.
     image preview's "Loading…" appear only once the wait reaches it; until
     then the control that started it is disabled.
 21. **Not built:** type-ahead in the file list, because typing a letter
-    there would clash with V, N, P and C; and a translucent macOS sidebar,
+    there would clash with the single-letter shortcuts (Decision 29); and a translucent macOS sidebar,
     which would replace the design's sidebar colour and needs
     `macOSPrivateApi`. The developer's calls, 2026-10-14.
 22. **Suggested code needs no reason** (`canSave`, `app/src/store.ts`):
@@ -227,7 +231,7 @@ change, annotate, hand off to the agent, next round.
     against the HIG `sidebars` page and as the design draws them (the
     developer's call, 2026-10-14; the `ux` skill records it, under
     "Where the developer chose against the HIG"), and
-    cannot be selected; the arrows, N / P and the comment order follow
+    cannot be selected; the arrows, J / K, N / P and the comment order follow
     the files as the tree lists them (`order`). A row shows the file's
     icon, name and change letter; a viewed one is dimmed, its page icon
     ticked so colour is not all that says so, and it says "viewed" in its
@@ -332,6 +336,105 @@ change, annotate, hand off to the agent, next round.
     lines" once the suggested code has more than one line), not the
     colour.
 
+29. **Keyboard shortcuts** (`app/src/keys.ts`): one table, `BINDINGS`,
+    names each window key's command, where it may run, and whether a held key
+    repeats it (moves repeat; changes, such as V or ⌘/Ctrl-Backspace, do
+    not). `App.tsx` runs the window's commands; `DiffView` runs the line
+    cursor and change keys (`LINE_COMMANDS`), which need its rows and what
+    is on screen; both admit a key by one rule (`bindingFor`,
+    `app/src/platform.ts`). A text field's own keys are its own, outside `BINDINGS`:
+    the composer's ⌘/Ctrl-Return, Alt-Return and Esc (`Composer.tsx`),
+    and the find field's Return and Esc (`FindBar.tsx`).
+    A key a focused control took (the file list's plain arrows) is left
+    to it. Letters, arrows, Return and Esc act only with no text field
+    focused and no dialog open; ⌘/Ctrl-O acts anywhere; the other
+    ⌘/Ctrl keys act in a text field too, but not under a dialog, except
+    ⌘/Ctrl-Backspace, ⌘/Ctrl-Z and ⌘/Ctrl-Shift-W, which a text field
+    owns or which would drop a draft; ⌘/Ctrl-Shift-W does nothing while a
+    comment is being written, wherever focus is. A letter is read in lower case with
+    Shift as pressed, so Caps Lock changes nothing; `]` and `[` are read
+    as typed, so the AltGr or Option that types them on a German layout
+    counts; ⌘/Ctrl-1 and 2 are read by key position, as AZERTY types
+    digits with Shift.
+
+    | Keys | Command |
+    |---|---|
+    | J / K, or ] / [ | Next / previous file in the sidebar's order, stopping at either end |
+    | Shift-J / Shift-K | Next / previous file not viewed, wrapping |
+    | V | Viewed, on or off (unchanged) |
+    | Shift-V | Mark viewed, then the next file not viewed; it never unmarks |
+    | N / P | Next / previous comment (unchanged) |
+    | ↓ / ↑ | Move the line cursor |
+    | Shift-↓ / Shift-↑ | Extend the range |
+    | Alt-↓ / Alt-↑ (Option) | Next / previous change |
+    | C, or Return | Comment on the cursor or range |
+    | Alt-Return (Option), in the composer | Suggest code on or off |
+    | E | Edit the open comment |
+    | ⌘/Ctrl-Backspace | Delete the open comment, with Undo |
+    | ⌘/Ctrl-Z | Undo the last delete or clear, else the banner's removal |
+    | Shift-X | Show every unchanged line of the file |
+    | ⌘/Ctrl-1 / ⌘/Ctrl-2 | Unified / Split |
+    | ⌘/Ctrl-Shift-B | Open the base picker |
+    | ⌘/Ctrl-Shift-P | Preview the instructions, with comments |
+    | ⌘/Ctrl-Shift-C | Copy review, with comments |
+    | ⌘/Ctrl-R | Check for changes now |
+    | ⌘/Ctrl-Shift-W | Close the folder |
+    | ⌘/Ctrl-O, ⌘/Ctrl-F, ⌘/Ctrl-G, Esc | As before (Decisions 18 and 27), except that ⌘/Ctrl-G, and the macOS menu's Find Next and Find Previous, no longer step find under a dialog |
+
+    The line cursor is the selection. ↓ and ↑ move it a row at a time,
+    keeping its side where the row has a line there, else taking the
+    line a press on the gutter would (`gutterLine`); they pass over hunk
+    rows and expanded lines, which take no comment (Decision 9). With no
+    selection, an open comment's last line is the cursor. A cursor off
+    screen, or none, starts again from what is shown: ↓ from its top, ↑
+    from its bottom. Shift-↓ and Shift-↑ move the range's head along its
+    side, inside its hunk (Decision 6); with no selection they place the
+    cursor as ↓ and ↑ do. Alt-↓ and Alt-↑ go to the first
+    line of the next or previous change, a run of added and removed lines,
+    as Meld's Alt-↓ does; from inside a change, Alt-↑ goes to its own
+    start first. The rows with a line and those that start a change are
+    listed once per layout (`lineRows`, `changeStarts` in
+    `app/src/cursor.ts`), so each key finds its row by binary search
+    (`nextIn`), O(log rows), however many expanded lines it passes.
+    A step scrolls only as far as shows the line, a jump centres it, as
+    N / P and find do; either closes an open card, as a press on the
+    gutter does. A selection made by keys shows the range's pill, "Comment
+    on line N" for a single line, which a press on the gutter never leaves
+    without the composer. None of them acts while a comment is being written,
+    whose range moves only by its handles, or while the pointer drags.
+    A press on the gutter takes focus from any control, so the keys that
+    follow are the diff's: Return then opens the composer, where a
+    focused button would otherwise take it. C and Return leave a comment
+    being written as it is; until 2026-10-15 C replaced its draft.
+
+    J, K, ] and [ step as the file list's arrows do (`stepFile`), and the
+    sidebar scrolls to a file a key selects, only when the selection
+    moves, as find does (Decision 27). Shift-J, Shift-K and Shift-V look
+    for a file not viewed (`stepUnviewed`), in O(files viewed in a row),
+    about 5 ms for 100,000 files all viewed but the last (measured
+    2026-10-15); with none left, the selection stays. Shift-X reads the
+    file once for all its gaps (`expandGaps`), where Show N unchanged
+    lines reads one gap. ⌘/Ctrl-R
+    reads the whole checkout again, even while a watch runs (`refresh`;
+    ADR 0014). The base picker
+    highlights the current base each time it opens, however it opens, so
+    Return keeps it. Its open state, the preview's and why Copy review
+    failed (`copyProblem`, a `Problem` from `describe`) live in the store, so a key can reach them;
+    closing or opening a folder closes them and forgets the failure, as
+    the review screen's own state went with it.
+
+    ⌘/Ctrl-Shift-C and ⌘/Ctrl-Shift-P take the HIG's Colors window and
+    Page Setup, which the HIG `keyboards` page allows when the standard
+    action makes no sense in the app: Diff Loop has neither. ⌘/Ctrl-Shift-W
+    is the HIG's "close a file and its associated windows".
+    ⌘/Ctrl-Shift-B, and Alt-Return in the composer, are against the HIG
+    (`ux` skill, "Where the developer chose against the HIG"), which records
+    the single keys and these two. The new shortcuts are not shown in the
+    window, in menus or tooltips, the developer's call, 2026-10-15 (`ux`
+    skill, the same section): a list of them is open task 17. The set, from
+    the conventions of GitLab, Gerrit, Crucible, Meld and the HIG, is the
+    developer's call, 2026-10-15.
+
 ## Pitfalls
 
 - A load answers for the comments it was sent. One changed while it ran
@@ -352,6 +455,11 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-15, keyboard shortcuts)
+
+Step 12 landed: the keys of Decision 29, a full read on request
+(ADR 0014), and C keeping a comment being written.
 
 ## Progress (2026-10-15, the v2 audit)
 

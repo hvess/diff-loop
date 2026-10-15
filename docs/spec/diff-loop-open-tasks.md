@@ -5,7 +5,7 @@ Work that is known, understood and not done. Each entry says what was seen, wher
 **Status:** active — a ledger, not a spec. Nothing here blocks anything else.
 **Scope:** everything outstanding.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-14
+**Last Updated:** 2026-10-15
 
 An entry leaves this file by being done, or by being decided against — in
 which case the decision goes where it belongs (an ADR, or the spec it
@@ -32,7 +32,8 @@ contradicts) and the entry says so before it goes.
     Consequences): a change to the index alone (`git rm --cached`) moves
     no snapshot and touches no working-tree path, and a rename into a
     path the watch did not touch shows as an addition and a deletion
-    (`update`, `crates/core/src/update.rs`). Closes when a load since the
+    (`update`, `crates/core/src/update.rs`). ⌘/Ctrl-R reads everything
+    on request (ADR 0014). Closes when a load since the
     last notices both, or the developer decides the wait is fine.
 11. **A linked worktree's pass records may be unguarded.** They sit in the
     main checkout's git directory (`.git/worktrees/<name>/`), outside the
@@ -50,8 +51,10 @@ contradicts) and the entry says so before it goes.
 15. **The macOS side of ADR 0010 has not run on a Mac**: the menu bar
     (`app/src/menuBar.ts`), the traffic lights' position and background
     throttling (`app/src-tauri/tauri.conf.json`), and the beep rule
-    (`wouldBeep`, `app/src/platform.ts`). Closes when each is walked on
-    macOS and any fault fixed.
+    (`wouldBeep`, `app/src/platform.ts`). Nor have the ⌘ and Option
+    shortcuts (diff-loop-app.md Decision 29, `app/src/keys.ts`), among
+    them ⌘Z beside the menu bar's own Undo, and Option-↓ and
+    Option-Return. Closes when each is walked on macOS and any fault fixed.
 16. **The design's pale greys fall below the HIG's contrast minimum**
     (4.5:1 for text): `--ui-faint` and `--ui-muted` (`app/src/styles.css`)
     draw the composer's and the card's line label ("Line 17"), the
@@ -61,6 +64,17 @@ contradicts) and the entry says so before it goes.
     (`ux` skill, "Where the developer chose against the HIG"). Closes when
     those tokens, or the text drawn in them, reach 4.5:1, or the developer
     decides the palette stays.
+17. **Nothing in the window lists the keyboard shortcuts**
+    (diff-loop-app.md Decision 29, `BINDINGS` in `app/src/keys.ts`). The
+    developer chose to build the keys first and show them later
+    (2026-10-15): only the Viewed checkbox's tooltip (V), the composer's
+    Comment button (⌘/Ctrl-Return), the welcome screen's Open folder
+    (⌘/Ctrl-O), the comments list's hint (N / P), the range pill (C) and
+    the macOS menu bar's Open Folder and Find items name a key, and Linux
+    has no menu bar (Decision 18). The HIG `offering-help` page offers
+    tips to help people "discover faster ways to accomplish a task". Closes when ? (and ⌘-? on macOS, with a Help menu
+    item) opens a list of the shortcuts drawn from `BINDINGS`, or the
+    developer decides against one.
 
 ## Distribution
 

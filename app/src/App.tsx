@@ -8,11 +8,104 @@ import { installMenuBar } from "./menuBar";
 import { matchBackground, showWhenPainted } from "./nativeWindow";
 import { ReviewScreen } from "./components/ReviewScreen";
 import { Welcome } from "./components/Welcome";
-import { dialogOpen, findShown, hasMod, isMac, typing, wouldBeep } from "./platform";
+import { isLineCommand, type WindowCommand } from "./keys";
+import { bindingFor, findShown, isMac, onPage, wouldBeep } from "./platform";
 import { useStore } from "./store";
 
 /** How often the checkout is polled while focused, only when it cannot be watched. */
 const POLL_MS = 2000;
+
+/** Runs a window command (keys.ts); whether it applied, so the key is taken. */
+function run(command: WindowCommand, e: KeyboardEvent): boolean {
+  if (command === "openFolder") {
+    void chooseFolder();
+    return true;
+  }
+  const s = useStore.getState();
+  // The rest act on an open checkout.
+  if (!s.opening) return false;
+  switch (command) {
+    case "find":
+      s.openFind();
+      return true;
+    case "findNext":
+    case "findPrevious":
+      if (!s.find) return false;
+      s.stepFind(command === "findNext" ? 1 : -1);
+      return true;
+    case "nextFile":
+    case "previousFile":
+      s.stepFile(command === "nextFile" ? 1 : -1);
+      return true;
+    case "nextUnviewed":
+    case "previousUnviewed":
+      s.stepUnviewed(command === "nextUnviewed" ? 1 : -1);
+      return true;
+    case "toggleViewed":
+      s.toggleViewed();
+      return true;
+    case "viewedAndNext":
+      s.viewedAndNext();
+      return true;
+    case "nextComment":
+    case "previousComment":
+      s.jumpComment(command === "nextComment" ? 1 : -1);
+      return true;
+    case "comment":
+      // Return stays a focused button's; C is no button's.
+      if (!s.selection || s.composer || (e.key === "Enter" && !onPage(e.target))) return false;
+      s.composeOnSelection();
+      return true;
+    case "editComment":
+      if (!s.openComment || s.composer) return false;
+      s.editComment(s.openComment);
+      return true;
+    case "deleteComment":
+      if (!s.openComment) return false;
+      s.deleteComment(s.openComment);
+      return true;
+    case "undo":
+      // The user's own delete or clear first: its bar says so, for 10 s.
+      if (s.undo) s.undoLast();
+      else if (s.banner && s.banner.removed.length > 0) s.undoRemoved();
+      else return false;
+      return true;
+    case "copyReview":
+      if (s.comments.length === 0) return false;
+      void s.copyReview();
+      return true;
+    case "preview":
+      if (s.comments.length === 0) return false;
+      s.setPreview(true);
+      return true;
+    case "basePicker":
+      s.setBasePicker(true);
+      return true;
+    case "unified":
+    case "split":
+      s.setMode(command);
+      return true;
+    case "showAllLines":
+      if (s.selected === null) return false;
+      void s.showAllLines(s.selected);
+      return true;
+    case "checkForChanges":
+      void s.refresh();
+      return true;
+    case "closeFolder":
+      // A comment being written keeps its draft: the folder closes once it is saved or cancelled.
+      if (s.composer) return false;
+      s.closeRepository();
+      return true;
+    case "escape":
+      // The open card first, then a find bar the reader can see (its field closes it itself).
+      if (s.openComment) s.toggleComment(null);
+      else if (s.find && findShown()) s.closeFind();
+      else if (s.selection) s.setSelection(null);
+      else return false;
+      return true;
+  }
+}
 
 export function App() {
   const hasRepository = useStore((s) => s.opening !== null);
@@ -51,41 +144,16 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (hasMod(e) && e.key.toLowerCase() === "o") {
+      // A focused control that took the key (the file list's arrows) keeps it.
+      if (e.defaultPrevented) return;
+      const bound = bindingFor(e);
+      // The diff's own keys are `DiffView`'s, which holds its rows.
+      if (bound && !isLineCommand(bound.command) && run(bound.command, e)) {
         e.preventDefault();
-        void chooseFolder();
-        return;
-      }
-      const s = useStore.getState();
-      if (hasMod(e) && e.key.toLowerCase() === "f" && s.opening) {
-        // Under a dialog ⌘/Ctrl-F does nothing, and the menu's Find… is held back too.
-        e.preventDefault();
-        if (!dialogOpen()) s.openFind();
-        return;
-      }
-      // Find Next and Find Previous (HIG `keyboards`).
-      if (hasMod(e) && e.key.toLowerCase() === "g" && s.find) {
-        e.preventDefault();
-        s.stepFind(e.shiftKey ? -1 : 1);
         return;
       }
       // On macOS a key the webview leaves unhandled sounds the alert beep.
       if (isMac && wouldBeep(e)) e.preventDefault();
-      if (!s.opening || typing(e.target) || e.altKey || e.metaKey || e.ctrlKey) return;
-      if (dialogOpen()) return;
-      const key = e.key.toLowerCase();
-      if (key === "v") s.toggleViewed();
-      else if (key === "n") s.jumpComment(1);
-      else if (key === "p") s.jumpComment(-1);
-      else if (key === "c" && s.selection) s.composeOnSelection();
-      else if (key === "escape") {
-        // The open card first, then a find bar the reader can see (its field closes it itself).
-        if (s.openComment) s.toggleComment(null);
-        else if (s.find && findShown()) s.closeFind();
-        else if (s.selection) s.setSelection(null);
-        else return;
-      } else return;
-      e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

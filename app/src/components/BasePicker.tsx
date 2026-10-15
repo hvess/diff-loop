@@ -57,6 +57,8 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [uncommitted, setUncommitted] = useState<number | null>(null);
+  // Each time it opens, by its button, Compare with another branch or ⌘/Ctrl-Shift-B, the base is highlighted, so Return keeps it.
+  const [wasOpen, setWasOpen] = useState(open);
 
   // Counted when the picker opens, not kept fresh: each reads the whole
   // working tree or every ref.
@@ -104,6 +106,10 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
     return { compare, only: q ? [] : showOnly(uncommitted, commit), more };
   }, [refs, byName, query, uncommitted, commit]);
   const all = [...compare, ...only];
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setActive(Math.max(0, all.findIndex((c) => sameBase(c.base, base))));
+  }
 
   const choose = (choice: Choice | undefined) => {
     if (!choice) return;
@@ -130,13 +136,7 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
   );
 
   return (
-    <Popover.Root
-      open={open}
-      onOpenChange={(next) => {
-        onOpenChange(next);
-        if (next) setActive(Math.max(0, all.findIndex((c) => sameBase(c.base, base))));
-      }}
-    >
+    <Popover.Root open={open} onOpenChange={onOpenChange}>
       <Popover.Trigger asChild>
         <button
           type="button"

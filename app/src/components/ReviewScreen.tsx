@@ -1,5 +1,5 @@
 import * as Popover from "@radix-ui/react-popover";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { bannerDetail, useStore } from "../store";
 import { BasePicker } from "./BasePicker";
 import { FilePane } from "./FilePane";
@@ -11,7 +11,8 @@ export function ReviewScreen() {
   const opening = useStore((s) => s.opening);
   const review = useStore((s) => s.review);
   const closeRepository = useStore((s) => s.closeRepository);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const basePicker = useStore((s) => s.basePicker);
+  const setBasePicker = useStore((s) => s.setBasePicker);
   const commentList = useStore((s) => s.commentList);
   const setCommentList = useStore((s) => s.setCommentList);
   const checkout = review?.checkout ?? opening?.checkout;
@@ -35,7 +36,7 @@ export function ReviewScreen() {
                 {head.kind === "branch" ? head.name : `HEAD detached at ${head.commit}`}
               </span>
             </button>
-            <BasePicker open={pickerOpen} onOpenChange={setPickerOpen} />
+            <BasePicker open={basePicker} onOpenChange={setBasePicker} />
           </div>
           <ReviewActions />
         </TitleBar>
@@ -49,7 +50,7 @@ export function ReviewScreen() {
       <SaveProblem />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <FilePane onCompareWithAnother={() => setPickerOpen(true)} />
+        <FilePane />
       </div>
     </div>
   );

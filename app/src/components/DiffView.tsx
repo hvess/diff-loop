@@ -4,9 +4,12 @@ import type { Comment } from "../bindings/Comment";
 import type { FileDiff } from "../bindings/FileDiff";
 import type { Side } from "../bindings/Side";
 import { showMenu } from "../contextMenu";
+import { changeStarts, lineAfter, lineRows, nextIn, startRow } from "../cursor";
 import { useDelayed } from "../delay";
 import { findTyped, type Mark, type Match, marked } from "../find";
 import { useHighlights, type Highlights, type Token } from "../highlight";
+import { isLineCommand, type LineCommand } from "../keys";
+import { bindingFor } from "../platform";
 import {
   type Cell,
   type Expanded,
@@ -22,6 +25,16 @@ import { orderedComments, type Selection, useStore } from "../store";
 import { CommentCard } from "./CommentCard";
 import { Composer } from "./Composer";
 import { FindBar } from "./FindBar";
+
+/** The diff's own keys (keys.ts `LINE_COMMANDS`): what each moves, and which way. */
+const LINE_KEYS: Record<LineCommand, { move: "line" | "extend" | "change"; step: 1 | -1 }> = {
+  lineDown: { move: "line", step: 1 },
+  lineUp: { move: "line", step: -1 },
+  extendDown: { move: "extend", step: 1 },
+  extendUp: { move: "extend", step: -1 },
+  nextChange: { move: "change", step: 1 },
+  previousChange: { move: "change", step: -1 },
+};
 
 /** What each line on one side carries: its comment pin, range bar, open card, composer. */
 type Marks = {
@@ -150,6 +163,56 @@ export function DiffView({ file }: { file: FileDiff }) {
     return () => window.removeEventListener("mouseup", finish);
   }, [finish]);
 
+  // Once per layout, so ↓ / ↑ and Alt-↓ / Alt-↑ find the next line or change in O(log rows).
+  const lines = useMemo(() => lineRows(rows), [rows]);
+  const changes = useMemo(() => changeStarts(rows), [rows]);
+
+  // The diff's own keys (keys.ts): the line cursor and the next change, which need its rows and what is on screen.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // App.tsx's handler, which runs first, leaves these keys alone.
+      const bound = bindingFor(e);
+      if (!bound || !isLineCommand(bound.command)) return;
+      const { move, step } = LINE_KEYS[bound.command];
+      const s = useStore.getState();
+      // A comment being written moves only by its handles, and a drag is the pointer's.
+      if (s.composer || s.selection?.dragging) return;
+      e.preventDefault();
+      const sel = s.selection?.path === file.path ? s.selection : null;
+      const open = s.comments.find((c) => c.id === s.openComment);
+      // The cursor: the selection's moving end, else the open comment's last line.
+      const cursor = sel
+        ? { side: sel.side, no: sel.head }
+        : open?.path === file.path && open.target.kind === "lines"
+          ? { side: open.target.side, no: lastLine(open.target) }
+          : null;
+      const at = cursor ? rowOf.get(lineKey(cursor.side, cursor.no)) : undefined;
+      const from = startRow(at, virtual.range, step, rows.length);
+      const place = (target: ReturnType<typeof lineAfter>, align: "auto" | "center") => {
+        if (!target) return;
+        const { line } = target;
+        s.setSelection({ path: file.path, side: line.side, anchor: line.no, head: line.no, dragging: false });
+        if (s.openComment) s.toggleComment(null);
+        virtual.scrollToIndex(target.row, { align });
+      };
+      if (move === "extend" && sel) {
+        // Along the selection's side, inside its hunk (diff-loop-app.md Decision 6).
+        const head = withinHunk(file, sel.side, sel.anchor, sel.head + step);
+        const row = rowOf.get(lineKey(sel.side, head));
+        if (head === sel.head || row === undefined) return;
+        s.setSelection({ ...sel, head });
+        virtual.scrollToIndex(row, { align: "auto" });
+      } else if (move === "change") {
+        const start = nextIn(changes, from, step);
+        if (start !== null) place(lineAfter(rows, lines, start - 1, 1), "center");
+      } else {
+        place(lineAfter(rows, lines, from, step, cursor?.side), "auto");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [file, rows, rowOf, lines, changes, virtual]);
+
   // Bring a comment opened from elsewhere (N / P, the comments list) into view.
   useEffect(() => {
     const c = useStore.getState().comments.find((x) => x.id === openComment);
@@ -162,6 +225,8 @@ export function DiffView({ file }: { file: FileDiff }) {
   const pressNumber = (cell: Cell, shift: boolean) => {
     const s = useStore.getState();
     if (s.composer) return;
+    // The keys go to the diff now: a focused button would take Return, the file list the arrows.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const sel = s.selection;
     if (shift && sel && sel.path === file.path && sel.side === cell.side) {
       s.setSelection({ ...sel, head: withinHunk(file, cell.side, sel.anchor, cell.no), dragging: false });
@@ -201,7 +266,7 @@ export function DiffView({ file }: { file: FileDiff }) {
   };
   const gutter = { pressNumber, enterNumber, handles, pressHandle, found, currentMatch };
   const pill =
-    selection && !selection.dragging && !composer && selection.path === file.path && selection.anchor !== selection.head
+    selection && !selection.dragging && !composer && selection.path === file.path
       ? lineKey(selection.side, Math.min(selection.anchor, selection.head))
       : null;
 
@@ -289,7 +354,7 @@ function HunkHeader({
   state: Expanded[string] | undefined;
   indent: number;
 }) {
-  const expandGap = useStore((s) => s.expandGap);
+  const expandGaps = useStore((s) => s.expandGaps);
   const slow = useDelayed(state === "loading");
   const { count } = row.gap;
   const lines = count === null ? "the rest of the file" : `${count} unchanged ${count === 1 ? "line" : "lines"}`;
@@ -305,7 +370,7 @@ function HunkHeader({
           <button
             type="button"
             disabled={state === "loading"}
-            onClick={() => void expandGap(path, row.key, row.gap)}
+            onClick={() => void expandGaps(path, [{ key: row.key, gap: row.gap }])}
             className="flex-none font-sans text-[12.5px] whitespace-nowrap text-muted2 hover:text-fg"
           >
             {state === "failed" ? `Couldn’t read ${lines}. Try again` : `Show ${lines}`}
@@ -557,7 +622,7 @@ function Decorations({ cells, marks, pill, handles, pressHandle, handleLeft }: L
           onClick={composeOnSelection}
           className="absolute top-[-3px] right-8 z-[4] flex items-center gap-2.5 rounded-full bg-btn px-3.5 py-[7px] font-sans text-[12.5px] font-medium whitespace-nowrap text-btn-fg shadow-[0_8px_20px_rgba(0,0,0,0.16)]"
         >
-          Comment on lines {range[0]}–{range[1]}
+          {range[0] === range[1] ? `Comment on line ${range[0]}` : `Comment on lines ${range[0]}–${range[1]}`}
           <span className="font-mono text-[11px] text-faint">C</span>
         </button>
       )}

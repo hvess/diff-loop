@@ -28,7 +28,7 @@ group("api.loadReview", () => {
       { kind: "rest", review: rest },
     ];
     sent.fails = false;
-    const review = await api.loadReview({ kind: "uncommitted" }, [], []);
+    const review = await api.loadReview({ kind: "uncommitted" }, [], [], false);
     expect(review.files.map((f) => (f.kind === "unchanged" ? f.path : ""))).toEqual(["a", "b", "c"]);
     expect(review.checkout).toBe(rest.checkout);
   });
@@ -36,7 +36,7 @@ group("api.loadReview", () => {
   it("fails when the command does", async () => {
     sent.parts = [];
     sent.fails = true;
-    await expect(api.loadReview({ kind: "uncommitted" }, [], [])).rejects.toThrow("gone");
+    await expect(api.loadReview({ kind: "uncommitted" }, [], [], false)).rejects.toThrow("gone");
   });
 });
 

@@ -230,9 +230,9 @@ impl Session {
     }
 
     /// Begins a load of `of`: its number, and the last load with what was
-    /// touched since, while a watch runs. Takes both, so a load that fails
-    /// leaves the next to read everything.
-    fn begin_load(&self, of: &Shared) -> (u64, Option<(Loaded, Touched)>) {
+    /// touched since, while a watch runs and the load is not `full`. Takes
+    /// both, so a load that fails leaves the next to read everything.
+    fn begin_load(&self, of: &Shared, full: bool) -> (u64, Option<(Loaded, Touched)>) {
         let current = lock(&self.current);
         let watch = lock(&self.watch);
         let loaded = lock(&self.loaded).take();
@@ -244,6 +244,9 @@ impl Session {
             .and_then(|watching| {
                 // Taken even for a full read, which covers it.
                 let touched = mem::take(&mut *lock(&watching.touched));
+                if full {
+                    return None;
+                }
                 Some((loaded?, touched))
             });
         (*loads, since)
@@ -348,17 +351,19 @@ async fn refs(session: State<'_, Session>) -> Result<Vec<BaseRef>, CommandError>
 /// Sends the open checkout against `base` through `parts`, with `comments`
 /// moved onto their code; files the front end already holds (`known`) are
 /// named, not sent. While a watch runs, a load after the first reads again
-/// only what it saw touched, unless that needs everything (ADR 0005 §3).
+/// only what it saw touched, unless that needs everything (ADR 0005 §3) or
+/// it is `full`.
 #[tauri::command]
 async fn load_review(
     base: Base,
     comments: Vec<Comment>,
     known: Vec<KnownFile>,
+    full: bool,
     parts: Channel<ReviewPart>,
     session: State<'_, Session>,
 ) -> Result<(), CommandError> {
     let repository = session.current()?;
-    let (number, since) = session.begin_load(&repository);
+    let (number, since) = session.begin_load(&repository, full);
     let reading = Arc::clone(&repository);
     let (mut review, loaded) =
         blocking(move || diff_loop_core::load(&*reading, base, comments, known, since)).await?;
@@ -728,7 +733,7 @@ mod tests {
 
     /// A load of `repository` that began and finished.
     fn load_and_keep(session: &Session, repository: &Shared) {
-        let (number, _) = session.begin_load(repository);
+        let (number, _) = session.begin_load(repository, false);
         session.keep_loaded(repository, number, loaded(repository));
     }
 
@@ -739,7 +744,7 @@ mod tests {
         session.replace(Arc::clone(&repository));
         load_and_keep(&session, &repository);
         assert!(lock(&session.loaded).is_none());
-        assert!(session.begin_load(&repository).1.is_none());
+        assert!(session.begin_load(&repository, false).1.is_none());
     }
 
     #[test]
@@ -753,13 +758,32 @@ mod tests {
         assert!(session.keep_watch(&repository, watch));
         load_and_keep(&session, &repository);
         lock(&touched).add(Touched::Paths(["a.ts".to_owned()].into()));
-        let (_, since) = session.begin_load(&repository);
+        let (_, since) = session.begin_load(&repository, false);
         let (_, seen) = since.unwrap();
         assert_eq!(seen, Touched::Paths(["a.ts".to_owned()].into()));
         assert_eq!(*lock(&touched), Touched::default());
         assert!(
-            session.begin_load(&repository).1.is_none(),
+            session.begin_load(&repository, false).1.is_none(),
             "taken, not copied"
+        );
+    }
+
+    #[test]
+    fn a_full_load_reads_everything_and_takes_what_was_touched() {
+        let (_dir, repository) = git_repository();
+        let session = Session::new(open_git);
+        session.replace(Arc::clone(&repository));
+        let stopped = Arc::new(AtomicBool::new(false));
+        let watch = watching(&stopped);
+        let touched = Arc::clone(&watch.touched);
+        assert!(session.keep_watch(&repository, watch));
+        load_and_keep(&session, &repository);
+        lock(&touched).add(Touched::Paths(["a.ts".to_owned()].into()));
+        assert!(session.begin_load(&repository, true).1.is_none());
+        assert_eq!(*lock(&touched), Touched::default());
+        assert!(
+            lock(&session.loaded).is_none(),
+            "taken, as any load takes it"
         );
     }
 
@@ -772,7 +796,7 @@ mod tests {
         assert!(session.keep_watch(&repository, watching(&stopped)));
         load_and_keep(&session, &repository);
         assert!(session.keep_watch(&repository, watching(&stopped)));
-        assert!(session.begin_load(&repository).1.is_none());
+        assert!(session.begin_load(&repository, false).1.is_none());
     }
 
     /// Regression: a load begun before a watch started was kept after it.
@@ -781,7 +805,7 @@ mod tests {
         let (_dir, repository) = git_repository();
         let session = Session::new(open_git);
         session.replace(Arc::clone(&repository));
-        let (before, _) = session.begin_load(&repository);
+        let (before, _) = session.begin_load(&repository, false);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&repository, watching(&stopped)));
         session.keep_loaded(&repository, before, loaded(&repository));
@@ -808,8 +832,8 @@ mod tests {
         session.replace(Arc::clone(&repository));
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&repository, watching(&stopped)));
-        let (older, _) = session.begin_load(&repository);
-        let (newer, _) = session.begin_load(&repository);
+        let (older, _) = session.begin_load(&repository, false);
+        let (newer, _) = session.begin_load(&repository, false);
         session.keep_loaded(&repository, older, loaded(&repository));
         assert!(lock(&session.loaded).is_none());
         session.keep_loaded(&repository, newer, loaded(&repository));

@@ -12,8 +12,10 @@ import { Composer } from "./Composer";
 import { DiffView } from "./DiffView";
 
 /** The selected file: its header, then its diff or a card for what a diff can't show. */
-export function FilePane({ onCompareWithAnother }: { onCompareWithAnother: () => void }) {
+export function FilePane() {
   const review = useStore((s) => s.review);
+  const setBasePicker = useStore((s) => s.setBasePicker);
+  const onCompareWithAnother = () => setBasePicker(true);
   const loading = useStore((s) => s.loading);
   const problem = useStore((s) => s.loadProblem);
   const base = useStore((s) => s.base);

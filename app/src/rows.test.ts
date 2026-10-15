@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FileDiff } from "./bindings/FileDiff";
 import type { Hunk } from "./bindings/Hunk";
 import type { Line } from "./bindings/Line";
-import { type Cell, gapAfter, gapBefore, gutterLine, REST, splitRows, unifiedRows } from "./rows";
+import { type Cell, gapAfter, gapBefore, gapKey, gapsOf, gutterLine, REST, splitRows, unifiedRows } from "./rows";
 
 const ctx = (old: number, new_: number): Line => ({ kind: "context", old, new: new_, text: "x" });
 const add = (new_: number): Line => ({ kind: "added", new: new_, text: "+" });
@@ -47,6 +47,23 @@ describe("gapAfter", () => {
   it("is absent where the diff is the whole file", () => {
     expect(gapAfter({ ...file, status: { kind: "added" } })).toBeNull();
     expect(gapAfter({ ...file, status: { kind: "deleted" } })).toBeNull();
+  });
+});
+
+describe("gapsOf", () => {
+  it("lists every gap with lines, in order, keyed as the rows expand them", () => {
+    expect(gapsOf(file)).toEqual([
+      { key: gapKey(first), gap: { oldFirst: 1, newFirst: 1, count: 1 } },
+      { key: gapKey(second), gap: { oldFirst: 9, newFirst: 9, count: 5 } },
+      { key: REST, gap: { oldFirst: 16, newFirst: 17, count: null } },
+    ]);
+  });
+
+  it("leaves out gaps with no lines, and the rest of a file whose diff is all of it", () => {
+    const atTop = hunk(1, 1, [add(1)]);
+    const touching = hunk(1, 2, [ctx(1, 2)]);
+    expect(gapsOf(modified([atTop, touching])).map((g) => g.key)).toEqual([REST]);
+    expect(gapsOf({ ...modified([atTop]), status: { kind: "added" } })).toEqual([]);
   });
 });
 

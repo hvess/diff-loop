@@ -145,6 +145,35 @@ own decisions to depart from it, each recorded with both halves.
   `entering-data` page asks that a field look like one; the v2 design
   draws the instructions as a panel, and its footer says "You can edit
   the text before copying." Focused, it has the focus ring.
+- **Most review shortcuts are single keys** (diff-loop-app Decision 29;
+  the developer's call, 2026-10-15). The HIG `keyboards` page prefers
+  Command as the main modifier of a custom shortcut, and warns that many
+  new shortcuts make an app seem hard to learn. The developer chose
+  single keys for the review's most frequent moves (J / K, N / P, V, C,
+  E, Shift-X) and arrows for the line cursor; none of these acts in a
+  text field.
+- **⌘/Ctrl-Shift-B opens the base picker** (diff-loop-app Decision 29;
+  the developer's call, 2026-10-15). The HIG `keyboards` page says to
+  avoid adding a modifier to an existing shortcut for an unrelated
+  command, and ⌘B is Bold; no field in the app formats text.
+- **Alt-Return (Option-Return) turns Suggest code on or off in the
+  composer** (diff-loop-app Decision 29; the developer's call,
+  2026-10-15). The HIG `keyboards` page says to prefer a modifier other
+  than Command only with alphabetic characters, and in a text field
+  Option-Return otherwise types a line break. The developer chose it
+  for Suggest code; Return alone still types the line break.
+- **⌘/Ctrl-Shift-C copies the review and ⌘/Ctrl-Shift-P opens its
+  preview** (diff-loop-app Decision 29; the developer's call,
+  2026-10-15). The HIG `keyboards` page lists them as Show Colors and Page
+  Setup, and allows redefining a standard shortcut whose action makes no
+  sense in the app; Diff Loop has neither a colour panel nor printing.
+- **The new shortcuts are not shown on the controls they drive**
+  (diff-loop-app Decision 29; the developer's call, 2026-10-15; open
+  task 17). The HIG `offering-help` page offers tips and tooltips to help
+  people "discover faster ways to accomplish a task". The developer chose
+  to build the keys first and show them later, in a list of their own;
+  the hints already there (V on Viewed, C on the range pill, N / P in the
+  comments list) stay.
 
 ## Settled wording
 

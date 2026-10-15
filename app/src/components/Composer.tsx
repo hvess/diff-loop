@@ -12,7 +12,7 @@ export function targetLabel(target: Target): string {
   return target.start === end ? `${prefix} ${target.start}` : `${prefix}s ${target.start}–${end}`;
 }
 
-/** Writes or edits a comment; Return with the command key saves, Esc cancels. */
+/** Writes or edits a comment; Return with the command key saves, with Alt (Option) turns Suggest code on or off, Esc cancels. */
 export function Composer({ floating = false }: { floating?: boolean }) {
   const composer = useStore((s) => s.composer);
   const update = useStore((s) => s.updateComposer);
@@ -22,8 +22,9 @@ export function Composer({ floating = false }: { floating?: boolean }) {
   const code = useRef<HTMLTextAreaElement>(null);
   const suggesting = composer?.suggestion !== null && composer?.suggestion !== undefined;
 
+  // Typing goes on in the field left: the code once Suggest code is on, the text once it is off.
   useEffect(() => {
-    if (suggesting) code.current?.focus();
+    (suggesting ? code : text).current?.focus();
   }, [suggesting]);
 
   if (!composer) return null;
@@ -31,6 +32,9 @@ export function Composer({ floating = false }: { floating?: boolean }) {
   const canSuggest = target.kind === "lines" && target.side === "new";
   // Code that changes the lines saves without a reason (diff-loop-app.md Decision 22).
   const reasonOptional = composer.suggestion !== null && canSave({ ...composer, text: "" });
+  const toggleSuggestion = () => {
+    if (target.kind === "lines") update({ suggestion: composer.suggestion === null ? suggestable(target.code) : null });
+  };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -40,6 +44,9 @@ export function Composer({ floating = false }: { floating?: boolean }) {
     } else if (e.key === "Enter" && hasMod(e)) {
       e.preventDefault();
       save();
+    } else if (e.key === "Enter" && e.altKey && canSuggest) {
+      e.preventDefault();
+      toggleSuggestion();
     }
   };
 
@@ -93,7 +100,7 @@ export function Composer({ floating = false }: { floating?: boolean }) {
           <button
             type="button"
             aria-pressed={composer.suggestion !== null}
-            onClick={() => update({ suggestion: composer.suggestion === null ? suggestable(target.code) : null })}
+            onClick={toggleSuggestion}
             className={`flex items-center gap-1.5 rounded-full border px-2.5 py-[3px] font-medium ${
               composer.suggestion !== null ? "border-muted2 bg-chip text-fg" : "border-line text-muted2"
             }`}

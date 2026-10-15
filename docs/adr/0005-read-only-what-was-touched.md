@@ -42,6 +42,7 @@ each time. The developer chose rebuilding per changed path, 2026-10-13.
    `Loaded`; only files sent to the front end are copied. While watching, a watch event or focus
    loads; without a watch, focus and the 2 s poll compare fingerprints as
    before. A load that changes nothing leaves the window's state alone.
+   (Amended by ADR 0014 §1: a load asked to be `full` reads everything.)
 
 ## Consequences
 
@@ -53,6 +54,7 @@ each time. The developer chose rebuilding per changed path, 2026-10-13.
   ends.
 - Changes git makes only to the index (`git rm --cached`) show at the
   next full read: a moved snapshot, another base, or reopening.
+  (Amended by ADR 0014: ⌘/Ctrl-R asks for a full read too.)
 - A rename into a path the watch did not touch shows as an addition and
   a deletion until the next full read. Both are open-tasks 10.
 - Past 10,000 paths between loads (`MOST_KEPT`), what was touched counts

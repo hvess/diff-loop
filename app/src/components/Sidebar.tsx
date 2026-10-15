@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { memo, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import type { FileDiff } from "../bindings/FileDiff";
 import { showMenu } from "../contextMenu";
 import { nameOf } from "../path";
@@ -44,13 +44,14 @@ export function progressText(left: number, reviewed: number, total: number): [st
 
 /**
  * The changed files as a tree, under how much is left to review. Virtualized,
- * and every per-key path (arrows, V) is O(1) in the number of files: rows and
+ * and every per-key path (arrows, J / K, V) is O(1) in the number of files: rows and
  * indexes come from the review, counts are cached per file.
  */
 export function Sidebar() {
   const review = useStore((s) => s.review);
   const selected = useStore((s) => s.selected);
   const select = useStore((s) => s.select);
+  const stepFile = useStore((s) => s.stepFile);
   const scroller = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => review?.tree ?? [], [review]);
   const rowOf = useMemo(
@@ -64,6 +65,15 @@ export function Sidebar() {
     getItemKey: (i) => rows[i]!.key,
     overscan: 12,
   });
+  // The file a key selected (arrows, J / K, N / P) comes into view; only when the selection
+  // moves, not when the rows change under it, which would undo the reader's scrolling.
+  const scrolledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (selected === null || scrolledFor.current === selected) return;
+    scrolledFor.current = selected;
+    const row = rowOf.get(selected);
+    if (row !== undefined) virtual.scrollToIndex(row);
+  }, [selected, rowOf, virtual]);
   if (!review) return <aside className="w-[272px] flex-none border-r border-border bg-side" />;
 
   if (review.changes.files.length === 0) {
@@ -76,15 +86,6 @@ export function Sidebar() {
     );
   }
 
-  const move = (step: number) => {
-    const at = selected === null ? -1 : (review.position.get(selected) ?? -1);
-    const next = review.order[Math.min(review.order.length - 1, Math.max(0, at + step))];
-    if (!next) return;
-    select(next.path);
-    const row = rowOf.get(next.path);
-    if (row !== undefined) virtual.scrollToIndex(row);
-  };
-
   return (
     <aside className="flex w-[272px] flex-none flex-col border-r border-border bg-side">
       <Progress />
@@ -94,8 +95,10 @@ export function Sidebar() {
         aria-label="Changed files"
         tabIndex={0}
         onKeyDown={(e) => {
-          if (e.key === "ArrowDown") move(1);
-          else if (e.key === "ArrowUp") move(-1);
+          // With a modifier, the arrows are the diff's (Shift and Alt, keys.ts).
+          if (e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) return;
+          if (e.key === "ArrowDown") stepFile(1);
+          else if (e.key === "ArrowUp") stepFile(-1);
           else return;
           e.preventDefault();
         }}

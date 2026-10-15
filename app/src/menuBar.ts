@@ -50,11 +50,20 @@ export async function installMenuBar(): Promise<() => void> {
       if (!dialogOpen()) s.openFind();
     }),
   });
-  const findNext = await MenuItem.new({ text: "Find Next", accelerator: "CmdOrCtrl+G", action: act((s) => s.stepFind(1)) });
+  // Held back under a dialog, as ⌘G is in the window (diff-loop-app.md Decision 29).
+  const findNext = await MenuItem.new({
+    text: "Find Next",
+    accelerator: "CmdOrCtrl+G",
+    action: act((s) => {
+      if (!dialogOpen()) s.stepFind(1);
+    }),
+  });
   const findPrevious = await MenuItem.new({
     text: "Find Previous",
     accelerator: "CmdOrCtrl+Shift+G",
-    action: act((s) => s.stepFind(-1)),
+    action: act((s) => {
+      if (!dialogOpen()) s.stepFind(-1);
+    }),
   });
   const windowMenu = await Submenu.new({
     text: "Window",

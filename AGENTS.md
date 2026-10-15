@@ -124,6 +124,9 @@ before reopening a decision they cover.
   end, and the core's roles are gone; instructions are always Markdown
   with code quoted, edited in the preview for that copy; no general note
   is kept, and an earlier `reviews.json`'s note is ignored.
+- **0014 — A full read on request.** `load_review` takes `full`, which
+  reads everything even while a watch runs; ⌘/Ctrl-R asks for one, so
+  changes the watch cannot see show on request.
 
 ## Key Constraints (non-negotiable)
 
