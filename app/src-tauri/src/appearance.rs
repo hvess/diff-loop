@@ -1,5 +1,5 @@
-//! Follows the desktop's light or dark preference on Linux, which GTK 3 does
-//! not read, through the XDG settings portal (ADR 0010 §4).
+//! Follows the desktop's light or dark preference on Linux through the XDG
+//! settings portal, which GTK 3 does not read (ADR 0010 §4, ADR 0019).
 
 use std::fmt;
 
@@ -8,6 +8,7 @@ use gio::{
     glib::{Value, Variant, VariantTy},
     prelude::*,
 };
+use gtk::{Settings, prelude::GtkSettingsExt};
 use tauri::{AppHandle, Theme};
 
 const NAMESPACE: &str = "org.freedesktop.appearance";
@@ -84,9 +85,34 @@ fn read(app: &AppHandle, proxy: &DBusProxy) {
     );
 }
 
-/// Sets the app's theme from a `color-scheme` value.
+/// Sets the app's theme from a `color-scheme` value, and the GTK theme it
+/// draws with: the desktop's, or, when light is asked for and the desktop's
+/// is dark by name, its light one (ADR 0019 §1).
 fn apply(app: &AppHandle, value: &Variant) {
-    app.set_theme(scheme_of(value).and_then(theme_of));
+    let wanted = scheme_of(value).and_then(theme_of);
+    app.set_theme(wanted);
+    let Some(settings) = Settings::default() else {
+        return;
+    };
+    // Back to the desktop's theme, which GTK keeps following once no app
+    // value is set over it.
+    settings.reset_property("gtk-theme-name");
+    if wanted != Some(Theme::Light) {
+        return;
+    }
+    let desktop = settings.gtk_theme_name();
+    if let Some(light) = desktop.as_deref().and_then(light_of) {
+        // One not installed GTK draws as Adwaita.
+        settings.set_gtk_theme_name(Some(light));
+    }
+}
+
+/// The light theme of one dark by name, case aside: `Arc-Dark` is `Arc`'s
+/// dark one. `None` for a theme not dark by name.
+fn light_of(theme: &str) -> Option<&str> {
+    let cut = theme.len().checked_sub("-dark".len())?;
+    let (base, suffix) = theme.split_at_checked(cut)?;
+    (!base.is_empty() && suffix.eq_ignore_ascii_case("-dark")).then_some(base)
 }
 
 /// A `color-scheme` value: `ReadOne` and `SettingChanged` send it bare, older
@@ -119,6 +145,17 @@ mod tests {
         assert_eq!(theme_of(1), Some(Theme::Dark));
         assert_eq!(theme_of(2), Some(Theme::Light));
         assert_eq!(theme_of(3), None);
+    }
+
+    #[test]
+    fn a_theme_dark_by_name_has_its_light_one() {
+        assert_eq!(light_of("Arc-Dark"), Some("Arc"));
+        assert_eq!(light_of("Adwaita-dark"), Some("Adwaita"));
+        assert_eq!(light_of("Arc-Darker"), None);
+        assert_eq!(light_of("Arc"), None);
+        assert_eq!(light_of("Dark"), None);
+        assert_eq!(light_of("-dark"), None);
+        assert_eq!(light_of("Ünïcode-dark"), Some("Ünïcode"));
     }
 
     #[test]

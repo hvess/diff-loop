@@ -30,12 +30,6 @@ contradicts) and the entry says so before it goes.
     Closes when a worktree's records are shown to be protected, or are
     kept where they are, or the developer decides the gap is fine.
 
-14. **A dark-named GTK theme overrides the portal's light preference.**
-    `appearance::follow` (`app/src-tauri/src/appearance.rs`) sets GTK's
-    prefer-dark off, but WebKitGTK also reads the theme's name, so under
-    `Arc-Dark` the window stays dark (ADR 0010, Consequences). Closes when
-    a light preference shows light under such a theme, or the developer
-    decides the theme should win.
 15. **The macOS side of ADR 0010 has not run on a Mac**: the menu bar
     (`app/src/menuBar.ts`), the traffic lights' position and background
     throttling (`app/src-tauri/tauri.conf.json`), and the beep rule

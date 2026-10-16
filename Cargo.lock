@@ -615,6 +615,7 @@ dependencies = [
  "diff-loop-core",
  "diff-loop-git",
  "gio",
+ "gtk",
  "serde",
  "serde_json",
  "tauri",

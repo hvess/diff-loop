@@ -51,6 +51,8 @@ WebKitGTK renderer.
    `prefers-color-scheme`). GTK 3 does not read the portal itself. It
    talks D-Bus through `gio`, already in the build under Tauri's GTK stack
    (0.18), now named directly for Linux.
+   (Amended by ADR 0019: a GTK theme dark by name gives way to its light
+   one when light is asked for.)
 5. **Menus are native, built with Tauri's menu API from the front end.**
    On macOS the app installs a menu bar (`menuBar.ts`): the app menu,
    File, Edit (the system's Undo, Redo, Cut, Copy, Paste, Select All),
@@ -71,7 +73,8 @@ WebKitGTK renderer.
   build is added, this needs looking at again.
 - A Linux desktop whose GTK theme is a dark one by name (`Arc-Dark`)
   stays dark when the portal asks for light: WebKitGTK reads the theme
-  name too (open task 14).
+  name too (open task 14). (Amended by ADR 0019: such a theme gives way
+  to its light one.)
 - The macOS side is untested on a Mac at the time of writing; Linux was
   walked (open task 15).
 - A hybrid laptop with the NVIDIA module loaded uses shared-memory

@@ -27,8 +27,9 @@ tauri-plugin-dialog            = "2.8.2"
 tauri-plugin-window-state      = "2.5.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-# The version Tauri's GTK stack already uses (Cargo.lock).
+# The versions Tauri's GTK stack already uses (Cargo.lock).
 gio = "0.18.4"
+gtk = "0.18.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }

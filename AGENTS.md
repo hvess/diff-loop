@@ -144,6 +144,10 @@ before reopening a decision they cover.
   to the working tree's index makes the watch report everything, and an
   update reads a new addition or deletion with the opposite kind it
   holds, so neither waits for a full read.
+- **0019 — A GTK theme dark by name gives way to its light one.** On
+  Linux, when the portal asks for light and the desktop's GTK theme is
+  dark by name (`Arc-Dark`), the app draws with its light theme, so
+  WebKitGTK, which reads the name too, is light.
 
 ## Key Constraints (non-negotiable)
 
