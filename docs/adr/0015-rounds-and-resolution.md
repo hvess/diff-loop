@@ -126,6 +126,8 @@ say where).
    context. A saved review read again after a failed read is merged by
    the core (`merge`): rounds copied meanwhile count on from the saved
    ones, their comments following, and the bound holds.
+   (Amended by ADR 0020 §1: version 3, with when each tree was last
+   seen.)
 10. **The Undo banner goes.** A banner announces only a context change:
     a switched branch, a moved or rewritten branch, and how many open
     comments are not in this diff. "The agent updated the code" and
@@ -149,7 +151,8 @@ say where).
 - An earlier build reading a version 2 file reports it unreadable and
   leaves it alone (ADR 0004 §3); nothing is lost by running both.
 - `reviews.json` grows by up to 20 rounds per tree, each with its
-  Markdown; open-tasks 9's pruning concern grows with it.
+  Markdown; open-tasks 9's pruning concern grows with it (closed by
+  ADR 0020).
 - With the base at Uncommitted changes, a commit by the agent empties
   the diff: every sent comment reads as removed until the base is
   changed, where the judgement is suspended (§8). The developer has not

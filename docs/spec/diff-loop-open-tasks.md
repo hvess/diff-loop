@@ -13,16 +13,6 @@ contradicts) and the entry says so before it goes.
 
 ## App
 
-9. **Saved reviews are never pruned, nor shared safely between
-   instances.** `reviews.json` (ADR 0004) keeps an entry for every
-   working tree ever reviewed, moved or deleted ones included, and each
-   save rewrites it whole (`JsonReviews::save`,
-   `app/src-tauri/src/reviews.rs`); since ADR 0015 §9 each entry also
-   holds up to 20 rounds with their Markdown. Its lock is per process, so two
-   running instances can overwrite each other's saves. Closes when
-   entries for working trees that no longer exist are dropped, and
-   saving is safe across processes, or the developer decides against
-   either.
 11. **A linked worktree's pass records may be unguarded.** They sit in the
     main checkout's git directory (`.git/worktrees/<name>/`), outside the
     worktree's project, where the Claude Code deny rules `install-guard`

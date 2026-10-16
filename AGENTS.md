@@ -132,7 +132,8 @@ before reopening a decision they cover.
   a load judges each sent comment against what it was sent on
   (untouched, nearby changed, changed, removed, applied), marks a draft
   whose code went lost rather than removing it, and the reviewer
-  resolves with R; `reviews.json` is version 2, with rounds.
+  resolves with R; `reviews.json` is version 2, with rounds (3 since
+  ADR 0020).
 - **0016 — The sidebar folds, merges lone folders, and resizes.** Folders
   fold on a click, a chain of lone folders is one row, the edge drags
   the width, kept under `diff-loop.sidebar`.
@@ -148,6 +149,10 @@ before reopening a decision they cover.
   Linux, when the portal asks for light and the desktop's GTK theme is
   dark by name (`Arc-Dark`), the app draws with its light theme, so
   WebKitGTK, which reads the name too, is light.
+- **0020 — Saved reviews are pruned when their tree is long gone, and
+  saved in turn.** `reviews.json` version 3 records when each tree was
+  last seen; a save drops a review whose tree has been missing for 30
+  days, and holds a lock beside the file so two instances take turns.
 
 ## Key Constraints (non-negotiable)
 

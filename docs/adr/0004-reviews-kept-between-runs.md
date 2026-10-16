@@ -35,6 +35,8 @@ review in progress.
    (Amended by ADR 0015 §9: version 2, with rounds; a version 1 file is
    read and written back as 2.) Each
    save writes `reviews.json.next` and renames it over the file.
+   (Amended by ADR 0020: version 3, with when each tree was last seen;
+   saves take turns across processes on `reviews.json.lock`.)
 4. **When:** the front end reads the saved review before a checkout
    shows, and sets it with the checkout, so `load` moves its comments
    onto their code and opening is not a change. It saves on every change
@@ -58,4 +60,5 @@ review in progress.
 - A failed read or write shows "Saved comments are unavailable" above
   the review, with Try again; the comments stay in the window.
 - A moved or deleted working tree leaves its entry behind; nothing
-  prunes it (open-tasks 9).
+  prunes it (open-tasks 9; since 2026-10-16 a save drops one whose tree
+  has been missing 30 days, ADR 0020).

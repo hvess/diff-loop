@@ -571,6 +571,12 @@ change, annotate, hand off to the agent, next round.
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
 
+## Progress (2026-10-16, saved reviews pruned and locked)
+
+ADR 0020: `reviews.json` is version 3, with when each tree was last
+seen; a review whose tree has been missing for 30 days is dropped, and
+saves take turns across processes (`reviews.rs`), closing open-tasks 9.
+
 ## Progress (2026-10-16, a dark-named GTK theme)
 
 ADR 0019: on Linux, a GTK theme dark by name gives way to its light one
