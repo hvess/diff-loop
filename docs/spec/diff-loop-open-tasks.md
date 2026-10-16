@@ -78,13 +78,6 @@ contradicts) and the entry says so before it goes.
     item) opens a list of the shortcuts drawn from `BINDINGS`, or the
     developer decides against one.
 
-18. **Against Uncommitted changes, a commit by the agent reads as every
-    sent comment removed.** The diff against `HEAD` empties when the agent
-    commits, so each sent comment is judged removed (ADR 0015 §3), and
-    changing the base to see the work suspends the judgement (§8,
-    `anchor::reanchor`). Closes when a round sent against Uncommitted
-    changes is judged against the commit that followed, or the developer
-    decides the base's meaning is fine.
 19. **The design's README is not the repository's.** The design project
     holds a `README.md` for a public repository (an MIT licence, release
     badges, a screenshot at `docs/review-screen.png`, build-from-source

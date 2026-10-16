@@ -26,5 +26,5 @@ pub use repository::{
     WatchGuard,
 };
 pub use review::{KnownFile, Loaded, Opening, Review, ReviewFile, load, open};
-pub use rounds::{Round, RoundRequest, end_round, merge};
+pub use rounds::{Round, RoundRequest, end_round, merge, round_to_follow};
 pub use saved::{ReviewStore, SavedReview, StoreError};

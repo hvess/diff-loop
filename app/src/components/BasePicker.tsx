@@ -41,7 +41,8 @@ export function refHint(ref: BaseRef): string {
 export function baseLabel(base: Base): string {
   switch (base.kind) {
     case "ref":
-      return base.name;
+      // A commit named in full, as following a round names one, shows as its short id.
+      return /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(base.name) ? shortId(base.name) : base.name;
     case "uncommitted":
       return "uncommitted changes";
     case "lastCommit":

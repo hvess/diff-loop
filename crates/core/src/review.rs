@@ -167,7 +167,7 @@ pub fn load(
     };
     let comments = comments
         .into_iter()
-        .map(|c| reanchor(c, &changes.files, &now))
+        .map(|c| reanchor(c, &changes.files, &now, checkout.commit.as_deref()))
         .collect();
     let known: HashMap<String, String> = known.into_iter().map(|k| (k.path, k.signature)).collect();
     // Only what is sent is cloned: the changes move whole into `Loaded`.
@@ -220,7 +220,7 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::{
-        anchor::{AnchorState, Target},
+        anchor::{AnchorState, Sent, Target, Verdict},
         base::RefKind,
         diff::{
             Side,
@@ -316,6 +316,53 @@ pub(crate) mod tests {
             review.comments[0].target,
             Target::Lines { start: 2, .. }
         ));
+    }
+
+    #[test]
+    fn load_judges_a_round_sent_on_uncommitted_changes_only_at_or_against_its_commit() {
+        let repo = Fixed(vec![text_file("a.ts", vec![add(1, "x")])]);
+        let target = Target::Lines {
+            side: Side::New,
+            start: 1,
+            code: vec!["x".into()],
+        };
+        let place = Place {
+            base: Base::Uncommitted,
+            head: Head::Branch {
+                name: "agent/x".into(),
+            },
+        };
+        // Sent at `old`; the repository's `HEAD` is `abc`, a commit on top.
+        let comment = Comment {
+            id: "c".into(),
+            path: "a.ts".into(),
+            target: target.clone(),
+            text: "t".into(),
+            suggestion: None,
+            state: AnchorState::Current,
+            place: Some(place.clone()),
+            sent: Some(Sent {
+                round: 1,
+                place,
+                commit: Some("old".into()),
+                target,
+                before: vec![],
+                after: vec![],
+                text: "t".into(),
+                suggestion: None,
+                verdict: Some(Verdict::Untouched),
+            }),
+            resolved: None,
+        };
+        let verdict = |base: Base| {
+            let (review, _) = load(&repo, base, vec![comment.clone()], vec![], None).unwrap();
+            review.comments[0].sent.as_ref().unwrap().verdict
+        };
+        assert_eq!(verdict(Base::Uncommitted), None);
+        assert_eq!(
+            verdict(Base::Ref { name: "old".into() }),
+            Some(Verdict::Untouched)
+        );
     }
 
     #[test]

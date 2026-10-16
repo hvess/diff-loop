@@ -16,6 +16,7 @@ vi.mock("./api", () => ({
     loadReview: vi.fn(),
     fingerprint: vi.fn(),
     commitsBetween: vi.fn(() => Promise.resolve(1)),
+    roundToFollow: vi.fn(() => Promise.resolve(null)),
     refs: vi.fn(() => Promise.resolve([])),
     watchRepository: vi.fn(() => Promise.resolve(true)),
     fileLines: vi.fn(),
@@ -316,8 +317,75 @@ describe("reloading", () => {
     await openWith("/a", { comments: [comment("c")], rounds: [] });
     answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
     await useStore.getState().reload();
-    expect(useStore.getState().banner).toEqual({ title: "The branch moved: 1 new commit", previous: "abc" });
+    expect(useStore.getState().banner).toEqual({
+      title: "The branch moved: 1 new commit",
+      action: { label: "Show what changed", base: { kind: "ref", name: "abc" } },
+    });
     expect(useStore.getState().comments.map((c) => c.id)).toEqual(["c"]);
+  });
+
+  it("follows a commit made on top of a round the core names, comparing with the round's commit", async () => {
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    vi.mocked(api.roundToFollow).mockResolvedValueOnce(1);
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    answerNextLoadWithCodeGone("/a", "current", "agent/x", "def");
+    await useStore.getState().reload();
+    expect(vi.mocked(api.roundToFollow).mock.lastCall?.slice(1)).toEqual([
+      { base: { kind: "uncommitted" }, head: { kind: "branch", name: "agent/x" } },
+      "abc",
+    ]);
+    expect(useStore.getState().base).toEqual({ kind: "ref", name: "abc" });
+    expect(useStore.getState().banner).toEqual({
+      title: "The branch moved: 1 new commit · showing changes since round 1 (abc)",
+      action: { label: "Show uncommitted changes", base: { kind: "uncommitted" } },
+    });
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    await useStore.getState().takeBannerAction();
+    expect(useStore.getState().base).toEqual({ kind: "uncommitted" });
+    expect(useStore.getState().banner).toBeNull();
+  });
+
+  it("does not follow a commit when the reviewer has just chosen the uncommitted changes", async () => {
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    await useStore.getState().setBase({ kind: "lastCommit" });
+    vi.mocked(api.roundToFollow).mockClear();
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    await useStore.getState().setBase({ kind: "uncommitted" });
+    expect(api.roundToFollow).not.toHaveBeenCalled();
+    expect(useStore.getState().base).toEqual({ kind: "uncommitted" });
+    expect(useStore.getState().banner?.title).toBe("The branch moved: 1 new commit");
+  });
+
+  it("drops the follow's banner when the reviewer picks another base while it loads", async () => {
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    vi.mocked(api.roundToFollow).mockResolvedValueOnce(1);
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    vi.mocked(api.loadReview).mockImplementationOnce((base, comments) => {
+      useStore.setState({ base: { kind: "lastCommit" } });
+      return Promise.resolve<Review>({
+        checkout: { ...opening("/a").checkout, commit: "def" },
+        base,
+        fingerprint: null,
+        snapshot: { old: null, new: { kind: "workingTree" } },
+        files: [],
+        comments: structuredClone(comments),
+      });
+    });
+    await useStore.getState().reload();
+    expect(useStore.getState().base).toEqual({ kind: "lastCommit" });
+    expect(useStore.getState().banner).toBeNull();
+  });
+
+  it("does not follow a commit once the reviewer has picked another base", async () => {
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    vi.mocked(api.roundToFollow).mockImplementationOnce(() => {
+      useStore.setState({ base: { kind: "lastCommit" } });
+      return Promise.resolve(1);
+    });
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    await useStore.getState().reload();
+    expect(useStore.getState().base).toEqual({ kind: "lastCommit" });
+    expect(useStore.getState().banner).toBeNull();
   });
 
   it("counts the comments a load resolved itself", async () => {

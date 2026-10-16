@@ -136,6 +136,10 @@ before reopening a decision they cover.
 - **0016 — The sidebar folds, merges lone folders, and resizes.** Folders
   fold on a click, a chain of lone folders is one row, the edge drags
   the width, kept under `diff-loop.sidebar`.
+- **0017 — A round on the uncommitted changes follows a commit on top.**
+  Comments sent against the uncommitted changes are judged only at the
+  commit they were sent on, or compared with it by name; when the agent
+  commits on top, the window compares with that commit and says so.
 
 ## Key Constraints (non-negotiable)
 

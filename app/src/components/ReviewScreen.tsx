@@ -60,7 +60,7 @@ export function ReviewScreen() {
 /** The checkout changed under the review: a switched, moved or rewritten branch (ADR 0015 §10). */
 function Banner() {
   const banner = useStore((s) => s.banner);
-  const showWhatChanged = useStore((s) => s.showWhatChanged);
+  const takeAction = useStore((s) => s.takeBannerAction);
   const dismiss = useStore((s) => s.dismissBanner);
   const notInDiffCount = useStore((s) => (s.banner ? s.comments.filter(notInDiff).length : 0));
   const setCommentList = useStore((s) => s.setCommentList);
@@ -81,9 +81,9 @@ function Banner() {
             Show comments
           </button>
         )}
-        {banner.previous !== null && (
-          <button type="button" className="font-medium" onClick={() => void showWhatChanged()}>
-            Show what changed
+        {banner.action && (
+          <button type="button" className="font-medium" onClick={() => void takeAction()}>
+            {banner.action.label}
           </button>
         )}
         <button type="button" className="text-muted3" onClick={dismiss}>

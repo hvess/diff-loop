@@ -107,6 +107,9 @@ say where).
    finds their code; changed and untouched are shown only while the base
    and branch are the ones the round was sent on (`Sent::place`), and a
    sent comment found elsewhere carries no verdict.
+   (Amended by ADR 0017 §1: sent against the uncommitted changes, only
+   while `HEAD` is still the commit it was sent at, or with that commit
+   as the base.)
 9. **Rounds persist per working tree** in `reviews.json`, version 2:
    `{"version": 2, "reviews": {"<root>": {"comments": [...],
    "rounds": [...]}}}`, each comment carrying where it was last seen
@@ -149,4 +152,5 @@ say where).
 - With the base at Uncommitted changes, a commit by the agent empties
   the diff: every sent comment reads as removed until the base is
   changed, where the judgement is suspended (§8). The developer has not
-  been asked for a rule here; open task 18.
+  been asked for a rule here; open task 18 (since 2026-10-16: ADR 0017
+  judges such a round at its commit and follows a commit on top).

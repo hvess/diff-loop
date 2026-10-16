@@ -201,6 +201,21 @@ fn prune(review: SavedReview) -> SavedReview {
     SavedReview { comments, rounds }
 }
 
+/// The round a commit on top of `previous` is followed for, seen at `now`:
+/// the newest with an open comment sent against the uncommitted changes at
+/// `previous` on `now`'s branch (ADR 0017 §2). O(comments), once per move of
+/// `HEAD`.
+#[must_use]
+pub fn round_to_follow(comments: &[Comment], now: &Place, previous: &str) -> Option<u32> {
+    comments
+        .iter()
+        .filter(|c| c.resolved.is_none())
+        .filter_map(|c| c.sent.as_ref())
+        .filter(|sent| sent.follows(now, previous))
+        .map(|sent| sent.round)
+        .max()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,6 +272,55 @@ mod tests {
             at: 1_000,
             markdown: "md".into(),
         }
+    }
+
+    /// `comments` sent in a round against the uncommitted changes at `abc`.
+    fn sent_uncommitted(comments: Vec<Comment>, rounds: Vec<Round>) -> SavedReview {
+        let mut request = request(comments, rounds);
+        request.place.base = Base::Uncommitted;
+        end_round(request)
+    }
+
+    #[test]
+    fn a_commit_on_top_follows_the_newest_round_with_an_open_comment_sent_on_uncommitted_changes() {
+        let first = sent_uncommitted(vec![draft("a", 4, &["l4"])], vec![]);
+        let mut comments = first.comments;
+        comments.push(draft("b", 1, &["l1"]));
+        let mut second = sent_uncommitted(comments, first.rounds);
+        let uncommitted = Place {
+            base: Base::Uncommitted,
+            ..place()
+        };
+        assert_eq!(
+            round_to_follow(&second.comments, &uncommitted, "abc"),
+            Some(2)
+        );
+        second.comments[1].resolved = Some(Resolution::ByReviewer);
+        second.comments[0].resolved = Some(Resolution::ByReviewer);
+        assert_eq!(round_to_follow(&second.comments, &uncommitted, "abc"), None);
+    }
+
+    #[test]
+    fn a_commit_on_top_is_not_followed_on_another_base_branch_or_commit() {
+        let review = sent_uncommitted(vec![draft("a", 4, &["l4"])], vec![]);
+        let uncommitted = Place {
+            base: Base::Uncommitted,
+            ..place()
+        };
+        let other_branch = Place {
+            head: Head::Branch {
+                name: "agent/y".into(),
+            },
+            ..uncommitted.clone()
+        };
+        assert_eq!(round_to_follow(&review.comments, &place(), "abc"), None);
+        assert_eq!(
+            round_to_follow(&review.comments, &other_branch, "abc"),
+            None
+        );
+        assert_eq!(round_to_follow(&review.comments, &uncommitted, "def"), None);
+        let drafts = [draft("d", 1, &["l1"])];
+        assert_eq!(round_to_follow(&drafts, &uncommitted, "abc"), None);
     }
 
     fn strings(l: &[&str]) -> Vec<String> {

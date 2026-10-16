@@ -13,7 +13,8 @@ export type Sent = {
  */
 round: number, 
 /**
- * Where it was sent; the judgement is made only there (ADR 0015 §8).
+ * Where it was sent; the judgement is made there, and for the
+ * uncommitted changes only at `commit` or against it (`judged_at`).
  */
 place: Place, 
 /**

@@ -20,9 +20,9 @@ mod renderer;
 mod reviews;
 
 use diff_loop_core::{
-    Base, BaseRef, Comment, Content, InstructionsRequest, KnownFile, Loaded, Opening, RepoError,
-    Repository, Review, ReviewFile, ReviewStore, RoundRequest, SavedReview, Side, Snapshot,
-    StoreError, Touched, WatchGuard,
+    Base, BaseRef, Comment, Content, InstructionsRequest, KnownFile, Loaded, Opening, Place,
+    RepoError, Repository, Review, ReviewFile, ReviewStore, RoundRequest, SavedReview, Side,
+    Snapshot, StoreError, Touched, WatchGuard,
 };
 use diff_loop_git::Git;
 use serde::Serialize;
@@ -470,6 +470,12 @@ fn end_round(request: RoundRequest) -> SavedReview {
     diff_loop_core::end_round(request)
 }
 
+/// The round a commit on top of `previous` is followed for, seen at `now` (ADR 0017 §2).
+#[tauri::command]
+fn round_to_follow(comments: Vec<Comment>, now: Place, previous: String) -> Option<u32> {
+    diff_loop_core::round_to_follow(&comments, &now, &previous)
+}
+
 /// The saved review merged into the window's, once a failed read is read again (ADR 0004 §5).
 #[tauri::command]
 fn merge_reviews(window: SavedReview, saved: SavedReview) -> SavedReview {
@@ -541,6 +547,7 @@ pub fn run() -> TauriResult<()> {
             file_lines,
             instructions,
             end_round,
+            round_to_follow,
             merge_reviews,
             launch_path,
             watch_repository,

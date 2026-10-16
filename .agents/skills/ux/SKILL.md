@@ -217,7 +217,12 @@ against other wording that would also do.
   not in this diff." A banner names only a context change ("Switched to
   agent/share-retry", "The branch moved: 2 new commits", "The branch was
   rewritten"); nothing says the agent updated the code, and nothing is
-  removed (ADR 0015 §10). Until 2026-10-15 it counted comments
+  removed (ADR 0015 §10). Following a commit on top of a round, the
+  title adds "· showing changes since round 3 (a1f3c9e)", the commit
+  the base picker names, and its action is "Show
+  uncommitted changes" in place of "Show what changed" (ADR 0017 §2; the
+  author's wording under the developer's instruction of 2026-10-16 to
+  fix every open task). Until 2026-10-15 it counted comments
   "addressed and removed", with "Undo removal".
 - **A comment's marks** (ADR 0015; the design's words, the developer's
   call, 2026-10-15). In the list: "Sent", "Changed", "Reopened", "Code

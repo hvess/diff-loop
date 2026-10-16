@@ -38,7 +38,10 @@ change, annotate, hand off to the agent, next round.
    previous `HEAD` when it moved — done 2026-10-13; from 2026-10-14 to
    2026-10-15 a load also removed comments whose code changed, with Undo
    in the banner; since 2026-10-15 the agent's work shows in the round
-   strip and on each sent comment instead (step 13, ADR 0015).
+   strip and on each sent comment instead (step 13, ADR 0015); since
+   2026-10-16 a commit on top of a round sent against the uncommitted
+   changes is followed, comparing with the round's commit, "The branch
+   moved: 1 new commit · showing changes since round 3 (a1f3c9e)" (ADR 0017).
 6. Expand unchanged lines: "Show N unchanged lines" before a hunk, and
    "Show the rest of the file" after the last, read them (`file_lines`,
    diff-loop-core `lines`) and show them, highlighted, in place (Decisions
@@ -140,7 +143,9 @@ change, annotate, hand off to the agent, next round.
 12. **The base picker's notes:** a branch or remote the checkout is
     behind says "N behind" (diff-loop-core Decision 13), a tag says
     "Tag", Uncommitted changes says how many files (`uncommitted_files`),
-    and Last commit shows its short id, as the design does. Refs and the
+    and Last commit shows its short id, as the design does; a base named
+    by a full commit id, as following a round names one, is shown by its
+    short id ("vs a1f3c9e", `baseLabel`; ADR 0017 §3). Refs and the
     file count are read again each time the picker opens.
 
 13. **Captions are read from names** (removed 2026-10-14, ADR 0013 §1;
@@ -177,7 +182,9 @@ change, annotate, hand off to the agent, next round.
     keeps its quoted code and offers Re-place and Delete. The banner names
     only a context change: a switched, moved or rewritten branch, with
     "N comments are not in this diff." and Show comments, which opens the
-    list below it, and Show what changed when `HEAD` moved. The wording
+    list below it, and Show what changed when `HEAD` moved, or Show
+    uncommitted changes when it follows a commit on top of a round,
+    already showing what changed (ADR 0017 §2). The wording
     is the `ux` skill's "Settled wording". Until 2026-10-14 the removal
     had no undo and no notice unless `HEAD` moved.
 17. **The window behaves as a native one** (ADR 0010 §1): hidden until
@@ -563,6 +570,13 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-16, a commit on top of a round)
+
+ADR 0017: a load on the uncommitted changes that finds `HEAD` moved on
+from an open round's commit compares with that commit (the
+`round_to_follow` command, asked from `app/src/store.ts`), and the base picker names a full commit id by its
+short one (step 5, Decisions 12 and 16).
 
 ## Progress (2026-10-15, rounds and resolution)
 

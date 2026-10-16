@@ -96,6 +96,7 @@ Each is a pure function tested here.
     "behind". The developer's call, 2026-10-13.
 14. **A sent comment is judged where it was sent** (ADR 0015 §3 and §8,
     `anchor::judge`): under the base and branch of its `Sent::place`,
+    or for the uncommitted changes as ADR 0017 §1 says (below),
     the two runs of context recorded either side of it (`CONTEXT`,
     three) are looked for bracketing some code, each `before` match
     paired only with the first `after` match past it in the same run of
@@ -116,14 +117,19 @@ Each is a pure function tested here.
     comment sent at a hunk's edge is only ever untouched, nearby changed
     or removed.
     Elsewhere it is found by its current target as a draft is, and
-    carries no verdict. A sent comment resolves itself once when its
+    carries no verdict; sent against the uncommitted changes, it is
+    judged only at the commit it was sent on, or with that commit as the
+    base by its full id (ADR 0017 §1, `Sent::judged_at`). A sent comment resolves itself once when its
     verdict becomes applied from another known verdict;
     `Resolution::SuggestionApplied`.
 15. **Whitespace alone is not a change** (ADR 0015 §7, `code::same_code`):
     lines match with trailing whitespace trimmed and a run of leading
     whitespace counting only as present or absent, in `reanchor` and the
     judgement alike.
-16. **A round ends with a copy** (ADR 0015 §1, `rounds::end_round`): every
+16. **A round ends with a copy** (ADR 0015 §1, `rounds::end_round`); a
+    commit on top of one sent against the uncommitted changes is followed
+    for the newest with an open comment (`rounds::round_to_follow`, ADR
+    0017 §2). Every
     unresolved comment is sent in a new round, numbered on from the last,
     with its target, text and suggestion as sent and up to `CONTEXT`
     lines either side of its code, read from the changed files the caller
@@ -152,6 +158,13 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-16, a commit on top of a round)
+
+ADR 0017: `reanchor` takes the commit at `HEAD`, and a comment sent
+against the uncommitted changes is judged at its commit (Decision 14);
+`round_to_follow` names the round a commit on top is followed for
+(Decision 16).
 
 ## Progress (2026-10-15, rounds and resolution)
 

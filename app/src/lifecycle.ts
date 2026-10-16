@@ -25,7 +25,7 @@ export function kindOf(c: Comment): Kind {
   if (c.state === "lost") return "lost";
   if (c.sent === null) return c.state === "outdated" ? "outdated" : "draft";
   if (reopened(c)) return c.state === "outdated" ? "outdated" : "reopened";
-  // A sent comment whose file left the diff where it was sent is outdated with a verdict: its code was removed.
+  // A sent comment whose file left the diff where it is judged is outdated with a verdict: its code was removed.
   if (changed(c)) return "changed";
   return c.state === "outdated" ? "outdated" : "sent";
 }

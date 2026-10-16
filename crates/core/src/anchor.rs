@@ -95,11 +95,11 @@ impl Target {
 #[ts(export)]
 pub enum AnchorState {
     /// It is: a draft's code is there, possibly at new line numbers; a sent
-    /// comment judged where it was sent is on what is in its code's place
+    /// comment where it is judged (`Sent::judged_at`) is on what is in its code's place
     /// now (its verdict says what), while its file is in the diff.
     Current,
     /// The code is not in this diff: the base or branch compared does not
-    /// hold it, or, for a sent comment where it was sent, its file left the
+    /// hold it, or, for a sent comment where it is judged, its file left the
     /// diff (its verdict then removed). The target keeps its last position
     /// and code, so a later load can find it again (diff-loop-core.md
     /// Decision 4).
@@ -125,12 +125,16 @@ impl Place {
     /// as one branch, since a commit there moves it.
     #[must_use]
     fn same(&self, other: &Self) -> bool {
-        self.base == other.base
-            && match (&self.head, &other.head) {
-                (Head::Branch { name: a }, Head::Branch { name: b }) => a == b,
-                (Head::Detached { .. }, Head::Detached { .. }) => true,
-                _ => false,
-            }
+        self.base == other.base && self.same_head(other)
+    }
+
+    /// Whether `other` is on the same branch, whatever it is compared with.
+    fn same_head(&self, other: &Self) -> bool {
+        match (&self.head, &other.head) {
+            (Head::Branch { name: a }, Head::Branch { name: b }) => a == b,
+            (Head::Detached { .. }, Head::Detached { .. }) => true,
+            _ => false,
+        }
     }
 }
 
@@ -142,7 +146,8 @@ impl Place {
 pub struct Sent {
     /// The round's number.
     pub round: u32,
-    /// Where it was sent; the judgement is made only there (ADR 0015 §8).
+    /// Where it was sent; the judgement is made there, and for the
+    /// uncommitted changes only at `commit` or against it (`judged_at`).
     pub place: Place,
     /// Full id of the commit at `HEAD` when sent; `None` before the first commit.
     pub commit: Option<String>,
@@ -158,6 +163,29 @@ pub struct Sent {
     pub suggestion: Option<String>,
     /// What the last load found; `None` while the judgement is suspended.
     pub verdict: Option<Verdict>,
+}
+
+impl Sent {
+    /// Whether it is judged at `now`, with `commit` at `HEAD` (ADR 0015 §8,
+    /// and for the uncommitted changes ADR 0017 §1).
+    fn judged_at(&self, now: &Place, commit: Option<&str>) -> bool {
+        match (&self.place.base, &now.base) {
+            (Base::Uncommitted, Base::Uncommitted) => {
+                self.place.same_head(now) && commit == self.commit.as_deref()
+            }
+            (Base::Uncommitted, Base::Ref { name }) => {
+                self.place.same_head(now) && self.commit.as_deref() == Some(name.as_str())
+            }
+            _ => self.place.same(now),
+        }
+    }
+
+    /// Whether a commit on top of `previous`, seen at `now`, is followed
+    /// for it: on the uncommitted changes, it was judged at `previous`
+    /// (ADR 0017 §2).
+    pub(crate) fn follows(&self, now: &Place, previous: &str) -> bool {
+        now.base == Base::Uncommitted && self.judged_at(now, Some(previous))
+    }
 }
 
 /// How many lines of context a sent comment keeps on each side of its code.
@@ -191,31 +219,37 @@ pub enum Resolution {
     SuggestionApplied,
 }
 
-/// `comment` moved onto its code in `files`, as seen from `now`.
+/// `comment` moved onto its code in `files`, as seen from `now` with `commit`
+/// at `HEAD`.
 ///
-/// A draft, or a sent comment away from where it was sent, is kept where its
+/// A draft, or a sent comment not judged at `now`, is kept where its
 /// code still is, moved to the nearest place it now is, or marked outdated
-/// when it is gone: lost, for a draft last seen at `now`. A sent comment at
-/// its place is judged against what it was sent on, and its target set to
-/// what is in that code's place.
+/// when it is gone: lost, for a draft last seen at `now`. A sent comment
+/// judged at `now` (`Sent::judged_at`) is judged against what it was sent
+/// on, and its target set to what is in that code's place.
 ///
 /// Cost: O(f + L·k) for f changed files, L lines on the comment's side of
 /// its file and k lines of code and context; judging adds O(m log m) for
 /// the m places the context matches, at most L (`between`).
 #[must_use]
-pub(crate) fn reanchor(mut comment: Comment, files: &[FileDiff], now: &Place) -> Comment {
+pub(crate) fn reanchor(
+    mut comment: Comment,
+    files: &[FileDiff],
+    now: &Place,
+    commit: Option<&str>,
+) -> Comment {
     let file = files
         .iter()
         .find(|f| f.path == comment.path || f.old_path() == comment.path);
     match comment.sent.take() {
-        Some(sent) if sent.place.same(now) => judge(comment, sent, file),
+        Some(sent) if sent.judged_at(now, commit) => judge(comment, sent, file, now),
         sent => anchor(Comment { sent, ..comment }, file, now),
     }
 }
 
 /// A draft, or a sent comment whose judgement is suspended, looked for by its code.
 fn anchor(comment: Comment, file: Option<&FileDiff>, now: &Place) -> Comment {
-    // Away from where it was sent, a verdict is not shown (ADR 0015 §8).
+    // Where it is not judged, a verdict is not shown (ADR 0015 §8, ADR 0017 §1).
     let comment = Comment {
         sent: comment.sent.map(|s| Sent { verdict: None, ..s }),
         ..comment
@@ -264,9 +298,9 @@ fn gone(comment: Comment, now: &Place) -> Comment {
     Comment { state, ..comment }
 }
 
-/// A sent comment at its place, judged against what it was `sent` on;
+/// A sent comment judged at `now`, against what it was `sent` on;
 /// `comment` comes without it, and leaves with it.
-fn judge(comment: Comment, sent: Sent, file: Option<&FileDiff>) -> Comment {
+fn judge(comment: Comment, sent: Sent, file: Option<&FileDiff>, now: &Place) -> Comment {
     let Some(file) = file else {
         return judged(comment, sent, Verdict::Removed, AnchorState::Outdated, None);
     };
@@ -275,10 +309,9 @@ fn judge(comment: Comment, sent: Sent, file: Option<&FileDiff>) -> Comment {
         Target::File => None,
     };
     let (verdict, target) = verdict(&sent, file, last);
-    // Seen where it was sent, which is where its code was last seen.
     let comment = Comment {
         path: file.path.clone(),
-        place: Some(sent.place.clone()),
+        place: Some(now.clone()),
         ..comment
     };
     judged(comment, sent, verdict, AnchorState::Current, Some(target))
@@ -554,7 +587,7 @@ mod tests {
     #[test]
     fn a_comment_whose_code_is_unchanged_stays() {
         let files = [text_file("a.ts", vec![ctx(1, 1, "a"), add(2, "log(user)")])];
-        let comment = reanchor(on_lines("a.ts", 2, &["log(user)"]), &files, &here());
+        let comment = reanchor(on_lines("a.ts", 2, &["log(user)"]), &files, &here(), None);
         assert_eq!(comment.state, AnchorState::Current);
         assert_eq!(start_of(&comment), 2);
     }
@@ -565,7 +598,7 @@ mod tests {
             "a.ts",
             vec![add(1, "new"), add(2, "new"), add(3, "x"), add(4, "y")],
         )];
-        let comment = reanchor(on_lines("a.ts", 1, &["x", "y"]), &files, &here());
+        let comment = reanchor(on_lines("a.ts", 1, &["x", "y"]), &files, &here(), None);
         assert_eq!(comment.state, AnchorState::Current);
         assert_eq!(comment.target, on_lines("a.ts", 3, &["x", "y"]).target);
     }
@@ -581,7 +614,12 @@ mod tests {
         ];
         let files = [text_file("a.ts", lines)];
         assert_eq!(
-            start_of(&reanchor(on_lines("a.ts", 4, &["}"]), &files, &here())),
+            start_of(&reanchor(
+                on_lines("a.ts", 4, &["}"]),
+                &files,
+                &here(),
+                None
+            )),
             3
         );
     }
@@ -590,14 +628,14 @@ mod tests {
     fn a_run_must_be_consecutive_lines() {
         // Lines 2 and 9 sit in different hunks: never one run.
         let files = [text_file("a.ts", vec![add(2, "x"), add(9, "y")])];
-        let comment = reanchor(on_lines("a.ts", 2, &["x", "y"]), &files, &here());
+        let comment = reanchor(on_lines("a.ts", 2, &["x", "y"]), &files, &here(), None);
         assert_eq!(comment.state, AnchorState::Lost);
     }
 
     #[test]
     fn a_draft_whose_code_changed_where_it_was_seen_is_lost_and_keeps_its_place() {
         let files = [text_file("a.ts", vec![add(1, "log(hash(user))")])];
-        let comment = reanchor(on_lines("a.ts", 1, &["log(user)"]), &files, &here());
+        let comment = reanchor(on_lines("a.ts", 1, &["log(user)"]), &files, &here(), None);
         assert_eq!(comment.state, AnchorState::Lost);
         assert_eq!(comment.target, on_lines("a.ts", 1, &["log(user)"]).target);
         assert_eq!(comment.place, Some(here()));
@@ -606,7 +644,12 @@ mod tests {
     #[test]
     fn a_draft_whose_code_is_gone_elsewhere_is_outdated() {
         let files = [text_file("a.ts", vec![add(1, "other")])];
-        let comment = reanchor(on_lines("a.ts", 1, &["log(user)"]), &files, &elsewhere());
+        let comment = reanchor(
+            on_lines("a.ts", 1, &["log(user)"]),
+            &files,
+            &elsewhere(),
+            None,
+        );
         assert_eq!(comment.state, AnchorState::Outdated);
         assert_eq!(comment.place, Some(here()), "where it was last seen");
     }
@@ -619,7 +662,7 @@ mod tests {
             ..on_lines("a.ts", 1, &["log(user)"])
         };
         assert_eq!(
-            reanchor(comment, &files, &here()).state,
+            reanchor(comment, &files, &here(), None).state,
             AnchorState::Outdated
         );
     }
@@ -627,14 +670,19 @@ mod tests {
     #[test]
     fn a_draft_found_elsewhere_is_seen_there() {
         let files = [text_file("a.ts", vec![add(1, "log(user)")])];
-        let comment = reanchor(on_lines("a.ts", 1, &["log(user)"]), &files, &elsewhere());
+        let comment = reanchor(
+            on_lines("a.ts", 1, &["log(user)"]),
+            &files,
+            &elsewhere(),
+            None,
+        );
         assert_eq!(comment.state, AnchorState::Current);
         assert_eq!(comment.place, Some(elsewhere()));
     }
 
     #[test]
     fn a_comment_on_a_file_that_left_the_diff_is_lost_where_it_was_seen() {
-        let comment = reanchor(on_lines("a.ts", 1, &["x"]), &[], &here());
+        let comment = reanchor(on_lines("a.ts", 1, &["x"]), &[], &here(), None);
         assert_eq!(comment.state, AnchorState::Lost);
     }
 
@@ -645,7 +693,10 @@ mod tests {
             state: AnchorState::Lost,
             ..on_lines("a.ts", 1, &["x"])
         };
-        assert_eq!(reanchor(lost, &files, &here()), on_lines("a.ts", 2, &["x"]));
+        assert_eq!(
+            reanchor(lost, &files, &here(), None),
+            on_lines("a.ts", 2, &["x"])
+        );
     }
 
     #[test]
@@ -657,7 +708,7 @@ mod tests {
             ..on_lines("a.ts", 1, &["x"])
         };
         assert_eq!(
-            reanchor(outdated, &files, &here()).state,
+            reanchor(outdated, &files, &here(), None).state,
             AnchorState::Current
         );
     }
@@ -669,7 +720,7 @@ mod tests {
             state: AnchorState::Lost,
             ..on_lines("a.ts", 1, &["x"])
         };
-        assert_eq!(reanchor(lost.clone(), &files, &here()), lost);
+        assert_eq!(reanchor(lost.clone(), &files, &here(), None), lost);
     }
 
     #[test]
@@ -678,7 +729,7 @@ mod tests {
         file.status = Status::Renamed {
             from: "a.ts".into(),
         };
-        let comment = reanchor(on_lines("a.ts", 1, &["x"]), &[file], &here());
+        let comment = reanchor(on_lines("a.ts", 1, &["x"]), &[file], &here(), None);
         assert_eq!(
             (comment.path.as_str(), comment.state),
             ("b.ts", AnchorState::Current)
@@ -688,7 +739,12 @@ mod tests {
     #[test]
     fn whitespace_alone_does_not_move_a_comment() {
         let files = [text_file("a.ts", vec![add(1, "\tlog(user)  ")])];
-        let comment = reanchor(on_lines("a.ts", 1, &["    log(user)"]), &files, &here());
+        let comment = reanchor(
+            on_lines("a.ts", 1, &["    log(user)"]),
+            &files,
+            &here(),
+            None,
+        );
         assert_eq!(comment.state, AnchorState::Current);
     }
 
@@ -718,7 +774,10 @@ mod tests {
             },
             ..on_lines("a.ts", 1, &["x"])
         };
-        assert_eq!(reanchor(comment, &files, &here()).state, AnchorState::Lost);
+        assert_eq!(
+            reanchor(comment, &files, &here(), None).state,
+            AnchorState::Lost
+        );
     }
 
     /// The file a round was sent on: `a` and `b` above `x`, `c` and `d` below.
@@ -739,7 +798,7 @@ mod tests {
 
     #[test]
     fn a_sent_comment_whose_code_and_context_hold_is_untouched() {
-        let comment = reanchor(sent_on_x(), &[sent_file(&["x"])], &here());
+        let comment = reanchor(sent_on_x(), &[sent_file(&["x"])], &here(), None);
         assert_eq!(verdict_of(&comment), Some(Verdict::Untouched));
         assert_eq!(comment.state, AnchorState::Current);
         assert_eq!(start_of(&comment), 3);
@@ -757,13 +816,13 @@ mod tests {
                 add(5, "d"),
             ],
         );
-        let comment = reanchor(sent_on_x(), &[file], &here());
+        let comment = reanchor(sent_on_x(), &[file], &here(), None);
         assert_eq!(verdict_of(&comment), Some(Verdict::NearbyChanged));
     }
 
     #[test]
     fn a_sent_comment_whose_code_was_replaced_is_changed_and_targets_what_is_there_now() {
-        let comment = reanchor(sent_on_x(), &[sent_file(&["y", "z"])], &here());
+        let comment = reanchor(sent_on_x(), &[sent_file(&["y", "z"])], &here(), None);
         assert_eq!(verdict_of(&comment), Some(Verdict::Changed));
         assert_eq!(start_of(&comment), 3);
         assert_eq!(code_of(&comment), ["y", "z"]);
@@ -778,7 +837,7 @@ mod tests {
         lines[20_000] = add(20_001, "y");
         let file = text_file("a.ts", lines);
         let comment = sent(on_lines("a.ts", 20_001, &["x"]), &["}"], &["}"]);
-        let comment = reanchor(comment, &[file], &here());
+        let comment = reanchor(comment, &[file], &here(), None);
         assert_eq!(verdict_of(&comment), Some(Verdict::Changed));
         assert_eq!(code_of(&comment), ["y"]);
         assert_eq!(start_of(&comment), 20_001);
@@ -797,14 +856,14 @@ mod tests {
                 add(5, "d"),
             ],
         );
-        let comment = reanchor(sent_on_x(), &[file], &here());
+        let comment = reanchor(sent_on_x(), &[file], &here(), None);
         assert_eq!(verdict_of(&comment), Some(Verdict::Changed));
         assert_eq!(code_of(&comment), ["y"]);
     }
 
     #[test]
     fn a_sent_comment_whose_code_was_deleted_is_removed_at_the_line_after_its_context() {
-        let comment = reanchor(sent_on_x(), &[sent_file(&[])], &here());
+        let comment = reanchor(sent_on_x(), &[sent_file(&[])], &here(), None);
         assert_eq!(verdict_of(&comment), Some(Verdict::Removed));
         assert_eq!(start_of(&comment), 3);
         assert!(code_of(&comment).is_empty());
@@ -813,7 +872,7 @@ mod tests {
     #[test]
     fn a_sent_comment_whose_context_is_gone_too_is_removed_near_its_last_line() {
         let file = text_file("a.ts", vec![add(10, "p"), add(11, "q")]);
-        let comment = reanchor(sent_on_x(), &[file], &here());
+        let comment = reanchor(sent_on_x(), &[file], &here(), None);
         assert_eq!(verdict_of(&comment), Some(Verdict::Removed));
         assert_eq!(start_of(&comment), 10);
         assert_eq!(comment.state, AnchorState::Current);
@@ -821,7 +880,7 @@ mod tests {
 
     #[test]
     fn a_sent_comment_whose_file_left_the_diff_is_removed_and_outdated() {
-        let comment = reanchor(sent_on_x(), &[], &here());
+        let comment = reanchor(sent_on_x(), &[], &here(), None);
         assert_eq!(verdict_of(&comment), Some(Verdict::Removed));
         assert_eq!(comment.state, AnchorState::Outdated);
     }
@@ -833,7 +892,7 @@ mod tests {
             ..sent_on_x()
         };
         let suggested = sent(suggested, &["a", "b"], &["c", "d"]);
-        let applied = reanchor(suggested, &[sent_file(&["    y"])], &here());
+        let applied = reanchor(suggested, &[sent_file(&["    y"])], &here(), None);
         assert_eq!(verdict_of(&applied), Some(Verdict::Applied));
         assert_eq!(applied.resolved, Some(Resolution::SuggestionApplied));
         // Unresolved by the reviewer, it is not resolved again while still applied.
@@ -841,7 +900,7 @@ mod tests {
             resolved: None,
             ..applied
         };
-        let again = reanchor(unresolved, &[sent_file(&["    y"])], &here());
+        let again = reanchor(unresolved, &[sent_file(&["    y"])], &here(), None);
         assert_eq!(again.resolved, None);
         assert_eq!(verdict_of(&again), Some(Verdict::Applied));
     }
@@ -853,7 +912,7 @@ mod tests {
             ..sent_on_x()
         };
         let suggested = sent(suggested, &["a", "b"], &["c", "d"]);
-        let applied = reanchor(suggested, &[sent_file(&["x", "y"])], &here());
+        let applied = reanchor(suggested, &[sent_file(&["x", "y"])], &here(), None);
         assert_eq!(verdict_of(&applied), Some(Verdict::Applied));
         assert_eq!(code_of(&applied), ["x", "y"]);
     }
@@ -866,15 +925,15 @@ mod tests {
             ..sent_on_x()
         };
         let suggested = sent(suggested, &["a", "b"], &["c", "d"]);
-        let applied = reanchor(suggested, &[sent_file(&["y"])], &here());
+        let applied = reanchor(suggested, &[sent_file(&["y"])], &here(), None);
         assert_eq!(applied.resolved, Some(Resolution::SuggestionApplied));
         let unresolved = Comment {
             resolved: None,
             ..applied
         };
-        let away = reanchor(unresolved, &[sent_file(&["y"])], &elsewhere());
+        let away = reanchor(unresolved, &[sent_file(&["y"])], &elsewhere(), None);
         assert_eq!(verdict_of(&away), None);
-        let back = reanchor(away, &[sent_file(&["y"])], &here());
+        let back = reanchor(away, &[sent_file(&["y"])], &here(), None);
         assert_eq!(verdict_of(&back), Some(Verdict::Applied));
         assert_eq!(back.resolved, None);
     }
@@ -885,18 +944,73 @@ mod tests {
             resolved: Some(Resolution::ByReviewer),
             ..sent_on_x()
         };
-        let comment = reanchor(resolved, &[sent_file(&["y"])], &here());
+        let comment = reanchor(resolved, &[sent_file(&["y"])], &here(), None);
         assert_eq!(comment.resolved, Some(Resolution::ByReviewer));
         assert_eq!(verdict_of(&comment), Some(Verdict::Changed));
     }
 
     #[test]
     fn a_sent_comment_elsewhere_is_not_judged_but_still_found_by_its_code() {
-        let comment = reanchor(sent_on_x(), &[sent_file(&["x"])], &elsewhere());
+        let comment = reanchor(sent_on_x(), &[sent_file(&["x"])], &elsewhere(), None);
         assert_eq!(verdict_of(&comment), None);
         assert_eq!(comment.state, AnchorState::Current);
-        let gone = reanchor(sent_on_x(), &[sent_file(&["y"])], &elsewhere());
+        let gone = reanchor(sent_on_x(), &[sent_file(&["y"])], &elsewhere(), None);
         assert_eq!(gone.state, AnchorState::Outdated, "never lost: it was sent");
+    }
+
+    /// `sent_on_x` sent against the uncommitted changes at commit `abc`.
+    fn sent_uncommitted() -> Comment {
+        let mut comment = sent_on_x();
+        if let Some(sent) = &mut comment.sent {
+            sent.place.base = Base::Uncommitted;
+        }
+        comment
+    }
+
+    fn at(base: Base) -> Place {
+        Place { base, ..here() }
+    }
+
+    #[test]
+    fn a_comment_sent_on_uncommitted_changes_is_judged_at_its_commit() {
+        let comment = reanchor(
+            sent_uncommitted(),
+            &[sent_file(&["x"])],
+            &at(Base::Uncommitted),
+            Some("abc"),
+        );
+        assert_eq!(verdict_of(&comment), Some(Verdict::Untouched));
+    }
+
+    #[test]
+    fn a_commit_on_top_of_uncommitted_changes_suspends_their_judgement() {
+        // The agent committed: the diff is empty, and the comment is not removed.
+        let comment = reanchor(sent_uncommitted(), &[], &at(Base::Uncommitted), Some("def"));
+        assert_eq!(verdict_of(&comment), None);
+        assert_eq!(comment.state, AnchorState::Outdated);
+    }
+
+    #[test]
+    fn comparing_with_the_commit_uncommitted_changes_were_sent_on_judges_them() {
+        let since = at(Base::Ref { name: "abc".into() });
+        let comment = reanchor(
+            sent_uncommitted(),
+            &[sent_file(&["y"])],
+            &since,
+            Some("def"),
+        );
+        assert_eq!(verdict_of(&comment), Some(Verdict::Changed));
+        assert_eq!(comment.place, Some(since), "seen where it was judged");
+        let other = at(Base::Ref {
+            name: "main".into(),
+        });
+        let comment = reanchor(
+            sent_uncommitted(),
+            &[sent_file(&["y"])],
+            &other,
+            Some("def"),
+        );
+        assert_eq!(verdict_of(&comment), None);
     }
 
     #[test]
@@ -906,10 +1020,10 @@ mod tests {
             ..on_lines("a.ts", 1, &[])
         };
         let whole = sent(whole, &[], &[]);
-        let comment = reanchor(whole.clone(), &[sent_file(&["x"])], &here());
+        let comment = reanchor(whole.clone(), &[sent_file(&["x"])], &here(), None);
         assert_eq!(verdict_of(&comment), Some(Verdict::Untouched));
         assert_eq!(
-            verdict_of(&reanchor(whole, &[], &here())),
+            verdict_of(&reanchor(whole, &[], &here(), None)),
             Some(Verdict::Removed)
         );
     }
@@ -936,7 +1050,7 @@ mod tests {
             },
             ..sent_file(&[])
         };
-        let comment = reanchor(sent_on_x(), &[file], &here());
+        let comment = reanchor(sent_on_x(), &[file], &here(), None);
         assert_eq!(verdict_of(&comment), Some(Verdict::Removed));
         assert_eq!(start_of(&comment), 2, "the diff's nearest line to its last");
     }

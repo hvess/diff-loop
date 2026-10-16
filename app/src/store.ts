@@ -6,6 +6,7 @@ import type { Base } from "./bindings/Base";
 import type { BaseRef } from "./bindings/BaseRef";
 import type { Comment } from "./bindings/Comment";
 import type { FileDiff } from "./bindings/FileDiff";
+import type { Head } from "./bindings/Head";
 import type { InstructionsRequest } from "./bindings/InstructionsRequest";
 import type { Opening } from "./bindings/Opening";
 import type { Place } from "./bindings/Place";
@@ -18,6 +19,7 @@ import type { Target } from "./bindings/Target";
 import { changed, hasCard, open as isOpen, resolvable } from "./lifecycle";
 import { rememberRecent } from "./recent";
 import { dedent } from "./indent";
+import { shortId } from "./format";
 import { changedLines, type Expanded, type Gap, gapsOf, lastLine, linesOn, withinHunk } from "./rows";
 import { clampWidth, loadWidth, rememberWidth } from "./sidebar";
 import { folderCounts, folderKeys, type TreeRow, treeRows } from "./tree";
@@ -75,8 +77,11 @@ export function commentText(c: Comment): string {
 
 export type Selection = { path: string; side: Side; anchor: number; head: number; dragging: boolean };
 
-/** The checkout changed under the review; `previous` is the commit before `HEAD` moved. */
-export type Banner = { title: string; previous: string | null };
+/**
+ * The checkout changed under the review; `action` is the base it offers to compare with
+ * instead: the commit before `HEAD` moved, or the uncommitted changes after a follow.
+ */
+export type Banner = { title: string; action: { label: string; base: Base } | null };
 
 /** The comments N / P step through: every one with a card, or only the sent ones a round strip count names. */
 export type CommentFilter = "changed" | "untouched" | null;
@@ -213,7 +218,7 @@ type Actions = {
   clearUndo: () => void;
   undoLast: () => void;
   dismissBanner: () => void;
-  showWhatChanged: () => Promise<void>;
+  takeBannerAction: () => Promise<void>;
   openFind: () => void;
   /** The find field took the focus ⌘/Ctrl-F asked for. */
   findFocused: () => void;
@@ -245,6 +250,11 @@ export function orderedComments(review: LoadedReview | null, comments: Comment[]
   const at = (c: Comment) => review?.position.get(c.path) ?? Number.MAX_SAFE_INTEGER;
   const line = (c: Comment) => (c.target.kind === "lines" ? c.target.start : 0);
   return [...comments].sort((a, b) => at(a) - at(b) || line(a) - line(b));
+}
+
+/** The banner's offer to compare with the commit before `HEAD` moved. */
+function whatChanged(previous: string): Banner["action"] {
+  return { label: "Show what changed", base: { kind: "ref", name: previous } };
 }
 
 /** The banner's detail: how many open comments the diff shown no longer holds (`ux` skill, "Settled wording"). */
@@ -519,7 +529,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
       const copied = get().unsend ? null : get().copied;
       const closed = openedFor(review, selected, get().closed);
       set({ review, comments, autoResolved, viewed, viewedLines, expanded, selected, openComment, loadProblem: null, unsend: null, copied, closed });
-      await announceMove(before, review);
+      await announceMove(before, review, held !== null);
     } catch (error) {
       set({ loadProblem: describe(error) });
     } finally {
@@ -533,22 +543,44 @@ export const useStore = create<State & Actions>()((set, get) => ({
     }
 
     // Only a change of context gets a banner (ADR 0015 §10): the agent's work shows in the round strip.
-    async function announceMove(before: LoadedReview | null, after: LoadedReview) {
+    async function announceMove(before: LoadedReview | null, after: LoadedReview, sameBaseBefore: boolean) {
+      const stillHere = () => sameBase(get().base, base) && get().review?.checkout.root === after.checkout.root;
       const previous = before?.checkout.commit;
       const now = after.checkout.commit;
       if (!previous || !now || previous === now) return;
       const headBefore = before.checkout.head;
       const headNow = after.checkout.head;
       if (headBefore.kind === "branch" && headNow.kind === "branch" && headBefore.name !== headNow.name) {
-        set({ banner: { title: `Switched to ${headNow.name}`, previous } });
+        set({ banner: { title: `Switched to ${headNow.name}`, action: whatChanged(previous) } });
         return;
       }
       const count = await api.commitsBetween(previous, now).catch(() => null);
-      const title =
-        count === null
-          ? "The branch was rewritten"
-          : `The branch moved: ${count} new ${count === 1 ? "commit" : "commits"}`;
-      set({ banner: { title, previous } });
+      // The reviewer may have picked another base, or repository, meanwhile.
+      if (!stillHere()) return;
+      if (count === null) {
+        set({ banner: { title: "The branch was rewritten", action: whatChanged(previous) } });
+        return;
+      }
+      const title = `The branch moved: ${count} new ${count === 1 ? "commit" : "commits"}`;
+      // Not on a base the reviewer has just chosen: they stay on it.
+      if (sameBaseBefore && (await followCommit(title, previous, headNow, stillHere))) return;
+      if (stillHere()) set({ banner: { title, action: whatChanged(previous) } });
+    }
+
+    /**
+     * A commit on top of a round sent against the uncommitted changes: compared with the commit it
+     * was sent on, the round's comments are judged again (ADR 0017 §2). Whether the core named one to follow.
+     */
+    async function followCommit(title: string, previous: string, head: Head, stillHere: () => boolean): Promise<boolean> {
+      const round = await api.roundToFollow(get().comments, { base, head }, previous).catch(() => null);
+      if (round === null || !stillHere()) return false;
+      const since: Base = { kind: "ref", name: previous };
+      await get().setBase(since);
+      // The reviewer may have picked another base while it loaded, or it may have failed.
+      if (!sameBase(get().base, since) || get().loadProblem) return true;
+      const back = { label: "Show uncommitted changes", base: { kind: "uncommitted" } as const };
+      set({ banner: { title: `${title} · showing changes since round ${round} (${shortId(previous)})`, action: back } });
+      return true;
     }
   },
 
@@ -916,10 +948,9 @@ export const useStore = create<State & Actions>()((set, get) => ({
     set({ banner: null });
   },
 
-  async showWhatChanged() {
-    const banner = get().banner;
-    if (banner?.previous == null) return;
-    await get().setBase({ kind: "ref", name: banner.previous });
+  async takeBannerAction() {
+    const action = get().banner?.action;
+    if (action) await get().setBase(action.base);
   },
 
   instructionsRequest() {

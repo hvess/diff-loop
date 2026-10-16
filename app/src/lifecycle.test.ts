@@ -61,7 +61,7 @@ describe("a comment's kind", () => {
   it("is not in this diff only while open and outdated without a verdict", () => {
     expect(notInDiff({ ...draft, state: "outdated" })).toBe(true);
     expect(notInDiff({ ...draft, state: "outdated", resolved: "byReviewer" })).toBe(false);
-    // Its file gone where it was sent: changed, as the list draws it, not "not in this diff".
+    // Its file gone where it is judged: changed, as the list draws it, not "not in this diff".
     expect(notInDiff({ ...sent("removed"), state: "outdated" })).toBe(false);
     expect(notInDiff(draft)).toBe(false);
   });

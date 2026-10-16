@@ -8,6 +8,7 @@ import type { Comment } from "./bindings/Comment";
 import type { InstructionsRequest } from "./bindings/InstructionsRequest";
 import type { KnownFile } from "./bindings/KnownFile";
 import type { Opening } from "./bindings/Opening";
+import type { Place } from "./bindings/Place";
 import type { RepoError } from "./bindings/RepoError";
 import type { Review } from "./bindings/Review";
 import type { ReviewFile } from "./bindings/ReviewFile";
@@ -47,6 +48,8 @@ export const api = {
     invoke<string>("instructions", { request }),
   /** The review after a copy: a round ended, every unresolved comment sent (ADR 0015 §1). */
   endRound: (request: RoundRequest) => invoke<SavedReview>("end_round", { request }),
+  roundToFollow: (comments: Comment[], now: Place, previous: string) =>
+    invoke<number | null>("round_to_follow", { comments, now, previous }),
   /** The saved review merged into the window's, once a failed read is read again (ADR 0004 §5). */
   mergeReviews: (window: SavedReview, saved: SavedReview) => invoke<SavedReview>("merge_reviews", { window, saved }),
 };
