@@ -4,24 +4,27 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use ts_rs::TS;
 
-use crate::anchor::Comment;
+use crate::{anchor::Comment, rounds::Round};
 
 /// A checkout's review as kept between runs: one per working tree, whatever
 /// the base (ADR 0004 §1). A `note` kept by an earlier version is ignored
-/// (ADR 0013 §3).
+/// (ADR 0013 §3); a review saved without rounds has none (ADR 0015 §9).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct SavedReview {
     /// As last saved; moved onto their code when the review next loads.
     pub comments: Vec<Comment>,
+    /// In order, the latest last; at most 20 (ADR 0015 §9).
+    #[serde(default)]
+    pub rounds: Vec<Round>,
 }
 
 impl SavedReview {
     /// Whether there is nothing to keep.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.comments.is_empty()
+        self.comments.is_empty() && self.rounds.is_empty()
     }
 }
 
@@ -58,10 +61,14 @@ pub enum StoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::anchor::{AnchorState, Target};
+    use crate::{
+        anchor::{AnchorState, Place, Target},
+        base::Base,
+        repository::Head,
+    };
 
     #[test]
-    fn a_review_with_a_comment_is_not_empty() {
+    fn a_review_with_a_comment_or_a_round_is_not_empty() {
         assert!(SavedReview::default().is_empty());
         let comment = SavedReview {
             comments: vec![Comment {
@@ -71,8 +78,26 @@ mod tests {
                 text: "t".into(),
                 suggestion: None,
                 state: AnchorState::Current,
+                place: None,
+                sent: None,
+                resolved: None,
             }],
+            rounds: vec![],
         };
         assert!(!comment.is_empty());
+        let round = SavedReview {
+            comments: vec![],
+            rounds: vec![Round {
+                number: 1,
+                at: 0,
+                place: Place {
+                    base: Base::Uncommitted,
+                    head: Head::Branch { name: "b".into() },
+                },
+                commit: None,
+                markdown: String::new(),
+            }],
+        };
+        assert!(!round.is_empty());
     }
 }

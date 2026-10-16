@@ -9,6 +9,7 @@ import { useDelayed } from "../delay";
 import { findTyped, type Mark, type Match, marked } from "../find";
 import { useHighlights, type Highlights, type Token } from "../highlight";
 import { isLineCommand, type LineCommand } from "../keys";
+import { hasCard, kindOf } from "../lifecycle";
 import { bindingFor } from "../platform";
 import {
   type Cell,
@@ -25,6 +26,7 @@ import { orderedComments, type Selection, useStore } from "../store";
 import { CommentCard } from "./CommentCard";
 import { Composer } from "./Composer";
 import { FindBar } from "./FindBar";
+import { Pin, type Surface } from "./Pin";
 
 /** The diff's own keys (keys.ts `LINE_COMMANDS`): what each moves, and which way. */
 const LINE_KEYS: Record<LineCommand, { move: "line" | "extend" | "change"; step: 1 | -1 }> = {
@@ -38,7 +40,8 @@ const LINE_KEYS: Record<LineCommand, { move: "line" | "extend" | "change"; step:
 
 /** What each line on one side carries: its comment pin, range bar, open card, composer. */
 type Marks = {
-  pins: Map<string, { comment: Comment; n: number }>;
+  /** `n` is the pin's number, and `i` its place among this file's pins (`n` − 1), which times its turn to paper. */
+  pins: Map<string, { comment: Comment; n: number; i: number }>;
   bars: Set<string>;
   cardAt: Map<string, Comment>;
   composerAt: string | null;
@@ -58,13 +61,13 @@ function useMarks(file: FileDiff): Marks {
   return useMemo(() => {
     const marks: Marks = { pins: new Map(), bars: new Set(), cardAt: new Map(), composerAt };
     orderedComments(review, all)
-      // An outdated comment's lines hold other code, or are not in the diff.
-      .filter((c) => c.path === file.path && c.target.kind === "lines" && c.state === "current" && c.id !== editing)
+      // Only a comment with a card: a lost, outdated or resolved one has no pin (ADR 0015).
+      .filter((c) => c.path === file.path && c.target.kind === "lines" && hasCard(c) && c.id !== editing)
       .forEach((c, i) => {
         if (c.target.kind !== "lines") return;
         const { side, start } = c.target;
         const end = lastLine(c.target);
-        marks.pins.set(lineKey(side, start), { comment: c, n: i + 1 });
+        marks.pins.set(lineKey(side, start), { comment: c, n: i + 1, i });
         if (end > start) for (let no = start; no <= end; no++) marks.bars.add(lineKey(side, no));
         if (c.id === openComment) marks.cardAt.set(lineKey(side, end), c);
       });
@@ -155,8 +158,8 @@ export function DiffView({ file }: { file: FileDiff }) {
       return;
     }
     if (!sel?.dragging) return;
-    if (sel.anchor === sel.head) s.composeOnLines(sel.path, sel.side, sel.anchor, sel.anchor);
-    else s.setSelection({ ...sel, dragging: false });
+    // Released, a drag opens the composer at once (diff-loop-app.md Decision 30).
+    s.composeOnLines(sel.path, sel.side, Math.min(sel.anchor, sel.head), Math.max(sel.anchor, sel.head));
   }, []);
   useEffect(() => {
     window.addEventListener("mouseup", finish);
@@ -225,6 +228,11 @@ export function DiffView({ file }: { file: FileDiff }) {
   const pressNumber = (cell: Cell, shift: boolean) => {
     const s = useStore.getState();
     if (s.composer) return;
+    // A lost draft being placed again takes the line pressed (ADR 0015 §2).
+    if (s.replacing !== null) {
+      s.placeComment(cell.side, cell.no);
+      return;
+    }
     // The keys go to the diff now: a focused button would take Return, the file list the arrows.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const sel = s.selection;
@@ -238,6 +246,13 @@ export function DiffView({ file }: { file: FileDiff }) {
   const enterNumber = (cell: Cell, pressed: boolean) => {
     const s = useStore.getState();
     const sel = s.selection;
+    // Placing a lost draft: the pointer shows where it would land.
+    if (s.replacing !== null && !pressed) {
+      if (sel?.head !== cell.no || sel.side !== cell.side) {
+        s.setSelection({ path: file.path, side: cell.side, anchor: cell.no, head: cell.no, dragging: false });
+      }
+      return;
+    }
     // Released outside the window, where no mouseup reaches it: the drag ends here.
     if (!pressed) {
       if (resizing.current || sel?.dragging) finish();
@@ -265,9 +280,11 @@ export function DiffView({ file }: { file: FileDiff }) {
     useStore.getState().setSelection({ path: file.path, side: handles.side, anchor, head, dragging: false });
   };
   const gutter = { pressNumber, enterNumber, handles, pressHandle, found, currentMatch };
+  const replacing = useStore((s) => s.replacing !== null);
+  // While a draft is being placed, the selection is where it would land, not a range to comment on.
   const pill =
     selection && !selection.dragging && !composer && selection.path === file.path
-      ? lineKey(selection.side, Math.min(selection.anchor, selection.head))
+      ? lineKey(selection.side, replacing ? selection.head : Math.min(selection.anchor, selection.head))
       : null;
 
   return (
@@ -313,6 +330,7 @@ export function DiffView({ file }: { file: FileDiff }) {
                     old={row.old}
                     new={row.new}
                     marks={marks}
+                    replacing={replacing}
                     highlights={highlights}
                     selection={selection}
                     pill={pill}
@@ -326,6 +344,7 @@ export function DiffView({ file }: { file: FileDiff }) {
                         path={file.path}
                         cell={row[side]}
                         marks={marks}
+                        replacing={replacing}
                         highlights={highlights}
                         selection={selection}
                         pill={pill}
@@ -384,6 +403,8 @@ function HunkHeader({
 type LineProps = {
   path: string;
   marks: Marks;
+  /** Whether a lost draft is being placed: the pill then offers "Place here". */
+  replacing: boolean;
   highlights: Highlights | null;
   selection: Selection | null;
   pill: string | null;
@@ -397,11 +418,12 @@ type LineProps = {
   currentMatch: Match | null;
 };
 
-const TONE = {
-  added: { bg: "bg-add-bg", gutter: "bg-add-gutter", sign: "text-add", mark: "+" },
-  removed: { bg: "bg-del-bg", gutter: "bg-del-gutter", sign: "text-del", mark: "−" },
-  context: { bg: "bg-bg", gutter: "bg-bg", sign: "text-faint", mark: "" },
-} as const;
+/** How each kind of line is drawn; `on` names the gutter's colour, which a pin's rings cut out of. */
+const TONE: Record<Cell["change"], { bg: string; gutter: string; on: Surface; sign: string; mark: string }> = {
+  added: { bg: "bg-add-bg", gutter: "bg-add-gutter", on: "add-gutter", sign: "text-add", mark: "+" },
+  removed: { bg: "bg-del-bg", gutter: "bg-del-gutter", on: "del-gutter", sign: "text-del", mark: "−" },
+  context: { bg: "bg-bg", gutter: "bg-bg", on: "bg", sign: "text-faint", mark: "" },
+};
 
 /** The menu for a commentable line: comment on it, or on the selected range it is in. */
 function commentMenu(e: React.MouseEvent, path: string, cell: Cell) {
@@ -429,7 +451,7 @@ function UnifiedLine(props: LineProps & { old: Cell | null; new: Cell | null }) 
   return (
     <div className="relative" onContextMenu={(e) => commentMenu(e, path, main)}>
       <div className={`relative flex ${selected ? "bg-sel" : tone.bg}`}>
-        <Decorations {...props} cells={[old, props.new]} handleLeft={48} />
+        <Decorations {...props} cells={[old, props.new]} handleLeft={48} on={selected ? "sel-gutter" : tone.on} />
         <Gutter cells={[old, props.new]} props={props}>
           <Number cell={old} props={props} gutter={selected ? "bg-sel-gutter" : tone.gutter} commented={false} selected={selected} />
           <Number
@@ -459,7 +481,7 @@ function SplitHalf(props: LineProps & { cell: Cell | null }) {
       onContextMenu={(e) => commentMenu(e, path, cell)}
     >
       <div className={`relative flex ${selected ? "bg-sel" : tone.bg}`}>
-        <Decorations {...props} cells={[cell]} handleLeft={18} />
+        <Decorations {...props} cells={[cell]} handleLeft={18} on={selected ? "sel-gutter" : tone.on} />
         <Gutter cells={[cell]} props={props}>
           <Number
             cell={cell}
@@ -575,17 +597,18 @@ function Code({
 }
 
 /** The pin, range bar, "Comment on lines" pill and range handles drawn over a line. */
-function Decorations({ cells, marks, pill, handles, pressHandle, handleLeft }: LineProps & { cells: (Cell | null)[]; handleLeft: number }) {
+function Decorations({ cells, marks, pill, handles, pressHandle, handleLeft, replacing, on }: LineProps & { cells: (Cell | null)[]; handleLeft: number; on: Surface }) {
   const openComment = useStore((s) => s.openComment);
   const toggleComment = useStore((s) => s.toggleComment);
   const composeOnSelection = useStore((s) => s.composeOnSelection);
+  const placeComment = useStore((s) => s.placeComment);
   const selection = useStore((s) => s.selection);
   const present = cells.filter((c): c is Cell => c !== null);
   const bar = present.some((c) => marks.bars.has(lineKey(c.side, c.no)));
   const pin = present.map((c) => marks.pins.get(lineKey(c.side, c.no))).find(Boolean);
   const showPill = present.some((c) => pill === lineKey(c.side, c.no));
   const range = selection ? [Math.min(selection.anchor, selection.head), Math.max(selection.anchor, selection.head)] : [0, 0];
-  const on = handles ? present.find((c) => c.side === handles.side) : undefined;
+  const onHandles = handles ? present.find((c) => c.side === handles.side) : undefined;
   // A 4 px bar on the row's edge, in a 28 × 20 px target centred on it (HIG `accessibility`, minimum control size).
   const handle = (edge: "top" | "bottom") => (
     <span
@@ -605,29 +628,31 @@ function Decorations({ cells, marks, pill, handles, pressHandle, handleLeft }: L
     <>
       {bar && <span className="absolute top-0 bottom-0 left-0 w-[3px] bg-ghost" />}
       {pin && (
-        <button
-          type="button"
-          onClick={() => toggleComment(pin.comment.id)}
-          aria-label={`Comment ${pin.n}`}
-          className={`absolute top-[3px] left-2.5 z-[2] flex size-[18px] items-center justify-center rounded-full font-sans text-[11px] leading-none font-semibold ${
-            openComment === pin.comment.id ? "bg-btn text-btn-fg" : "bg-line text-muted2"
-          }`}
-        >
-          {pin.n}
-        </button>
+        <span style={{ "--i": pin.i } as React.CSSProperties}>
+          <Pin
+            kind={kindOf(pin.comment)}
+            n={String(pin.n)}
+            open={openComment === pin.comment.id}
+            on={on}
+            onClick={() => toggleComment(pin.comment.id)}
+            label={`Comment ${pin.n}`}
+          />
+        </span>
       )}
+      {/* Where a re-placed draft would land: a dashed pin, and Return places it (ADR 0015 §2). */}
+      {showPill && replacing && selection && <Pin kind="ghost" n="" on={on} />}
       {showPill && (
         <button
           type="button"
-          onClick={composeOnSelection}
+          onClick={() => (replacing && selection ? placeComment(selection.side, selection.head) : composeOnSelection())}
           className="absolute top-[-3px] right-8 z-[4] flex items-center gap-2.5 rounded-full bg-btn px-3.5 py-[7px] font-sans text-[12.5px] font-medium whitespace-nowrap text-btn-fg shadow-[0_8px_20px_rgba(0,0,0,0.16)]"
         >
-          {range[0] === range[1] ? `Comment on line ${range[0]}` : `Comment on lines ${range[0]}–${range[1]}`}
-          <span className="font-mono text-[11px] text-faint">C</span>
+          {replacing ? "Place here" : range[0] === range[1] ? `Comment on line ${range[0]}` : `Comment on lines ${range[0]}–${range[1]}`}
+          <span className="font-mono text-[11px] text-faint">{replacing ? "↩" : "C"}</span>
         </button>
       )}
-      {on && on.no === handles?.top && handle("top")}
-      {on && on.no === handles?.bottom && handle("bottom")}
+      {onHandles && onHandles.no === handles?.top && handle("top")}
+      {onHandles && onHandles.no === handles?.bottom && handle("bottom")}
     </>
   );
 }

@@ -39,6 +39,16 @@
   --ui-find-current: #ffc933;
   --ui-find-current-fg: #0d0d0d;
   --ui-shadow: 0 16px 40px rgba(0, 0, 0, 0.14);
+  --ui-dialog-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06), 0 32px 80px rgba(0, 0, 0, 0.22);
+  --ui-overlay: rgba(0, 0, 0, 0.18);
+  --ui-pin-ink: #2f2f32;
+  --ui-pin-ink-fg: #ffffff;
+  --ui-pin-paper: #ffffff;
+  --ui-pin-paper-fg: #5d5d5d;
+  --ui-pin-hair: rgba(0, 0, 0, 0.14);
+  --ui-pin-drop: rgba(0, 0, 0, 0.1);
+  --ui-pin-focus: rgba(0, 0, 0, 0.08);
+  --ui-pin-ghost: #2f4fb8;
 
   --shiki-foreground: #0d0d0d;
   --shiki-token-keyword: #a3337e;
@@ -89,6 +99,16 @@
     --ui-find-current: #e5b93a;
     --ui-find-current-fg: #121212;
     --ui-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    --ui-dialog-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 2px 6px rgba(0, 0, 0, 0.3), 0 32px 80px rgba(0, 0, 0, 0.6);
+    --ui-overlay: rgba(0, 0, 0, 0.4);
+    --ui-pin-ink: #e8e8e8;
+    --ui-pin-ink-fg: #121212;
+    --ui-pin-paper: #262626;
+    --ui-pin-paper-fg: #c8c8c8;
+    --ui-pin-hair: rgba(255, 255, 255, 0.22);
+    --ui-pin-drop: rgba(0, 0, 0, 0.45);
+    --ui-pin-focus: rgba(255, 255, 255, 0.14);
+    --ui-pin-ghost: #b4c4ff;
 
     --shiki-foreground: #ececec;
     --shiki-token-keyword: #f08cc8;
@@ -140,6 +160,8 @@
   --color-find-current: var(--ui-find-current);
   --color-find-current-fg: var(--ui-find-current-fg);
   --shadow-pop: var(--ui-shadow);
+  --shadow-dialog: var(--ui-dialog-shadow);
+  --color-overlay: var(--ui-overlay);
 }
 
 @layer base {
@@ -184,5 +206,14 @@
   img,
   a {
     -webkit-user-drag: none;
+  }
+
+  /* A copy turns pins from ink to paper top to bottom, 40 ms apart (`--i` is the comment's index). */
+  .pin {
+    transition:
+      background-color 160ms ease-out,
+      color 160ms ease-out,
+      box-shadow 160ms ease-out;
+    transition-delay: calc(var(--i, 0) * 40ms);
   }
 }

@@ -129,6 +129,26 @@ impl Line {
     }
 }
 
+/// Each line's run of the diff, by index into `lines`: lines are in one run
+/// while their numbers follow each other, and a gap the diff leaves out
+/// starts the next. O(L).
+#[must_use]
+pub(crate) fn runs(lines: &[(u32, &str)]) -> Vec<usize> {
+    lines
+        .iter()
+        .scan(
+            (0, None),
+            |(run, last): &mut (usize, Option<u32>), (no, _)| {
+                if last.is_some_and(|l| l + 1 != *no) {
+                    *run += 1;
+                }
+                *last = Some(*no);
+                Some(*run)
+            },
+        )
+        .collect()
+}
+
 impl FileDiff {
     /// Every line the diff shows on `side`, in file order, as (number, text).
     pub(crate) fn lines(&self, side: Side) -> impl Iterator<Item = (u32, &str)> {
@@ -200,6 +220,13 @@ pub(crate) mod tests {
         let new: Vec<_> = file.lines(Side::New).collect();
         assert_eq!(old, [(1, "a"), (2, "b")]);
         assert_eq!(new, [(1, "a"), (2, "c")]);
+    }
+
+    #[test]
+    fn runs_break_where_line_numbers_skip() {
+        let lines = [(1, "a"), (2, "b"), (4, "c"), (5, "d"), (9, "e")];
+        assert_eq!(runs(&lines), [0, 0, 1, 1, 2]);
+        assert!(runs(&[]).is_empty());
     }
 
     #[test]

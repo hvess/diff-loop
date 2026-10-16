@@ -42,7 +42,8 @@ each time. The developer chose rebuilding per changed path, 2026-10-13.
    `Loaded`; only files sent to the front end are copied. While watching, a watch event or focus
    loads; without a watch, focus and the 2 s poll compare fingerprints as
    before. A load that changes nothing leaves the window's state alone.
-   (Amended by ADR 0014 §1: a load asked to be `full` reads everything.)
+   (Amended by ADR 0014 §1: a load asked to be `full` reads everything.
+   Amended by ADR 0015 §2: a load never removes a comment.)
 
 ## Consequences
 

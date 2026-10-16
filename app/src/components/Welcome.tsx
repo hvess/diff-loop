@@ -2,7 +2,8 @@ import { useState } from "react";
 import { chooseFolder } from "../choose";
 import { useDelayed } from "../delay";
 import { modKey } from "../platform";
-import { loadRecent, when } from "../recent";
+import { when } from "../format";
+import { loadRecent } from "../recent";
 import { useStore } from "../store";
 import { TitleBar } from "./TitleBar";
 

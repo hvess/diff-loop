@@ -2,10 +2,10 @@
 
 The desktop app: Tauri commands around `diff-loop-core`, and the React front end built from the "Agent Review" design, at "Agent Review v2" since 2026-10-14.
 
-**Status:** active — flows 1–5 of the design landed.
+**Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-16
 
 ## Why
 
@@ -24,7 +24,8 @@ change, annotate, hand off to the agent, next round.
 3. Annotate: click a line's gutter (its numbers or sign) for one line,
    drag or shift-click for a range then C, Suggest code; edit, delete with
    undo — done 2026-10-13; the whole gutter, not only its numbers, since
-   2026-10-14.
+   2026-10-14; a drag opens the composer on release since 2026-10-15
+   (Decision 30).
 4. Hand off: comment list (N / P to jump), Copy review, preview with
    format and toggles, clear with undo — done 2026-10-13; the preview is
    Markdown, edited in place, since 2026-10-14 (step 11).
@@ -32,12 +33,12 @@ change, annotate, hand off to the agent, next round.
    window gains focus (ADR 0002, ADR 0005 §4); when `HEAD` moves, a banner: "The
    branch moved: N new commits", "The branch was rewritten" when the old
    commit is no longer an ancestor, or "Switched to <branch>" when another
-   branch is checked out, and "The agent updated the code" when only the
-   code changed and comments were removed. Each counts the comments it
-   removed, with Undo, and how many of the rest are not in this diff or
-   still open (Decision 16), and "Show what changed" compares with the
-   previous `HEAD` when it moved — done 2026-10-13; counting with Undo,
-   and the banner for code alone, since 2026-10-14 (step 11).
+   branch is checked out, each saying how many open comments are not in
+   this diff, and "Show what changed" compares with the
+   previous `HEAD` when it moved — done 2026-10-13; from 2026-10-14 to
+   2026-10-15 a load also removed comments whose code changed, with Undo
+   in the banner; since 2026-10-15 the agent's work shows in the round
+   strip and on each sent comment instead (step 13, ADR 0015).
 6. Expand unchanged lines: "Show N unchanged lines" before a hunk, and
    "Show the rest of the file" after the last, read them (`file_lines`,
    diff-loop-core `lines`) and show them, highlighted, in place (Decisions
@@ -60,6 +61,14 @@ change, annotate, hand off to the agent, next round.
 12. Keyboard shortcuts for moving through a review, commenting and
     handing off (Decision 29) — done 2026-10-15. A list of them in the
     window is not built yet (open task 17).
+13. Rounds and resolution (ADR 0015, the design's component sheet of
+    2026-10-15): the pins' kinds, the cards per state, the comment list
+    with its marks and Resolved section, the round strip, the Copied
+    popover, Re-place for a lost draft, R, and the banner without Undo
+    (Decisions 16 and 31) — done 2026-10-15. With it the sidebar's
+    folding and resizing (ADR 0016, Decision 23), the preview's new
+    layout (Decision 25) and the composer opening on a drag's release
+    (Decision 30).
 
 ## Decisions
 
@@ -156,34 +165,21 @@ change, annotate, hand off to the agent, next round.
     `v<version>` tag matching `tauri.conf.json`: an AppImage and a `.deb`
     on Ubuntu 22.04, an ad-hoc signed Apple Silicon `.dmg` on macOS
     (ADR 0009).
-16. **A comment whose code changed is removed, and the banner says so.**
-    When a load against the same base, with the same branch checked out
-    (a detached `HEAD` counts as one branch), finds a current comment's
-    code gone (it changed, or its file left the diff), `reload` removes
-    it; one being edited is kept. The banner then reads "The agent
-    updated the code" (`CODE_UPDATED`), or keeps the title of one already
-    up, such as a moved `HEAD`'s, and adds the comments to those it
-    names; a banner for a moved `HEAD` takes over those a banner already
-    up had removed, so Undo still brings them back. Its detail counts them, "2 comments were addressed and
-    removed.", then the rest as they are now: "1 is not in this diff.",
-    "3 are still open." Undo removal (the design's "Undo", named for what
-    it undoes per the HIG `undo-and-redo` page; the developer's call,
-    2026-10-14) brings the removed ones back as not in this
-    diff, since as current the next load would remove them again, and
-    closes a banner that had only that to say; Show what changed appears
-    only when `HEAD` moved. After the base or branch changed, or on
-    opening a checkout, a comment whose code is gone is only outdated:
-    it draws no pin, and its list entry, the comment count and the
-    banner say it is not in this diff, the banner with Show comments,
-    which opens the list below the banner, until a load finds its code
-    again (diff-loop-core Decision 4). Having no card, it is skipped by
-    N / P, as the list's hint says, and its list entry is muted, opens
-    nothing and has Delete, and an open card closes; it is still copied
-    into the instructions. The wording is the `ux` skill's "Settled
-    wording". The developer's calls, 2026-10-13 and 2026-10-14; until
-    2026-10-14 the removal had no undo and no notice unless `HEAD` moved,
-    and the banner named each comment.
-
+16. **Nothing removes a comment but the reviewer** (ADR 0015, which
+    supersedes the removal this Decision held from 2026-10-13 to
+    2026-10-15). A comment's lifecycle is read off its fields
+    (`app/src/lifecycle.ts`, `kindOf`): a draft, sent, changed (its
+    verdict changed, removed or applied), reopened (edited since sent),
+    lost (a draft whose code went where it was last seen) or not in this
+    diff (outdated). A comment has a card, a pin and a stop for N / P only
+    while current and unresolved (`hasCard`); a lost or outdated one is
+    muted in the list, opens nothing, and is still copied; a lost one
+    keeps its quoted code and offers Re-place and Delete. The banner names
+    only a context change: a switched, moved or rewritten branch, with
+    "N comments are not in this diff." and Show comments, which opens the
+    list below it, and Show what changed when `HEAD` moved. The wording
+    is the `ux` skill's "Settled wording". Until 2026-10-14 the removal
+    had no undo and no notice unless `HEAD` moved.
 17. **The window behaves as a native one** (ADR 0010 §1): hidden until
     the front end's first paint, its size, position, maximized and
     full-screen state kept between runs, its background the page's.
@@ -221,23 +217,30 @@ change, annotate, hand off to the agent, next round.
     with any text Comment is enabled (ux skill, Settled wording). A
     comment that is only code shows no text on its card, and "Suggested
     change" in the comment list (`commentText`); the banner named one so
-    too until it only counted them (Decision 16, 2026-10-14). The
-    developer's calls, 2026-10-14.
+    too until it only counted them (2026-10-14, a banner since gone,
+    ADR 0015 §10). The developer's calls, 2026-10-14.
 
 23. **The sidebar is a tree of the changed files** (`app/src/tree.ts`,
-    ADR 0013 §1): only their folders, nested as on disk, not merged when
-    a folder has one child, each folder before its files and both by
-    name, numbers by value. Folders are labels: they do not collapse,
-    against the HIG `sidebars` page and as the design draws them (the
-    developer's call, 2026-10-14; the `ux` skill records it, under
-    "Where the developer chose against the HIG"), and
-    cannot be selected; the arrows, J / K, N / P and the comment order follow
-    the files as the tree lists them (`order`). A row shows the file's
-    icon, name and change letter; a viewed one is dimmed, its page icon
-    ticked so colour is not all that says so, and it says "viewed" in its
-    tooltip and its accessible name. Comment counts and
-    the ✓ column are gone, as in the design. The developer's call,
-    2026-10-14.
+    ADR 0013 §1): only their folders, nested as on disk, each folder
+    before its files and both by name, numbers by value. Since
+    2026-10-15 (ADR 0016) a folder folds on a click, with a disclosure
+    triangle on its leading edge (HIG `disclosure-controls`, where the
+    design draws only the open or closed folder icon) and, folded, how
+    many changed files it holds ("3 files"), a chain of folders holding nothing but one folder reads
+    as one row (`src/api/share`), a selected file opens the folders it is
+    under, names are not cut short, and the sidebar's edge drags its
+    width (200–560 px, a double-click back to 272), kept per viewer in
+    `localStorage`. Until then folders were labels that neither folded
+    nor merged (the developer's call, 2026-10-14, withdrawn 2026-10-15).
+    Folders cannot be selected; the arrows, J / K, N / P and the comment
+    order follow the files as the tree lists them (`order`), folded or
+    not; a load that selects another file, its own having left the diff,
+    opens that file's folders too. A row shows the file's icon, name and
+    change letter; a viewed
+    one is dimmed, its page icon ticked so colour is not all that says so,
+    and it says "viewed" in its tooltip and its accessible name. Comment
+    counts and the ✓ column are gone, as in the design. The developer's
+    call, 2026-10-14.
 24. **The sidebar's header counts what is left**: a ring for the changed
     lines in viewed files out of all (`viewedLines`, kept by V and each
     load, so the header never sums them), "N files left" or "All files
@@ -251,18 +254,28 @@ change, annotate, hand off to the agent, next round.
     a lasting meter, against the HIG `progress-indicators` page, which
     keeps a determinate ring for an operation under way: the developer's
     call, 2026-10-14 (`ux` skill, "Where the developer chose against the
-    HIG").
+    HIG"). Under it, since 2026-10-15, the round strip (Decision 31).
 25. **The preview is edited in place** (ADR 0013 §2): Markdown, in a
     panel that looks like the code panels until it has focus, as the
     design draws it, against the HIG `entering-data` page (the
     developer's call, 2026-10-14), with "You can edit the text before
     copying." under it; focused, it has the focus ring; typing marks it
-    "Edited · Edits change this text, not your comments." (the
+    "Edited" with "Edits change this text, not your comments." (the
     design's "Changes apply to this copy only." read as the clipboard's
     copy beside Copy to clipboard; the developer's call, 2026-10-14) with
     Reset to original, a bordered button so it is not taken for Cancel (the design's "Reset to generated" left unclear
     what it went back to; the developer's call, 2026-10-14),
-    and Copy to clipboard copies what is shown. Closing the dialog keeps
+    and Copy to clipboard copies what is shown, ⌘/Ctrl-Return from inside
+    the text too. Since 2026-10-15 the dialog is the design's restyled
+    one: 720 × 700, a ✕ to close beside Cancel (two exits for one
+    dialog, against the HIG `modality` page; the developer's call,
+    2026-10-15, for the design's header), an "Edited" dot in its header, the
+    text full-bleed between hairlines, its subtitle "5 comments across 3
+    files" before any round and "3 new · 2 still open" after one
+    (`previewSubtitle`, `app/src/round.ts`); the wording above stays
+    rather than the design's "Click into the text to edit before
+    copying." and "Changes apply to this copy only. Reset", the
+    developer's call, 2026-10-15. Closing the dialog keeps
     the edit (HIG `modality`: closing loses nothing typed) until it is
     copied, reset, or what the instructions are written from changes:
     the comments in the order they are written, the base or what is
@@ -367,11 +380,12 @@ change, annotate, hand off to the agent, next round.
     | ↓ / ↑ | Move the line cursor |
     | Shift-↓ / Shift-↑ | Extend the range |
     | Alt-↓ / Alt-↑ (Option) | Next / previous change |
-    | C, or Return | Comment on the cursor or range |
+    | C, or Return | Comment on the cursor or range; placing a lost draft, Return places it there |
     | Alt-Return (Option), in the composer | Suggest code on or off |
     | E | Edit the open comment |
+    | R | Resolve the open comment, which closes its card; R again unresolves it and opens the card; nothing on a draft never sent (ADR 0015 §4) |
     | ⌘/Ctrl-Backspace | Delete the open comment, with Undo |
-    | ⌘/Ctrl-Z | Undo the last delete or clear, else the banner's removal |
+    | ⌘/Ctrl-Z | Undo the last delete, Delete drafts or Re-place |
     | Shift-X | Show every unchanged line of the file |
     | ⌘/Ctrl-1 / ⌘/Ctrl-2 | Unified / Split |
     | ⌘/Ctrl-Shift-B | Open the base picker |
@@ -433,7 +447,99 @@ change, annotate, hand off to the agent, next round.
     window, in menus or tooltips, the developer's call, 2026-10-15 (`ux`
     skill, the same section): a list of them is open task 17. The set, from
     the conventions of GitLab, Gerrit, Crucible, Meld and the HIG, is the
-    developer's call, 2026-10-15.
+    developer's call, 2026-10-15. R, added with ADR 0015, is shown on
+    every sent card's Resolve button and in the macOS Review menu, which
+    reads Unresolve when the open comment is resolved. While a lost draft
+    is being placed, Return places it wherever focus was left, as the bar
+    over the file says.
+
+30. **A drag-selection opens the composer when released** (the design's
+    flow 3d, as edited 2026-10-15; the developer's call, 2026-10-15), on
+    the lines dragged over, as a single press does. Shift-click and
+    Shift-↓ / Shift-↑ still leave a range with the "Comment on lines"
+    pill, so a range can be adjusted before C. Until 2026-10-15 a drag
+    left the pill too.
+
+31. **The loop's states are drawn as the design's component sheet draws
+    them** (ADR 0015; `app/src/components/Pin.tsx`, `CommentCard.tsx`,
+    `ReviewActions.tsx`, `Sidebar.tsx`, `FilePane.tsx`):
+    - **Pins** are 20 px continuous-corner squares: ink for a draft or a
+      reopened comment, paper (a white disc on a hairline) for a sent
+      one; an ink badge on paper says changed, a paper badge on ink says
+      reopened; the open pin lifts with a halo. Beside a mark in a list,
+      a card's chip or the round strip, the same look is a 10 px disc,
+      where the design draws a small rounded square: that reads as an
+      unticked checkbox beside Viewed (the author's call, 2026-10-16,
+      under the developer's instruction of 2026-10-15 to run the review
+      until clean; so for the triangle and the pills below). Lost, resolved and
+      outdated comments draw none. A copy turns the pins and list entries
+      to paper top to bottom, 40 ms apart (`.pin` in `styles.css`, `--i`
+      the comment's index).
+    - **Cards:** a draft keeps Edit and Delete; a sent one shows its chip
+      (Sent, Changed, Reopened), "Sent in round N · 18 min ago" (`when`,
+      as the welcome screen's recent folders; in `muted3`, as "You sent in
+      round N"), a reopened
+      one "You sent in round N" with the old text and "Copies as “Still:
+      …”" (the composer shows the same while editing a sent comment), a
+      changed one "Lines 21–24 → line 23" or "Line 31 · code removed" with
+      the sent (−) and now (+) code under the commits it was sent on and
+      is now on, "a1f3c9e → 7c20d14", or "a1f3c9e → uncommitted" when no
+      commit followed; then a footer ("Untouched since sent", "… · nearby
+      lines changed", "Code changed since sent", "Code removed since
+      sent", "Suggestion applied") with Edit and Resolve R, primary on a
+      changed card; a draft's footer has Edit and Delete in the same
+      place, where the design puts them in the header (ux gate 7).
+      Resolving closes the card (a resolved comment has no
+      pin); R, or the macOS menu's Unresolve, then unresolves that
+      comment and opens its card again (`lastResolved`), until another
+      comment is shown. Only ⌘/Ctrl-Backspace deletes a sent comment.
+    - **The comment list** marks each entry (Sent, Changed in bold,
+      Reopened, Code gone, Not in this diff) with its glyph, keeps a lost
+      draft's first line of code with Re-place and Delete, offers Resolve
+      (and no Delete) on a sent comment on no line here (its file left the
+      diff, or another base or branch is shown: it has no card), Delete on
+      a draft not in this diff, and
+      folds the resolved ones into "Resolved (n)" at the bottom, each with
+      Unresolve, which opens the card again only for a comment that has
+      one. Its hint names "comments in this diff" only when one is not in
+      this diff (`notInDiff`, as the count). Text the list mutes is in
+      `muted3`, which reads at 4.5:1,
+      and a focused entry is highlighted with an inset ring. Its footer
+      has Preview instructions… and Delete drafts,
+      the ellipsis since the dialog follows (HIG `buttons`).
+      The count button counts open comments.
+    - **The round strip** under the progress header (`roundStrip`,
+      `app/src/round.ts`): "Nothing sent yet · 5 drafts"; "Round 2 sent ·
+      5 comments · Just now" until the agent's work shows; then "Round 2 ·
+      2 changed · 1 untouched · 1 resolved automatically", wrapping rather
+      than cutting a count short. A count that steps N / P through its
+      comments (`commentFilter`) is a filled pill, outlined while pressed,
+      so it reads as a control (HIG `buttons`), where the design draws
+      plain text; a second press steps through all again, and a count
+      whose comments have no card opens the list. A copy clears the
+      filter. A reopened comment counts in neither.
+    - **Copy:** "✓ Copied · round 2 sent", "3 comments copied as
+      instructions and marked Sent. Paste them into your agent session.",
+      Preview instructions… (the list's words for the same dialog) and
+      Not sent (ADR 0015 §1). The popover of a copy that sent a round
+      stays until a load changes something, a comment is written, edited,
+      deleted or resolved, or it is dismissed; one that sent nothing goes
+      after 6 s, as does one whose round was recorded while a load or an
+      edit moved the review on, so Not sent could not be offered.
+      Not sent is drawn as the action it is, in the foreground weight. Copy review and the
+      preview's Copy are disabled with no open comment. A comment changed
+      while the round is recorded keeps its change and takes what was
+      sent.
+    - **Re-place** (ADR 0015 §2): from the list's Re-place, the lost
+      draft's file is selected when the diff has it, a bar under the file
+      header names the comment ("Re-place “…”", "Click a line number ·
+      Esc", then "↑ ↓ to move · Return to place · Esc"), a dashed pin and a "Place here ↩" pill
+      follow the pointer or the arrows (the list leaves focus on no
+      control when it closes into placing), a click or Return places it, Esc
+      leaves it lost, and the undo bar says "Placed on line 16. It is a
+      draft again." with Undo. The bar's 10 s wait while the preview
+      covers it and start over when it closes (HIG `undo-and-redo`;
+      2026-10-16), so opening the preview never uses up an undo.
 
 ## Pitfalls
 
@@ -455,6 +561,13 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-15, rounds and resolution)
+
+Step 13 landed: ADR 0015's loop (Decisions 16 and 31), ADR 0016's sidebar
+(Decision 23), the preview's new layout (Decision 25), the composer on a
+drag's release (Decision 30) and R (Decision 29). `reviews.json` is
+version 2; a version 1 file reads and is written back as 2.
 
 ## Progress (2026-10-15, keyboard shortcuts)
 
@@ -504,7 +617,8 @@ colour scheme switches the window live.
 ## Progress (2026-10-13, comments deleted when their code changes)
 
 Comments whose code changed are deleted, and outdated ones are no longer
-drawn at line numbers that hold other code (Decision 16).
+drawn at line numbers that hold other code (Decision 16; since 2026-10-15
+nothing is deleted, ADR 0015).
 
 ## Progress (2026-10-13, releases)
 

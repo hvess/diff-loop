@@ -26,6 +26,7 @@ export type WindowCommand =
   | "comment"
   | "editComment"
   | "deleteComment"
+  | "resolveComment"
   | "undo"
   | "copyReview"
   | "preview"
@@ -68,6 +69,7 @@ const BINDINGS = new Map<string, { command: Command; scope: Scope; repeats: bool
   ["c", { command: "comment", scope: "page", repeats: false }],
   ["enter", { command: "comment", scope: "page", repeats: false }],
   ["e", { command: "editComment", scope: "page", repeats: false }],
+  ["r", { command: "resolveComment", scope: "page", repeats: false }],
   ["mod+backspace", { command: "deleteComment", scope: "page", repeats: false }],
   ["mod+z", { command: "undo", scope: "page", repeats: false }],
   ["mod+shift+c", { command: "copyReview", scope: "window", repeats: false }],

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    anchor::{Comment, reanchor},
+    anchor::{Comment, Place, reanchor},
     base::{Base, BaseRef, default_base},
     diff::FileDiff,
     repository::{Changes, Checkout, RepoError, Repository, Snapshot, Touched},
@@ -161,9 +161,13 @@ pub fn load(
             (diff.path.clone(), signature)
         })
         .collect();
+    let now = Place {
+        base: base.clone(),
+        head: checkout.head.clone(),
+    };
     let comments = comments
         .into_iter()
-        .map(|c| reanchor(c, &changes.files))
+        .map(|c| reanchor(c, &changes.files, &now))
         .collect();
     let known: HashMap<String, String> = known.into_iter().map(|k| (k.path, k.signature)).collect();
     // Only what is sent is cloned: the changes move whole into `Loaded`.
@@ -302,6 +306,9 @@ pub(crate) mod tests {
             text: "t".into(),
             suggestion: None,
             state: AnchorState::Current,
+            place: None,
+            sent: None,
+            resolved: None,
         };
         let (review, _) = load(&repo, Base::Uncommitted, vec![comment], vec![], None).unwrap();
         assert_eq!(review.fingerprint.as_deref(), Some("f1"));

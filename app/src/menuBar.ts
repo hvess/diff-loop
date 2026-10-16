@@ -1,6 +1,7 @@
 // The macOS menu bar (diff-loop-app.md Decision 18). Item names are title case, per the HIG's `menus` page.
 import { CheckMenuItem, Menu, MenuItem, Submenu } from "@tauri-apps/api/menu";
 import { chooseFolder } from "./choose";
+import { hasCard, resolvable } from "./lifecycle";
 import { dialogOpen } from "./platform";
 import { useStore } from "./store";
 
@@ -17,6 +18,8 @@ export type MenuState = {
   canComment: boolean;
   /** Whether find in file is open. */
   finding: boolean;
+  /** What R would do to the open comment, or the one it just resolved: nothing for none, or a draft never sent (ADR 0015 §4). */
+  resolve: "resolve" | "unresolve" | null;
 };
 
 export function menuState(s: Store): MenuState {
@@ -25,10 +28,16 @@ export function menuState(s: Store): MenuState {
     open: s.review !== null,
     unified: s.mode === "unified",
     viewed: selected === null ? null : s.viewed.has(selected),
-    hasComments: s.comments.some((c) => c.state === "current"),
+    hasComments: s.comments.some(hasCard),
     canComment: s.selection !== null && s.composer === null,
     finding: s.find !== null,
+    resolve: resolveOf(s.comments.find((c) => c.id === (s.openComment ?? s.lastResolved))),
   };
+}
+
+function resolveOf(open: ReturnType<typeof useStore.getState>["comments"][number] | undefined): MenuState["resolve"] {
+  if (!open || !resolvable(open)) return null;
+  return open.resolved === null ? "resolve" : "unresolve";
 }
 
 /** Installs the menu bar; the returned function stops following the store. */
@@ -43,6 +52,13 @@ export async function installMenuBar(): Promise<() => void> {
   const next = await MenuItem.new({ text: "Next Comment", action: act((s) => s.jumpComment(1)) });
   const previous = await MenuItem.new({ text: "Previous Comment", action: act((s) => s.jumpComment(-1)) });
   const comment = await MenuItem.new({ text: "Comment on Selection…", action: act((s) => s.composeOnSelection()) });
+  const resolve = await MenuItem.new({
+    text: "Resolve",
+    action: act((s) => {
+      const id = s.openComment ?? s.lastResolved;
+      if (id) s.resolveComment(id);
+    }),
+  });
   const find = await MenuItem.new({
     text: "Find…",
     accelerator: "CmdOrCtrl+F",
@@ -110,7 +126,7 @@ export async function installMenuBar(): Promise<() => void> {
         ],
       }),
       await Submenu.new({ text: "View", items: [unified, split, { item: "Separator" }, { item: "Fullscreen", text: "Enter Full Screen" }] }),
-      await Submenu.new({ text: "Review", items: [comment, { item: "Separator" }, next, previous, { item: "Separator" }, viewed] }),
+      await Submenu.new({ text: "Review", items: [comment, { item: "Separator" }, next, previous, resolve, { item: "Separator" }, viewed] }),
       windowMenu,
     ],
   });
@@ -132,6 +148,8 @@ export async function installMenuBar(): Promise<() => void> {
       next.setEnabled(now.hasComments),
       previous.setEnabled(now.hasComments),
       comment.setEnabled(now.canComment),
+      resolve.setEnabled(now.resolve !== null),
+      resolve.setText(now.resolve === "unresolve" ? "Unresolve" : "Resolve"),
     ]);
   }
 
@@ -152,6 +170,7 @@ export function sameMenuState(a: MenuState, b: MenuState): boolean {
     a.viewed === b.viewed &&
     a.hasComments === b.hasComments &&
     a.canComment === b.canComment &&
-    a.finding === b.finding
+    a.finding === b.finding &&
+    a.resolve === b.resolve
   );
 }

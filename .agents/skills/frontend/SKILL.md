@@ -6,9 +6,12 @@ description: The idioms of Diff Loop's front end (app/src) — React 19, TypeScr
 # Front end
 
 The front end draws what the Rust core decides. It holds no domain rule
-the core owns — anchoring, instructions, what changed — and asks for it
-instead. Its own logic is presentation: rows, the file tree,
-highlighting, find, what to send and when.
+the core owns — anchoring, instructions, what changed, what a copy sends
+— and asks for it instead. Its own logic is presentation: rows, the file
+tree, highlighting, find, what a comment's fields mean on screen
+(`lifecycle.ts`, which reads them; its `reopened`, and the preview's
+count of new comments by it, `previewSubtitle`, repeat the core's one
+comparison, the seam the ADR 0015 build chose), what to send and when.
 
 ## Data from Rust
 
@@ -35,7 +38,8 @@ highlighting, find, what to send and when.
 - **Async results check they still apply.** An answer for a repository,
   base or file that is no longer current is dropped (`stillOpen`,
   `sameBase`, a signature check).
-- **Persisted state** is only what ADR 0001 §5 and ADR 0004 name.
+- **Persisted state** is only what ADR 0001 §5 (as ADR 0016 §2 amends
+  it), ADR 0004 and ADR 0015 §9 name.
 
 ## Cost
 

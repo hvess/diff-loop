@@ -8,15 +8,19 @@ import type { Comment } from "./bindings/Comment";
 import type { FileDiff } from "./bindings/FileDiff";
 import type { InstructionsRequest } from "./bindings/InstructionsRequest";
 import type { Opening } from "./bindings/Opening";
+import type { Place } from "./bindings/Place";
 import type { Review } from "./bindings/Review";
+import type { Round } from "./bindings/Round";
 import type { SavedReview } from "./bindings/SavedReview";
 import type { Snapshot } from "./bindings/Snapshot";
 import type { Side } from "./bindings/Side";
 import type { Target } from "./bindings/Target";
+import { changed, hasCard, open as isOpen, resolvable } from "./lifecycle";
 import { rememberRecent } from "./recent";
 import { dedent } from "./indent";
 import { changedLines, type Expanded, type Gap, gapsOf, lastLine, linesOn, withinHunk } from "./rows";
-import { type TreeRow, treeRows } from "./tree";
+import { clampWidth, loadWidth, rememberWidth } from "./sidebar";
+import { folderCounts, folderKeys, type TreeRow, treeRows } from "./tree";
 
 export type Problem = { title: string; detail: string };
 
@@ -27,8 +31,12 @@ export type LoadedReview = Omit<Review, "files" | "snapshot"> & {
   signatures: Record<string, string>;
   /** Built once per load, so a key press never scans the file list. */
   byPath: Map<string, FileDiff>;
-  /** The sidebar's rows, built once per load. */
+  /** The sidebar's rows, built once per load; `closed` folds some away (`fold`). */
   tree: TreeRow[];
+  /** Path → the keys of the folder rows it is under, which selecting it opens. */
+  folders: Map<string, string[]>;
+  /** Folder row key → how many changed files it holds, which a folded folder shows. */
+  folderFiles: Map<string, number>;
   /** Files in sidebar order: as `tree` nests them. */
   order: FileDiff[];
   /** Path → index in `order`. */
@@ -67,15 +75,11 @@ export function commentText(c: Comment): string {
 
 export type Selection = { path: string; side: Side; anchor: number; head: number; dragging: boolean };
 
-/**
- * What the last loads changed under the review. `removed` are the comments
- * they removed, which Undo removal brings back; the rest are described as they are
- * now (`bannerDetail`). `previous` is the commit before `HEAD` moved, if it did.
- */
-export type Banner = { title: string; removed: Comment[]; previous: string | null };
+/** The checkout changed under the review; `previous` is the commit before `HEAD` moved. */
+export type Banner = { title: string; previous: string | null };
 
-/** The banner's title when the code changed and `HEAD` did not move. */
-export const CODE_UPDATED = "The agent updated the code";
+/** The comments N / P step through: every one with a card, or only the sent ones a round strip count names. */
+export type CommentFilter = "changed" | "untouched" | null;
 
 type Undo = { label: string; comments: Comment[] };
 
@@ -93,6 +97,10 @@ type State = {
   recheck: "changes" | "everything" | null;
   loadProblem: Problem | null;
   comments: Comment[];
+  /** The rounds sent for the open checkout, the latest last (ADR 0015 §9). */
+  rounds: Round[];
+  /** How many comments the last load resolved itself, said once in the round strip (ADR 0015 §4). */
+  autoResolved: number;
   selected: string | null;
   /**
    * Path → signature of the file's diff when marked viewed. V changes it in
@@ -111,6 +119,11 @@ type State = {
   composer: Composer | null;
   selection: Selection | null;
   openComment: string | null;
+  /** The lost draft being placed again, while a line is being chosen (ADR 0015 §2). */
+  replacing: string | null;
+  /** The comment R last resolved, which R unresolves while no card is open; null once another is shown. */
+  lastResolved: string | null;
+  commentFilter: CommentFilter;
   /** Whether the comments list is open. */
   commentList: boolean;
   /** Whether the base picker is open. */
@@ -118,7 +131,10 @@ type State = {
   /** Whether the preview of the instructions is open. */
   preview: boolean;
   banner: Banner | null;
-  copied: boolean;
+  /** The last copy, with the round it sent; null once it is no longer shown. */
+  copied: { round: number | null } | null;
+  /** The review before the last copy, offered as "Not sent" until the next load changes something. */
+  unsend: SavedReview | null;
   /** Why the last Copy review failed, if it did. */
   copyProblem: Problem | null;
   undo: Undo | null;
@@ -135,6 +151,10 @@ type State = {
   previewEdit: { key: string; text: string } | null;
   /** Why the open checkout's comments are not being kept, if they are not. */
   saveProblem: Problem | null;
+  /** The sidebar's folded folders, by row key; open unless here. */
+  closed: Set<string>;
+  /** The sidebar's width in pixels (ADR 0016 §2). */
+  sidebarWidth: number;
 };
 
 type Actions = {
@@ -172,6 +192,10 @@ type Actions = {
   cancelComposer: () => void;
   saveComposer: () => void;
   deleteComment: (id: string) => void;
+  /** Resolves a sent comment, or unresolves it; a draft never sent is left alone (ADR 0015 §4). */
+  resolveComment: (id: string) => void;
+  /** Deletes every draft not yet sent, with Undo; sent comments are the rounds' record. */
+  deleteDrafts: () => void;
   toggleComment: (id: string | null) => void;
   setCommentList: (open: boolean) => void;
   setBasePicker: (open: boolean) => void;
@@ -179,12 +203,16 @@ type Actions = {
   jumpComment: (step: 1 | -1) => void;
   /** Selects the comment's file and opens its card. */
   showComment: (id: string) => void;
+  /** Steps N / P through the sent comments `filter` names, from the first; null steps through all again. */
+  setCommentFilter: (filter: CommentFilter) => void;
+  /** Starts placing the lost draft `id` again: the selected file's gutter takes the next click or Return. */
+  startReplace: (id: string) => void;
+  /** Places the draft being placed on line `no` of `side` in the selected file; it is a current draft again. */
+  placeComment: (side: Side, no: number) => void;
+  cancelReplace: () => void;
   clearUndo: () => void;
-  clearComments: () => void;
   undoLast: () => void;
   dismissBanner: () => void;
-  /** Brings back the comments the banner says were removed, as not in this diff. */
-  undoRemoved: () => void;
   showWhatChanged: () => Promise<void>;
   openFind: () => void;
   /** The find field took the focus ⌘/Ctrl-F asked for. */
@@ -197,8 +225,14 @@ type Actions = {
   /** Keeps an edit of the preview, for the review `key` names (`reviewKey`), or drops it with null. */
   setPreviewEdit: (edit: { key: string; text: string } | null) => void;
   copyReview: () => Promise<void>;
+  /** Copies `text` and ends a round: every open comment is sent (ADR 0015 §1). */
   copyText: (text: string) => Promise<void>;
-  setCopied: (copied: boolean) => void;
+  /** Closes the Copied popover, and with it the offer to take the round back. */
+  dismissCopied: () => void;
+  /** Takes back the last copy's round: the review is as it was before the copy (ADR 0015 §1). */
+  unsendRound: () => void;
+  toggleFolder: (key: string) => void;
+  setSidebarWidth: (width: number) => void;
   /**
    * Saves the open checkout's comments now. When its saved review
    * could not be read, reads it again first and merges it into the window.
@@ -211,6 +245,19 @@ export function orderedComments(review: LoadedReview | null, comments: Comment[]
   const at = (c: Comment) => review?.position.get(c.path) ?? Number.MAX_SAFE_INTEGER;
   const line = (c: Comment) => (c.target.kind === "lines" ? c.target.start : 0);
   return [...comments].sort((a, b) => at(a) - at(b) || line(a) - line(b));
+}
+
+/** The banner's detail: how many open comments the diff shown no longer holds (`ux` skill, "Settled wording"). */
+export function bannerDetail(notInDiff: number): string {
+  if (notInDiff === 0) return "";
+  return `${notInDiff} ${notInDiff === 1 ? "comment is" : "comments are"} not in this diff.`;
+}
+
+/** Whether a sent comment is one `filter` names: judged changed, or untouched. */
+export function inFilter(c: Comment, filter: CommentFilter): boolean {
+  if (filter === null) return true;
+  if (c.sent === null || c.resolved !== null) return false;
+  return filter === "changed" ? changed(c) : c.sent.verdict === "untouched" || c.sent.verdict === "nearbyChanged";
 }
 
 /** Find opened afresh on another file: its count of steps starts again at the first match. */
@@ -238,6 +285,12 @@ export function keptEdit(edit: State["previewEdit"], key: string): string | null
   return edit?.key === key ? edit.text : null;
 }
 
+/** Where the review stands: the base and the branch checked out, as a comment or a round records it. */
+export function placeOf(s: Pick<State, "review" | "opening" | "base">): Place | null {
+  const checkout = s.review?.checkout ?? s.opening?.checkout;
+  return checkout ? { base: s.base, head: checkout.head } : null;
+}
+
 /**
  * load_review for `base`, sending only the versions `held` already has, and
  * filling the files it names back in from `held`; `full` reads everything again.
@@ -256,6 +309,7 @@ async function fetchReview(base: Base, comments: Comment[], held: LoadedReview |
     signatures[file.path] = entry.signature;
   }
   const tree = treeRows(files);
+  const folders = folderKeys(tree);
   const order = tree.flatMap((row) => (row.kind === "file" ? [row.file] : []));
   return {
     ...rest,
@@ -263,6 +317,8 @@ async function fetchReview(base: Base, comments: Comment[], held: LoadedReview |
     signatures,
     byPath: new Map(files.map((f) => [f.path, f])),
     tree,
+    folders,
+    folderFiles: folderCounts(folders),
     order,
     position: new Map(order.map((f, i) => [f.path, i])),
   };
@@ -270,28 +326,10 @@ async function fetchReview(base: Base, comments: Comment[], held: LoadedReview |
 
 export const sameBase = (a: Base, b: Base) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Whether `after` has the branch `before` had checked out; a detached `HEAD` counts as one branch. */
-function sameBranch(before: LoadedReview, after: LoadedReview): boolean {
-  const [was, now] = [before.checkout.head, after.checkout.head];
-  return was.kind === "detached" ? now.kind === "detached" : now.kind === "branch" && now.name === was.name;
-}
-
-/**
- * The banner's detail: how many comments loads removed, and how many of the `total` left are not
- * in this diff or still open. Its wording is settled (`ux` skill, "Settled wording"): only the
- * first sentence names comments.
- */
-export function bannerDetail(removed: number, notInDiff: number, total: number): string {
-  const open = total - notInDiff;
-  const parts: [number, string, string][] = [
-    [removed, "was addressed and removed", "were addressed and removed"],
-    [notInDiff, "is not in this diff", "are not in this diff"],
-    [open, "is still open", "are still open"],
-  ];
-  return parts
-    .filter(([n]) => n > 0)
-    .map(([n, one, many], i) => `${n}${i === 0 ? (n === 1 ? " comment" : " comments") : ""} ${n === 1 ? one : many}.`)
-    .join(" ");
+/** `closed` without the folders `path` is under: a selected file is shown, however it was selected (ADR 0016 §1). */
+function openedFor(review: LoadedReview | null, path: string | null, closed: Set<string>): Set<string> {
+  const under = path === null ? [] : (review?.folders.get(path) ?? []).filter((key) => closed.has(key));
+  return under.length === 0 ? closed : new Set([...closed].filter((key) => !under.includes(key)));
 }
 
 /**
@@ -322,6 +360,8 @@ export const useStore = create<State & Actions>()((set, get) => ({
   recheck: null,
   loadProblem: null,
   comments: [],
+  rounds: [],
+  autoResolved: 0,
   selected: null,
   viewed: new Map(),
   viewedLines: 0,
@@ -330,16 +370,22 @@ export const useStore = create<State & Actions>()((set, get) => ({
   composer: null,
   selection: null,
   openComment: null,
+  replacing: null,
+  lastResolved: null,
+  commentFilter: null,
   commentList: false,
   basePicker: false,
   preview: false,
   banner: null,
-  copied: false,
+  copied: null,
+  unsend: null,
   copyProblem: null,
   undo: null,
   find: null,
   previewEdit: null,
   saveProblem: null,
+  closed: new Set(),
+  sidebarWidth: loadWidth(),
 
   async open(path) {
     set({ busy: true, openProblem: null });
@@ -362,6 +408,8 @@ export const useStore = create<State & Actions>()((set, get) => ({
         base: opening.base,
         review: null,
         comments: saved.review.comments,
+        rounds: saved.review.rounds,
+        autoResolved: 0,
         viewed: new Map(),
         viewedLines: 0,
         expanded: new Map(),
@@ -370,15 +418,21 @@ export const useStore = create<State & Actions>()((set, get) => ({
         composer: null,
         selection: null,
         openComment: null,
+        replacing: null,
+        lastResolved: null,
+        commentFilter: null,
         commentList: false,
         basePicker: false,
         preview: false,
         copyProblem: null,
         banner: null,
+        copied: null,
+        unsend: null,
         undo: null,
         find: null,
         previewEdit: null,
         saveProblem: saved.problem,
+        closed: new Set(),
       });
       await get().reload();
       // Only the answer for the repository still open counts: a slow answer
@@ -401,11 +455,16 @@ export const useStore = create<State & Actions>()((set, get) => ({
       opening: null,
       review: null,
       comments: [],
+      rounds: [],
       composer: null,
       selection: null,
+      replacing: null,
+      commentFilter: null,
       commentList: false,
       basePicker: false,
       preview: false,
+      copied: null,
+      unsend: null,
       copyProblem: null,
     });
   },
@@ -430,21 +489,15 @@ export const useStore = create<State & Actions>()((set, get) => ({
       const review = await fetchReview(base, sent, held, full);
       if (!sameBase(get().base, base)) return;
       const moved = new Map(review.comments.map((c) => [c.id, c]));
-      const deletes = held !== null && sameBranch(held, review);
-      const editing = get().composer?.editing;
-      const deleted: Comment[] = [];
       // Comments written or changed while loading are kept as they are: a comment is
       // replaced, never mutated, so one not among those sent changed since.
       const unchanged = new Set(sent);
-      const comments = get().comments.flatMap((c) => {
+      let autoResolved = 0;
+      const comments = get().comments.map((c) => {
         const m = moved.get(c.id);
-        if (!m || !unchanged.has(c)) return [c];
-        // Its code is gone under the same base and branch (diff-loop-app.md Decision 16).
-        if (deletes && c.state === "current" && m.state === "outdated" && c.id !== editing) {
-          deleted.push(c);
-          return [];
-        }
-        return [{ ...m, text: c.text, suggestion: c.suggestion }];
+        if (!m || !unchanged.has(c)) return c;
+        if (c.resolved === null && m.resolved === "suggestionApplied") autoResolved++;
+        return { ...m, text: c.text, suggestion: c.suggestion };
       });
       // A watch event often changes nothing reviewed (a build writing ignored
       // files): then the window keeps its state, and nothing re-renders.
@@ -457,13 +510,16 @@ export const useStore = create<State & Actions>()((set, get) => ({
       const current = get().selected;
       const selected = current !== null && review.byPath.has(current) ? current : (review.order[0]?.path ?? null);
       const open = get().openComment;
-      // A comment not in this diff has no card to stay open.
-      const openComment = comments.some((c) => c.id === open && c.state === "current") ? open : null;
+      // A comment without a card has none to stay open.
+      const openComment = comments.some((c) => c.id === open && hasCard(c)) ? open : null;
       let viewedLines = 0;
       // Kept marks are for files in this load: their signatures matched.
       for (const path of viewed.keys()) viewedLines += changedLines(review.byPath.get(path)!);
-      set({ review, comments, viewed, viewedLines, expanded, selected, openComment, loadProblem: null });
-      await announceMove(before, review, deleted);
+      // What changed is now on the record: the last copy can no longer be taken back, and its popover goes.
+      const copied = get().unsend ? null : get().copied;
+      const closed = openedFor(review, selected, get().closed);
+      set({ review, comments, autoResolved, viewed, viewedLines, expanded, selected, openComment, loadProblem: null, unsend: null, copied, closed });
+      await announceMove(before, review);
     } catch (error) {
       set({ loadProblem: describe(error) });
     } finally {
@@ -476,28 +532,15 @@ export const useStore = create<State & Actions>()((set, get) => ({
       }
     }
 
-    async function announceMove(before: LoadedReview | null, after: LoadedReview, deleted: Comment[]) {
+    // Only a change of context gets a banner (ADR 0015 §10): the agent's work shows in the round strip.
+    async function announceMove(before: LoadedReview | null, after: LoadedReview) {
       const previous = before?.checkout.commit;
       const now = after.checkout.commit;
-      if (!previous || !now || previous === now) {
-        // The code changed under the same commit; a banner already up keeps its title and adds these.
-        if (deleted.length === 0) return;
-        const shown = get().banner;
-        set({
-          banner: {
-            title: shown?.title ?? CODE_UPDATED,
-            removed: [...(shown?.removed ?? []), ...deleted],
-            previous: shown?.previous ?? null,
-          },
-        });
-        return;
-      }
+      if (!previous || !now || previous === now) return;
       const headBefore = before.checkout.head;
       const headNow = after.checkout.head;
-      // A new title, but Undo still brings back what a banner already up had removed.
-      const removed = [...(get().banner?.removed ?? []), ...deleted];
       if (headBefore.kind === "branch" && headNow.kind === "branch" && headBefore.name !== headNow.name) {
-        set({ banner: { title: `Switched to ${headNow.name}`, removed, previous } });
+        set({ banner: { title: `Switched to ${headNow.name}`, previous } });
         return;
       }
       const count = await api.commitsBetween(previous, now).catch(() => null);
@@ -505,7 +548,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         count === null
           ? "The branch was rewritten"
           : `The branch moved: ${count} new ${count === 1 ? "commit" : "commits"}`;
-      set({ banner: { title, removed, previous } });
+      set({ banner: { title, previous } });
     }
   },
 
@@ -538,8 +581,9 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   select(path) {
+    const { review, closed } = get();
     const find = path === get().selected ? get().find : firstMatch(get().find);
-    set({ selected: path, selection: null, openComment: null, find });
+    set({ selected: path, selection: null, openComment: null, find, closed: openedFor(review, path, closed) });
   },
 
   openFind() {
@@ -656,7 +700,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   composeOnSelection() {
     const s = get().selection;
     // A comment being written keeps its draft: its lines move only by its handles.
-    if (!s || get().composer) return;
+    if (!s || get().composer || get().replacing) return;
     const [start, end] = s.anchor <= s.head ? [s.anchor, s.head] : [s.head, s.anchor];
     get().composeOnLines(s.path, s.side, start, end);
   },
@@ -726,27 +770,61 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   saveComposer() {
     const composer = get().composer;
-    if (!composer || !canSave(composer)) return;
-    const comment: Comment = {
-      id: composer.editing ?? crypto.randomUUID(),
-      path: composer.path,
-      target: composer.target,
-      text: composer.text.trim(),
-      suggestion: composer.suggestion,
-      state: "current",
-    };
+    const place = placeOf(get());
+    if (!composer || !canSave(composer) || !place) return;
+    const written = { target: composer.target, text: composer.text.trim(), suggestion: composer.suggestion };
+    // An edited sent comment keeps its round, and is reopened by its text differing from what was sent.
     const comments = composer.editing
-      ? get().comments.map((c) => (c.id === composer.editing ? { ...comment, state: c.state } : c))
-      : [...get().comments, comment];
-    set({ comments, composer: null, selection: null, copied: false });
+      ? get().comments.map((c) => (c.id === composer.editing ? { ...c, ...written } : c))
+      : [
+          ...get().comments,
+          { id: crypto.randomUUID(), path: composer.path, ...written, state: "current" as const, place, sent: null, resolved: null },
+        ];
+    // A comment written or edited moves the review on: the last copy's popover and its "Not sent" go with it.
+    set({ comments, composer: null, selection: null, copied: null, unsend: null });
   },
 
   deleteComment(id) {
     const comments = get().comments;
+    // A delete moves the review on, as writing does: the last copy can no longer be taken back.
     set({
       comments: comments.filter((c) => c.id !== id),
       openComment: null,
       undo: { label: "Comment deleted", comments },
+      copied: null,
+      unsend: null,
+    });
+  },
+
+  resolveComment(id) {
+    const c = get().comments.find((x) => x.id === id);
+    if (!c || !resolvable(c)) return;
+    const resolved = c.resolved === null ? "byReviewer" as const : null;
+    set({
+      comments: get().comments.map((x) => (x.id === id ? { ...x, resolved } : x)),
+      // Resolved, it has no card to stay open; R again unresolves it and opens the card (ADR 0015 §4).
+      openComment: resolved && get().openComment === id ? null : get().openComment,
+      lastResolved: resolved ? id : null,
+      // A resolve moves the review on, as writing does: "Not sent" would drop it (ADR 0015 §1).
+      copied: null,
+      unsend: null,
+    });
+    // Only a comment with a card is shown: one outdated stays in the list, as it was.
+    const now = get().comments.find((x) => x.id === id);
+    if (!resolved && now && hasCard(now)) get().showComment(id);
+  },
+
+  deleteDrafts() {
+    const comments = get().comments;
+    const drafts = comments.filter((c) => c.sent === null).length;
+    if (drafts === 0) return;
+    const open = get().openComment;
+    set({
+      comments: comments.filter((c) => c.sent !== null),
+      openComment: comments.some((c) => c.id === open && c.sent !== null) ? open : null,
+      undo: { label: `${drafts} ${drafts === 1 ? "draft" : "drafts"} deleted`, comments },
+      copied: null,
+      unsend: null,
     });
   },
 
@@ -763,13 +841,15 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   toggleComment(id) {
-    set({ openComment: get().openComment === id ? null : id });
+    const open = get().openComment === id ? null : id;
+    // Another card shown: R no longer unresolves the comment it last resolved.
+    set({ openComment: open, lastResolved: open === null ? get().lastResolved : null });
   },
 
   jumpComment(step) {
-    const { review, comments, openComment } = get();
-    // A comment not in this diff has no card to open (diff-loop-app.md Decision 16).
-    const list = orderedComments(review, comments).filter((c) => c.state === "current");
+    const { review, comments, openComment, commentFilter } = get();
+    // Only a comment with a card: lost and not-in-this-diff comments are skipped, resolved ones too.
+    const list = orderedComments(review, comments).filter((c) => hasCard(c) && inFilter(c, commentFilter));
     if (list.length === 0) return;
     const at = list.findIndex((c) => c.id === openComment);
     const next = list[(at + step + list.length) % list.length]!;
@@ -780,23 +860,51 @@ export const useStore = create<State & Actions>()((set, get) => ({
     const c = get().comments.find((x) => x.id === id);
     if (c) {
       const find = c.path === get().selected ? get().find : firstMatch(get().find);
-      set({ selected: c.path, openComment: id, selection: null, composer: null, find });
+      get().select(c.path);
+      set({ openComment: id, selection: null, composer: null, find, lastResolved: null });
     }
+  },
+
+  setCommentFilter(filter) {
+    set({ commentFilter: filter });
+    if (filter !== null) {
+      const first = orderedComments(get().review, get().comments).find((c) => hasCard(c) && inFilter(c, filter));
+      // None on a line (their files left the diff): the list shows them.
+      if (first) get().showComment(first.id);
+      else set({ commentList: true });
+    }
+  },
+
+  startReplace(id) {
+    const { comments, review } = get();
+    const c = comments.find((x) => x.id === id);
+    if (!c || c.state !== "lost") return;
+    // Its file first, when the diff still has it: the code was near there.
+    if (review?.byPath.has(c.path)) get().select(c.path);
+    set({ replacing: id, commentList: false, openComment: null, composer: null, selection: null });
+  },
+
+  placeComment(side, no) {
+    const { replacing, selected, review, comments } = get();
+    const file = selected === null ? undefined : review?.byPath.get(selected);
+    const place = placeOf(get());
+    if (replacing === null || !file || !place || !comments.some((c) => c.id === replacing)) return;
+    const target: Target = { kind: "lines", side, start: no, code: linesOn(file, side, no, no) };
+    set({
+      comments: comments.map((c) => (c.id === replacing ? { ...c, path: file.path, target, state: "current" as const, place } : c)),
+      replacing: null,
+      selection: null,
+      openComment: replacing,
+      undo: { label: `Placed on line ${no}. It is a draft again.`, comments },
+    });
+  },
+
+  cancelReplace() {
+    set({ replacing: null, selection: null });
   },
 
   clearUndo() {
     set({ undo: null });
-  },
-
-  clearComments() {
-    const comments = get().comments;
-    if (comments.length === 0) return;
-    set({
-      comments: [],
-      openComment: null,
-      copied: false,
-      undo: { label: `${comments.length} ${comments.length === 1 ? "comment" : "comments"} cleared`, comments },
-    });
   },
 
   undoLast() {
@@ -806,17 +914,6 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   dismissBanner() {
     set({ banner: null });
-  },
-
-  undoRemoved() {
-    const banner = get().banner;
-    if (!banner || banner.removed.length === 0) return;
-    // As not in this diff: their code is gone, so as current the next load would remove them again.
-    const back = banner.removed.map((c) => ({ ...c, state: "outdated" as const }));
-    set({
-      comments: [...get().comments, ...back],
-      banner: banner.previous === null ? null : { ...banner, removed: [] },
-    });
   },
 
   async showWhatChanged() {
@@ -831,7 +928,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   async copyReview() {
     const request = get().instructionsRequest();
-    if (!request || request.comments.length === 0) return;
+    if (!request || !request.comments.some(isOpen)) return;
     const opening = get().opening;
     set({ copyProblem: null });
     try {
@@ -846,16 +943,75 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   async copyText(text) {
     await writeText(text);
+    const { review, comments, rounds, opening } = get();
+    const place = placeOf(get());
+    const before: SavedReview = { comments, rounds };
     // Copied, the edit has done its job (diff-loop-app.md Decision 25).
-    set({ copied: true, previewEdit: null });
+    if (!review || !place || !comments.some(isOpen)) {
+      set({ copied: { round: null }, previewEdit: null });
+      return;
+    }
+    // Only the files the open comments are in: the core reads their context from them.
+    const paths = new Set(comments.filter(isOpen).map((c) => c.path));
+    const files = [...paths].flatMap((path) => review.byPath.get(path) ?? []);
+    const after = await api.endRound({
+      review: before,
+      files,
+      place,
+      commit: review.checkout.commit,
+      at: Date.now(),
+      markdown: text,
+    });
+    // Another checkout opened meanwhile: the round was that one's, and goes with it (frontend skill, State).
+    if (get().opening !== opening) return;
+    // Comments changed while the round was recorded (a load, an edit) keep their change and take what was sent;
+    // one written meanwhile was not in the copy, and one pruned with its round goes.
+    const sentNow = new Map(after.comments.map((c) => [c.id, c]));
+    const copiedIds = new Set(comments.map((c) => c.id));
+    // A load or an edit meanwhile is on the record: nothing before it can be put back.
+    const untouched = get().review === review && get().comments === comments;
+    const merged = get().comments.flatMap((c) => {
+      const a = sentNow.get(c.id);
+      if (!copiedIds.has(c.id)) return [c];
+      if (!a) return [];
+      const was = comments.find((x) => x.id === c.id);
+      // The core's state, unless a load moved the comment meanwhile.
+      return [c === was ? a : { ...c, sent: a.sent, state: c.state === was?.state ? a.state : c.state }];
+    });
+    set({
+      comments: merged,
+      rounds: after.rounds,
+      copied: { round: after.rounds.at(-1)?.number ?? null },
+      unsend: untouched ? before : null,
+      previewEdit: null,
+      commentFilter: null,
+    });
   },
 
   setPreviewEdit(edit) {
     set({ previewEdit: edit });
   },
 
-  setCopied(copied) {
-    set({ copied });
+  dismissCopied() {
+    set({ copied: null, unsend: null });
+  },
+
+  unsendRound() {
+    const unsend = get().unsend;
+    if (!unsend) return;
+    set({ comments: unsend.comments, rounds: unsend.rounds, unsend: null, copied: null });
+  },
+
+  toggleFolder(key) {
+    const closed = new Set(get().closed);
+    if (!closed.delete(key)) closed.add(key);
+    set({ closed });
+  },
+
+  setSidebarWidth(width) {
+    const sidebarWidth = clampWidth(width);
+    rememberWidth(sidebarWidth);
+    set({ sidebarWidth });
   },
 
   async retrySave() {
@@ -863,7 +1019,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
     if (!opening) return;
     const root = opening.checkout.root;
     if (savings.get(root)?.last !== null) {
-      await save(root, { comments: get().comments });
+      await save(root, { comments: get().comments, rounds: get().rounds });
       return;
     }
     const saved = await readSaved(root);
@@ -871,10 +1027,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
       if (get().opening === opening) set({ saveProblem: saved.problem });
       return;
     }
-    // Comment ids are unique, so the saved ones the window lacks are added.
-    const ids = new Set(get().comments.map((c) => c.id));
-    const comments = [...saved.review.comments.filter((c) => !ids.has(c.id)), ...get().comments];
-    set({ comments, saveProblem: null });
+    // Rounds copied meanwhile counted from 1 again: the core counts them on from the saved ones.
+    const { comments, rounds } = await api.mergeReviews({ comments: get().comments, rounds: get().rounds }, saved.review);
+    if (get().opening !== opening) return;
+    set({ comments, rounds, saveProblem: null });
     await get().reload();
   },
 }));
@@ -901,7 +1057,7 @@ async function readSaved(root: string): Promise<{ review: SavedReview; problem: 
   } catch (error) {
     // Saving stays stopped: writing now would replace a review never read.
     saving.last = null;
-    return { review: { comments: [] }, problem: describe(error) };
+    return { review: { comments: [], rounds: [] }, problem: describe(error) };
   }
 }
 
@@ -924,11 +1080,11 @@ function save(root: string, review: SavedReview): Promise<void> {
   return saving.queue;
 }
 
-// Saves the open checkout's review when its comments change (ADR 0004 §4);
+// Saves the open checkout's review when its comments or rounds change (ADR 0004 §4);
 // `open` sets the checkout and its saved review together, so opening is
 // never seen as a change.
 useStore.subscribe((now, before) => {
   const opening = now.opening;
-  if (!opening || opening !== before.opening || now.comments === before.comments) return;
-  void save(opening.checkout.root, { comments: now.comments });
+  if (!opening || opening !== before.opening || (now.comments === before.comments && now.rounds === before.rounds)) return;
+  void save(opening.checkout.root, { comments: now.comments, rounds: now.rounds });
 });

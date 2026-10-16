@@ -35,7 +35,8 @@ to a coding agent as instructions. The core also needs a way to read git.
    keys `diff-loop.recent` (recently opened folders) and `diff-loop.prefs`
    (instruction format and toggles). Both are read defensively; a bad
    value falls back to the default. Since ADR 0013 §4 only
-   `diff-loop.recent` is read or written. Review comments are not
+   `diff-loop.recent` is read or written. (Amended by ADR 0016 §2:
+   `diff-loop.sidebar` keeps the sidebar's width.) Review comments are not
    persisted (superseded by ADR 0004).
 
 ## Consequences

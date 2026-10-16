@@ -5,7 +5,7 @@ The domain: what changed on a checkout, review comments, and the instructions th
 **Status:** active — first version landed.
 **Scope:** `crates/core`. Excludes reading git (`diff-loop-git.md`) and the UI (`diff-loop-app.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-14
+**Last Updated:** 2026-10-16
 
 ## Why
 
@@ -26,6 +26,8 @@ Each is a pure function tested here.
 8. The `ReviewStore` port and `SavedReview` (ADR 0004) — done 2026-10-13.
 9. `update`, and `load` since the last load: read only what was touched (ADR 0005) — done 2026-10-13.
 10. `BaseRef::behind` and `Repository::uncommitted_files`, for the base picker — done 2026-10-13.
+11. Rounds (`rounds.rs`, ADR 0015): `end_round` sends every open comment with its code and context, and keeps the last 20 rounds — done 2026-10-15.
+12. Judging a sent comment (`anchor.rs`, ADR 0015 §3), and comparing code with whitespace aside (`code.rs`, §7) — done 2026-10-15.
 
 ## Decisions
 
@@ -40,12 +42,14 @@ Each is a pure function tested here.
    cannot disagree with its code. The front end keeps a range inside one
    hunk (diff-loop-app Decision 6).
 4. **A comment stays on its code, not its line number.** `reanchor` keeps
-   it where its saved `code` still is, moves it to the nearest run of
-   consecutive lines that match, or marks it outdated. An outdated comment
-   keeps its last position and code, and every load looks for it again:
-   found, it is current. Whether an outdated comment is deleted or only
-   hidden is the front end's, which knows what the last load compared
-   (diff-loop-app Decision 16).
+   a draft where its saved `code` still is, moves it to the nearest run of
+   consecutive lines that match (Decision 15 says how lines match), or
+   marks it gone: *lost* when it was last seen under the base and branch
+   loaded (`Comment::place`, set wherever it is found), *outdated*
+   otherwise (ADR 0015 §2 and §8). A gone comment keeps its last position
+   and code, and every load looks for it again: found, it is current.
+   Nothing here deletes a comment; until 2026-10-15 the front end deleted
+   one whose code went under the same base and branch.
 5. **No roles** (ADR 0013 §1): the sidebar nests files by folder, in the
    front end. Until 2026-10-14 the core grouped files by a role read from
    the path.
@@ -57,6 +61,13 @@ Each is a pure function tested here.
    a comment with no text (suggested code alone) has no `: text`.
    They are Markdown, each file under a `###` heading, with no other
    format, no switch for the quoted code and no note (ADR 0013 §2).
+   Since 2026-10-15 (ADR 0015 §6): resolved comments are left out; drafts
+   and reopened comments come first, a reopened one's text as "Still: …",
+   a lost one as "Code no longer in the diff, was `…`"; then, under
+   "### Still open" with the round they were sent in, the sent comments
+   still open, each file under `####`, a changed one with ", was L21–24"
+   where its lines moved, a removed one as "Code removed since sent, was
+   L31 `…`".
 7. **`open` and `load` take any `Repository`, sized or not**, so the app
    can hold its adapter as `dyn Repository`.
 8. **`load` returns only what the caller lacks.** Each file carries a
@@ -70,8 +81,9 @@ Each is a pure function tested here.
     A range past the file's end returns what exists.
 
 11. **A review is kept per working tree** (`ReviewStore`, ADR 0004 §1):
-    its comments, whatever the base; no note since ADR 0013 §3. An empty
-    `SavedReview` removes the entry.
+    its comments and, since 2026-10-15, its rounds (ADR 0015 §9), whatever
+    the base; no note since ADR 0013 §3. An empty `SavedReview`, with
+    neither, removes the entry.
 
 12. **`load` since the last load reads only what was touched**
     (`update`, ADR 0005 §3), by their top-level directories past
@@ -82,12 +94,72 @@ Each is a pure function tested here.
 13. **"Behind" is `git status`'s sense:** `BaseRef::behind` counts the
     ref's commits the checkout lacks. The design shows only
     "behind". The developer's call, 2026-10-13.
+14. **A sent comment is judged where it was sent** (ADR 0015 §3 and §8,
+    `anchor::judge`): under the base and branch of its `Sent::place`,
+    the two runs of context recorded either side of it (`CONTEXT`,
+    three) are looked for bracketing some code, each `before` match
+    paired only with the first `after` match past it in the same run of
+    the diff, so the cost is O(m log m) in the m matches (`between`), cut down a line at a
+    time from their far ends until a pair is found, the pair nearest the
+    sent line with the least between; when what lies between is the
+    suggestion (dedented, by Decision 15), the comment is *applied* and
+    targets it,
+    judged before the sent code is looked for, since a suggestion that
+    keeps a sent line would otherwise read as that line. Else its sent
+    code is looked for as a draft's is; found, it is *untouched* when its
+    context is still there, in one run of the diff, else *nearby
+    changed*. Not found, what the context brackets is the comment's
+    target now: *removed* when empty, else *changed*.
+    Neither found, it is *removed* at the diff's line nearest its last,
+    with no code; with its file gone from the diff, *removed* and
+    outdated, since there is no line to put it on. One run of context alone cannot bound the lines, so a
+    comment sent at a hunk's edge is only ever untouched, nearby changed
+    or removed.
+    Elsewhere it is found by its current target as a draft is, and
+    carries no verdict. A sent comment resolves itself once when its
+    verdict becomes applied from another known verdict;
+    `Resolution::SuggestionApplied`.
+15. **Whitespace alone is not a change** (ADR 0015 §7, `code::same_code`):
+    lines match with trailing whitespace trimmed and a run of leading
+    whitespace counting only as present or absent, in `reanchor` and the
+    judgement alike.
+16. **A round ends with a copy** (ADR 0015 §1, `rounds::end_round`): every
+    unresolved comment is sent in a new round, numbered on from the last,
+    with its target, text and suggestion as sent and up to `CONTEXT`
+    lines either side of its code, read from the changed files the caller
+    passes, each run stopping at a gap the diff leaves out; a comment
+    whose file was not passed, or that is not on its code (lost,
+    outdated, or judged removed and so on no code), is sent without
+    context: bracketing the line where its code was would read that
+    line as the code on the next load. `merge` folds a saved review
+    into the window's once a failed read is read again (ADR 0004 §5):
+    saved comments the window lacks are added, rounds copied meanwhile
+    count on from the saved ones with their comments following, and the
+    bound holds. With nothing
+    unresolved, nothing changes. A lost comment sent is outdated. The
+    last 20 rounds are kept
+    (`KEPT_ROUNDS`): an older one drops with the resolved comments sent
+    in it.
 
 ## Pitfalls
 
+- A suspended judgement (ADR 0015 §8) clears the verdict, so "applied
+  on the way in" is read only from a known verdict (`judged`): back from
+  another base or branch, a comment the reviewer unresolved while applied
+  stays unresolved. The cost is that a suggestion applied while the
+  judgement was suspended does not resolve itself; the reviewer resolves
+  it.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-15, rounds and resolution)
+
+Steps 11 and 12 landed (ADR 0015): `Comment` carries where it was last
+seen, what it was sent on and how it was resolved; `reanchor` marks a
+draft lost or outdated and judges a sent comment (Decisions 4, 14 and 15);
+`end_round` records a round (Decision 16); the instructions gain "Still
+open" (Decision 6); `SavedReview` holds rounds (Decision 11).
 
 ## Progress (2026-10-14, the v2 design)
 

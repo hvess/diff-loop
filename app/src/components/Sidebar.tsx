@@ -2,10 +2,14 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useEffect, useMemo, useRef } from "react";
 import type { FileDiff } from "../bindings/FileDiff";
 import { showMenu } from "../contextMenu";
+import { useNow } from "../now";
 import { nameOf } from "../path";
+import { roundStrip } from "../round";
 import { counts } from "../rows";
+import { DEFAULT_WIDTH } from "../sidebar";
 import { useStore } from "../store";
-import { type Guide, type TreeRow } from "../tree";
+import { fold, type Guide, type TreeRow } from "../tree";
+import { Glyph } from "./Pin";
 
 /** Each tree row's height, from the design. */
 const ROW_PX = 28;
@@ -43,17 +47,21 @@ export function progressText(left: number, reviewed: number, total: number): [st
 }
 
 /**
- * The changed files as a tree, under how much is left to review. Virtualized,
- * and every per-key path (arrows, J / K, V) is O(1) in the number of files: rows and
- * indexes come from the review, counts are cached per file.
+ * The changed files as a tree, under how much is left to review and the last
+ * round. Virtualized, and every per-key path (arrows, J / K, V) is O(1) in the
+ * number of files: rows and indexes come from the review, counts are cached per file.
+ * A key that lands in a folded folder opens it, which folds the rows again, O(rows), once.
  */
 export function Sidebar() {
   const review = useStore((s) => s.review);
   const selected = useStore((s) => s.selected);
   const select = useStore((s) => s.select);
   const stepFile = useStore((s) => s.stepFile);
+  const closed = useStore((s) => s.closed);
+  const width = useStore((s) => s.sidebarWidth);
   const scroller = useRef<HTMLDivElement>(null);
-  const rows = useMemo(() => review?.tree ?? [], [review]);
+  // O(rows) per fold, not per render: the React Compiler keeps the rest.
+  const rows = useMemo(() => fold(review?.tree ?? [], closed), [review, closed]);
   const rowOf = useMemo(
     () => new Map(rows.flatMap((row, i) => (row.kind === "file" ? [[row.file.path, i] as const] : []))),
     [rows],
@@ -74,21 +82,24 @@ export function Sidebar() {
     const row = rowOf.get(selected);
     if (row !== undefined) virtual.scrollToIndex(row);
   }, [selected, rowOf, virtual]);
-  if (!review) return <aside className="w-[272px] flex-none border-r border-border bg-side" />;
+  const style = { width };
+  if (!review) return <aside className="relative flex-none border-r border-border bg-side" style={style} />;
 
   if (review.changes.files.length === 0) {
     return (
-      <aside className="flex w-[272px] flex-none flex-col border-r border-border bg-side">
+      <aside className="relative flex flex-none flex-col border-r border-border bg-side" style={style}>
         <div className="flex h-[52px] flex-none items-center border-b border-border px-4 text-[12.5px] text-muted3">
           No changed files
         </div>
+        <ResizeEdge />
       </aside>
     );
   }
 
   return (
-    <aside className="flex w-[272px] flex-none flex-col border-r border-border bg-side">
+    <aside className="relative flex min-h-0 flex-none flex-col border-r border-border bg-side" style={style}>
       <Progress />
+      <RoundStrip />
       <div
         ref={scroller}
         role="listbox"
@@ -114,7 +125,7 @@ export function Sidebar() {
                 style={{ height: ROW_PX, transform: `translateY(${v.start}px)` }}
               >
                 {row.kind === "folder" ? (
-                  <FolderRow row={row} />
+                  <FolderRow row={row} open={!closed.has(row.key)} files={review.folderFiles.get(row.key) ?? 0} />
                 ) : (
                   <FileRow file={row.file} guides={row.guides} selected={row.file.path === selected} onSelect={select} />
                 )}
@@ -123,7 +134,39 @@ export function Sidebar() {
           })}
         </div>
       </div>
+      <ResizeEdge />
     </aside>
+  );
+}
+
+/** The sidebar's right edge: dragged, it sets the width; double-clicked, it goes back to the design's (ADR 0016 §2). */
+function ResizeEdge() {
+  const setWidth = useStore((s) => s.setSidebarWidth);
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const x0 = e.clientX;
+    const w0 = useStore.getState().sidebarWidth;
+    const move = (ev: MouseEvent) => setWidth(w0 + ev.clientX - x0);
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+    };
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Sidebar width"
+      title="Drag to resize · Double-click to reset"
+      onMouseDown={onMouseDown}
+      onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
+      className="absolute top-0 -right-1 bottom-0 z-[5] w-[7px] cursor-col-resize hover:bg-line"
+    />
   );
 }
 
@@ -189,6 +232,48 @@ function Progress() {
   );
 }
 
+/** The last round under the progress header: its counts step N / P through those comments when clicked. */
+function RoundStrip() {
+  const rounds = useStore((s) => s.rounds);
+  const comments = useStore((s) => s.comments);
+  const autoResolved = useStore((s) => s.autoResolved);
+  const filter = useStore((s) => s.commentFilter);
+  const setFilter = useStore((s) => s.setCommentFilter);
+  const now = useNow();
+  const strip = roundStrip(rounds, comments, autoResolved, now);
+  return (
+    <div
+      role="status"
+      // Wraps rather than cutting a count short: "1 resolved automatically" outgrows the design's width.
+      className={`flex min-h-9 flex-none flex-wrap items-center gap-x-[9px] gap-y-0.5 border-b border-border px-4 py-1.5 text-xs whitespace-nowrap tabular-nums ${strip.quiet ? "text-muted3" : ""}`}
+    >
+      <span className={strip.quiet ? "" : "font-semibold"}>{strip.title}</span>
+      {strip.parts.map((part) =>
+        part.filter === null ? (
+          <span key={part.text} className="flex items-center gap-[5px] text-muted2">
+            {part.glyph && <Glyph kind={part.glyph} on="side" />}
+            {part.text}
+          </span>
+        ) : (
+          <button
+            key={part.text}
+            type="button"
+            aria-pressed={filter === part.filter}
+            title={`N / P through the ${part.filter} comments`}
+            onClick={() => setFilter(filter === part.filter ? null : part.filter)}
+            // A filled pill, so a count that can be pressed looks like one (HIG `buttons`); pressed, it is outlined too.
+            className={`flex items-center gap-[5px] rounded-full bg-chip px-2 py-px hover:bg-line ${part.filter === "changed" ? "font-semibold text-fg" : "text-muted2"} ${filter === part.filter ? "shadow-[inset_0_0_0_1px_var(--ui-muted2)]" : ""}`}
+          >
+            {part.glyph && <Glyph kind={part.glyph} on="chip" />}
+            {part.text}
+          </button>
+        ),
+      )}
+      <span className="ml-auto text-muted3">{strip.meta}</span>
+    </div>
+  );
+}
+
 /** The vertical lines that show which folder a row is in. */
 function Guides({ guides }: { guides: Guide[] }) {
   if (guides.length === 0) return null;
@@ -205,19 +290,52 @@ function Guides({ guides }: { guides: Guide[] }) {
   );
 }
 
-function FolderRow({ row }: { row: Extract<TreeRow, { kind: "folder" }> }) {
+/**
+ * A folder: a click folds or opens it (ADR 0016 §1). A disclosure triangle on its leading edge says
+ * which, as the comment list's Resolved section does (HIG `disclosure-controls`); folded, it says how
+ * many changed files it holds.
+ */
+function FolderRow({ row, open, files }: { row: Extract<TreeRow, { kind: "folder" }>; open: boolean; files: number }) {
+  const toggleFolder = useStore((s) => s.toggleFolder);
   return (
-    <div className="flex h-full items-center gap-1.5 rounded-lg px-2 text-muted3">
+    <div
+      role="button"
+      aria-expanded={open}
+      aria-label={`${row.name}, ${files} ${files === 1 ? "file" : "files"}`}
+      onClick={() => toggleFolder(row.key)}
+      className="flex h-full items-center gap-1.5 rounded-lg pr-2 text-muted3 hover:bg-chip"
+    >
       <Guides guides={row.guides} />
+      <span aria-hidden className="-mr-0.5 w-2 flex-none text-center text-[9px]">
+        {open ? "▾" : "▸"}
+      </span>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinejoin="round" strokeLinecap="round" className="flex-none" aria-hidden>
-        <path
-          d="M1.9 4.6c0-.94.76-1.7 1.7-1.7h2.16c.42 0 .82.15 1.13.43l.98.87h4.53c.94 0 1.7.76 1.7 1.7v5.5c0 .94-.76 1.7-1.7 1.7H3.6c-.94 0-1.7-.76-1.7-1.7z"
-          fill="currentColor"
-          fillOpacity="0.16"
-        />
-        <path d="M1.9 6.4h12.2" />
+        {open ? (
+          <>
+            <path d="M1.9 11.4V4.6c0-.94.76-1.7 1.7-1.7h2.16c.42 0 .82.15 1.13.43l.98.87h3.83c.94 0 1.7.76 1.7 1.7v1.1" />
+            <path
+              d="M3.35 8.1c.2-.6.76-1 1.4-1h9.2c.6 0 1.03.6.83 1.17l-1.25 3.5c-.24.68-.88 1.13-1.6 1.13H3.6c-.94 0-1.7-.76-1.7-1.7z"
+              fill="currentColor"
+              fillOpacity="0.16"
+            />
+          </>
+        ) : (
+          <>
+            <path
+              d="M1.9 4.6c0-.94.76-1.7 1.7-1.7h2.16c.42 0 .82.15 1.13.43l.98.87h4.53c.94 0 1.7.76 1.7 1.7v5.5c0 .94-.76 1.7-1.7 1.7H3.6c-.94 0-1.7-.76-1.7-1.7z"
+              fill="currentColor"
+              fillOpacity="0.16"
+            />
+            <path d="M1.9 6.4h12.2" />
+          </>
+        )}
       </svg>
-      <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{row.name}</span>
+      <span className="flex-none pr-3 text-[13.5px] font-medium whitespace-nowrap">{row.name}</span>
+      {!open && (
+        <span className="ml-auto flex-none text-xs tabular-nums">
+          {files} {files === 1 ? "file" : "files"}
+        </span>
+      )}
     </div>
   );
 }
@@ -264,8 +382,9 @@ const FileRow = memo(function FileRow({
         {/* Viewed is marked by more than the dimming: a tick inside the page. */}
         {viewed && <path d="M5.7 9.7l1.5 1.5 2.9-3" />}
       </svg>
+      {/* Not cut short: the sidebar scrolls sideways, or is widened, for a long name (ADR 0016 §1). */}
       <span
-        className={`min-w-0 flex-1 truncate text-[13.5px] ${selected ? "font-semibold" : ""} ${viewed ? "text-faint" : "text-fg"}`}
+        className={`flex-none pr-3 text-[13.5px] whitespace-nowrap ${selected ? "font-semibold" : ""} ${viewed ? "text-faint" : "text-fg"}`}
       >
         {nameOf(file.path)}
       </span>

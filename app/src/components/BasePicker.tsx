@@ -1,4 +1,5 @@
 import * as Popover from "@radix-ui/react-popover";
+import { shortId } from "../format";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { Base } from "../bindings/Base";
@@ -25,7 +26,7 @@ export function showOnly(uncommitted: number | null, commit: string | null | und
       base: { kind: "lastCommit" },
       label: "Last commit",
       mono: false,
-      hint: commit?.slice(0, 7) ?? "",
+      hint: commit == null ? "" : shortId(commit),
       monoHint: true,
     },
   ];

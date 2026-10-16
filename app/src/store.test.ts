@@ -5,7 +5,8 @@ import type { Opening } from "./bindings/Opening";
 import type { Review } from "./bindings/Review";
 import type { SavedReview } from "./bindings/SavedReview";
 import type { FileDiff } from "./bindings/FileDiff";
-import { CODE_UPDATED, type Composer, canSave, commentText, bannerDetail, keptEdit, requestOf, reviewKey, useStore } from "./store";
+import type { Round } from "./bindings/Round";
+import { type Composer, bannerDetail, canSave, commentText, keptEdit, requestOf, reviewKey, useStore } from "./store";
 
 vi.mock("./api", () => ({
   api: {
@@ -18,6 +19,9 @@ vi.mock("./api", () => ({
     refs: vi.fn(() => Promise.resolve([])),
     watchRepository: vi.fn(() => Promise.resolve(true)),
     fileLines: vi.fn(),
+    instructions: vi.fn(() => Promise.resolve("md")),
+    endRound: vi.fn(),
+    mergeReviews: vi.fn((window: SavedReview, saved: SavedReview) => Promise.resolve({ comments: [...saved.comments, ...window.comments], rounds: [...saved.rounds, ...window.rounds] })),
   },
   describe: (error: unknown) => ({ title: "Saved comments are unavailable", detail: String(error) }),
 }));
@@ -36,6 +40,33 @@ const comment = (id: string): Comment => ({
   text: "t",
   suggestion: null,
   state: "current",
+  place: null,
+  sent: null,
+  resolved: null,
+});
+
+/** `c` as sent in round `round`, untouched. */
+const sent = (c: Comment, round = 1): Comment => ({
+  ...c,
+  sent: {
+    round,
+    place: { base: { kind: "uncommitted" }, head: { kind: "branch", name: "agent/x" } },
+    commit: "abc",
+    target: c.target,
+    before: [],
+    after: [],
+    text: c.text,
+    suggestion: c.suggestion,
+    verdict: "untouched",
+  },
+});
+
+const round = (number: number): Round => ({
+  number,
+  at: 1000,
+  place: { base: { kind: "uncommitted" }, head: { kind: "branch", name: "agent/x" } },
+  commit: "abc",
+  markdown: "md",
 });
 
 /** What load_review answers: the comments it was given, as from IPC, a fresh copy each time. */
@@ -52,16 +83,16 @@ function answerLoads(root: string) {
   );
 }
 
-/** The next load finds no comment's code, with `branch` checked out. */
-function answerNextLoadWithCodeGone(root: string, branch = "agent/x") {
+/** The next load finds no comment's code, marking each `state`, with `branch` checked out and `commit` at HEAD. */
+function answerNextLoadWithCodeGone(root: string, state: Comment["state"] = "outdated", branch = "agent/x", commit = "abc") {
   vi.mocked(api.loadReview).mockImplementationOnce((base, comments) =>
     Promise.resolve<Review>({
-      checkout: { ...opening(root).checkout, head: { kind: "branch", name: branch } },
+      checkout: { ...opening(root).checkout, head: { kind: "branch", name: branch }, commit },
       base,
       fingerprint: null,
       snapshot: { old: null, new: { kind: "workingTree" } },
       files: [],
-      comments: comments.map((c) => ({ ...c, state: "outdated" })),
+      comments: comments.map((c) => ({ ...c, state })),
     }),
   );
 }
@@ -112,7 +143,7 @@ describe("saving the review", () => {
   });
 
   it("opens with the saved review, and saves nothing it did not change", async () => {
-    await openWith("/a", { comments: [comment("c")] });
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
     await useStore.getState().reload();
     vi.advanceTimersByTime(300);
     await vi.runAllTimersAsync();
@@ -121,15 +152,15 @@ describe("saving the review", () => {
   });
 
   it("saves a comment change at once, for the open checkout", async () => {
-    await openWith("/a", { comments: [] });
+    await openWith("/a", { comments: [], rounds: [] });
     useStore.setState({ comments: [comment("c")] });
     await vi.waitFor(() =>
-      expect(api.saveReview).toHaveBeenCalledWith("/a", { comments: [comment("c")] }),
+      expect(api.saveReview).toHaveBeenCalledWith("/a", { comments: [comment("c")], rounds: [] }),
     );
   });
 
   it("lands saves in the order they were made", async () => {
-    await openWith("/a", { comments: [] });
+    await openWith("/a", { comments: [], rounds: [] });
     let finishFirst = () => {};
     vi.mocked(api.saveReview).mockImplementationOnce(
       () => new Promise((resolve) => (finishFirst = () => resolve(null))),
@@ -143,7 +174,7 @@ describe("saving the review", () => {
   });
 
   it("reports a failed save and clears the report once one succeeds", async () => {
-    await openWith("/a", { comments: [] });
+    await openWith("/a", { comments: [], rounds: [] });
     vi.mocked(api.saveReview).mockRejectedValueOnce("disk full");
     useStore.setState({ comments: [comment("c")] });
     await vi.waitFor(() => expect(useStore.getState().saveProblem?.detail).toBe("disk full"));
@@ -159,13 +190,14 @@ describe("saving the review", () => {
     await vi.runAllTimersAsync();
     expect(api.saveReview).not.toHaveBeenCalled();
 
-    vi.mocked(api.savedReview).mockResolvedValue({ comments: [comment("old")] });
+    vi.mocked(api.savedReview).mockResolvedValue({ comments: [comment("old")], rounds: [] });
     await useStore.getState().retrySave();
     expect(useStore.getState().comments.map((c) => c.id)).toEqual(["old", "new"]);
     expect(useStore.getState().saveProblem).toBeNull();
     await vi.waitFor(() =>
       expect(api.saveReview).toHaveBeenLastCalledWith("/a", {
         comments: [comment("old"), comment("new")],
+        rounds: [],
       }),
     );
   });
@@ -178,14 +210,14 @@ describe("reloading", () => {
   });
 
   it("keeps the window's state when nothing reviewed changed", async () => {
-    await openWith("/a", { comments: [comment("c")] });
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
     const before = useStore.getState().review;
     await useStore.getState().reload();
     expect(useStore.getState().review).toBe(before);
   });
 
   it("takes a load that changed something", async () => {
-    await openWith("/a", { comments: [] });
+    await openWith("/a", { comments: [], rounds: [] });
     const before = useStore.getState().review;
     vi.mocked(api.loadReview).mockImplementationOnce((base) =>
       Promise.resolve<Review>({
@@ -209,14 +241,14 @@ describe("reloading", () => {
   });
 
   it("clears a load problem when the next load shows the same", async () => {
-    await openWith("/a", { comments: [] });
+    await openWith("/a", { comments: [], rounds: [] });
     useStore.setState({ loadProblem: { title: "Git reported a problem", detail: "busy" } });
     await useStore.getState().reload();
     expect(useStore.getState().loadProblem).toBeNull();
   });
 
   it("takes a load whose fingerprint moved, so a poll compares against it", async () => {
-    await openWith("/a", { comments: [] });
+    await openWith("/a", { comments: [], rounds: [] });
     const before = useStore.getState().review;
     vi.mocked(api.loadReview).mockImplementationOnce((base, comments) =>
       Promise.resolve<Review>({
@@ -234,7 +266,7 @@ describe("reloading", () => {
   });
 
   it("checks again after a load during which a change was reported", async () => {
-    await openWith("/a", { comments: [] });
+    await openWith("/a", { comments: [], rounds: [] });
     useStore.setState({ watching: true });
     vi.mocked(api.loadReview).mockClear();
     const loading = useStore.getState().reload();
@@ -244,77 +276,9 @@ describe("reloading", () => {
     await vi.waitFor(() => expect(api.loadReview).toHaveBeenCalledTimes(2));
   });
 
-  it("deletes a comment whose code is gone against the same base and branch", async () => {
-    await openWith("/a", { comments: [comment("c")] });
-    useStore.setState({ openComment: "c" });
-    answerNextLoadWithCodeGone("/a");
-    await useStore.getState().reload();
-    expect(useStore.getState().comments).toEqual([]);
-    expect(useStore.getState().openComment).toBeNull();
-    await vi.waitFor(() => expect(api.saveReview).toHaveBeenCalledWith("/a", { comments: [] }));
-  });
-
-  it("says the agent updated the code when a load removes comments under the same commit", async () => {
-    await openWith("/a", { comments: [comment("c")] });
-    answerNextLoadWithCodeGone("/a");
-    await useStore.getState().reload();
-    expect(useStore.getState().banner).toEqual({ title: CODE_UPDATED, removed: [comment("c")], previous: null });
-  });
-
-  it("adds what a later load removes to the banner already up", async () => {
-    await openWith("/a", { comments: [comment("1")] });
-    answerNextLoadWithCodeGone("/a");
-    await useStore.getState().reload();
-    useStore.setState({ comments: [comment("2")] });
-    answerNextLoadWithCodeGone("/a");
-    await useStore.getState().reload();
-    expect(useStore.getState().banner?.removed.map((c) => c.id)).toEqual(["1", "2"]);
-  });
-
-  it("brings removed comments back as not in this diff, so the next load keeps them", async () => {
-    await openWith("/a", { comments: [comment("c")] });
-    answerNextLoadWithCodeGone("/a");
-    await useStore.getState().reload();
-    useStore.getState().undoRemoved();
-    expect(useStore.getState().comments).toEqual([{ ...comment("c"), state: "outdated" }]);
-    expect(useStore.getState().banner).toBeNull();
-    answerNextLoadWithCodeGone("/a");
-    await useStore.getState().reload();
-    expect(useStore.getState().comments.map((c) => c.id)).toEqual(["c"]);
-  });
-
-  it("keeps what a banner already up removed when HEAD then moves", async () => {
-    await openWith("/a", { comments: [comment("1")] });
-    answerNextLoadWithCodeGone("/a");
-    await useStore.getState().reload();
-    useStore.setState({ comments: [comment("2")] });
-    vi.mocked(api.loadReview).mockImplementationOnce((base, comments) =>
-      Promise.resolve<Review>({
-        checkout: { ...opening("/a").checkout, commit: "def" },
-        base,
-        fingerprint: null,
-        snapshot: { old: null, new: { kind: "workingTree" } },
-        files: [],
-        comments: comments.map((c) => ({ ...c, state: "outdated" })),
-      }),
-    );
-    await useStore.getState().reload();
-    const banner = useStore.getState().banner;
-    expect(banner?.title).toBe("The branch moved: 1 new commit");
-    expect(banner?.removed.map((c) => c.id)).toEqual(["1", "2"]);
-  });
-
-  it("keeps a moved HEAD's banner after Undo, with nothing left to undo", async () => {
-    await openWith("/a", { comments: [] });
-    useStore.setState({ banner: { title: "The branch moved: 1 new commit", removed: [comment("c")], previous: "abc" } });
-    useStore.getState().undoRemoved();
-    expect(useStore.getState().banner).toEqual({ title: "The branch moved: 1 new commit", removed: [], previous: "abc" });
-    expect(useStore.getState().comments.map((c) => c.id)).toEqual(["c"]);
-  });
-
   /** Regression: a comment moved by a handle while a load ran went back to where the load put it. */
   it("keeps a comment changed while a load ran as it was changed", async () => {
-    await openWith("/a", { comments: [comment("c")] });
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
     let answer = () => {};
     vi.mocked(api.loadReview).mockImplementationOnce(
       (base, comments) =>
@@ -338,21 +302,57 @@ describe("reloading", () => {
     expect(useStore.getState().comments).toEqual([moved]);
   });
 
+  it("removes nothing: a comment the load marks lost stays, and its card closes", async () => {
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
+    useStore.setState({ openComment: "c" });
+    answerNextLoadWithCodeGone("/a", "lost");
+    await useStore.getState().reload();
+    expect(useStore.getState().comments).toEqual([{ ...comment("c"), state: "lost" }]);
+    expect(useStore.getState().openComment).toBeNull();
+    expect(useStore.getState().banner).toBeNull();
+  });
+
+  it("says only that the branch moved, with what to compare against", async () => {
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    await useStore.getState().reload();
+    expect(useStore.getState().banner).toEqual({ title: "The branch moved: 1 new commit", previous: "abc" });
+    expect(useStore.getState().comments.map((c) => c.id)).toEqual(["c"]);
+  });
+
+  it("counts the comments a load resolved itself", async () => {
+    const applied = sent(comment("c"));
+    await openWith("/a", { comments: [applied], rounds: [round(1)] });
+    vi.mocked(api.loadReview).mockImplementationOnce((base, comments) =>
+      Promise.resolve<Review>({
+        checkout: opening("/a").checkout,
+        base,
+        fingerprint: null,
+        snapshot: { old: null, new: { kind: "workingTree" } },
+        files: [],
+        comments: comments.map((c) => ({ ...c, resolved: "suggestionApplied", sent: c.sent && { ...c.sent, verdict: "applied" } })),
+      }),
+    );
+    await useStore.getState().reload();
+    expect(useStore.getState().autoResolved).toBe(1);
+    expect(useStore.getState().comments[0]?.resolved).toEqual("suggestionApplied");
+  });
+
   it("keeps a saved comment whose code is gone when the checkout opens, hidden", async () => {
     answerNextLoadWithCodeGone("/a");
-    await openWith("/a", { comments: [comment("c")] });
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
     expect(useStore.getState().comments).toEqual([{ ...comment("c"), state: "outdated" }]);
   });
 
   it("keeps a comment whose code is gone after the base changed, hidden", async () => {
-    await openWith("/a", { comments: [comment("c")] });
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
     answerNextLoadWithCodeGone("/a");
     await useStore.getState().setBase({ kind: "ref", name: "main" });
     expect(useStore.getState().comments).toEqual([{ ...comment("c"), state: "outdated" }]);
   });
 
   it("closes the card of a comment that becomes hidden", async () => {
-    await openWith("/a", { comments: [comment("c")] });
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
     useStore.setState({ openComment: "c" });
     answerNextLoadWithCodeGone("/a");
     await useStore.getState().setBase({ kind: "ref", name: "main" });
@@ -360,60 +360,23 @@ describe("reloading", () => {
   });
 
   it("keeps a comment whose code is gone after another branch was checked out, hidden", async () => {
-    await openWith("/a", { comments: [comment("c")] });
-    answerNextLoadWithCodeGone("/a", "agent/y");
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/y");
     await useStore.getState().reload();
     expect(useStore.getState().comments).toEqual([{ ...comment("c"), state: "outdated" }]);
   });
 
-  it("deletes a comment whose code is gone while the HEAD stays detached", async () => {
-    const detached = { kind: "detached", commit: "abc" } as const;
-    vi.mocked(api.openRepository).mockResolvedValue({ ...opening("/a"), checkout: { ...opening("/a").checkout, head: detached } });
-    vi.mocked(api.savedReview).mockResolvedValue({ comments: [comment("c")] });
-    vi.mocked(api.loadReview).mockImplementation((base, comments) =>
-      Promise.resolve<Review>({
-        checkout: { ...opening("/a").checkout, head: detached },
-        base,
-        fingerprint: null,
-        snapshot: { old: null, new: { kind: "workingTree" } },
-        files: [],
-        comments: structuredClone(comments),
-      }),
-    );
-    await useStore.getState().open("/a");
-    vi.mocked(api.loadReview).mockImplementationOnce((base, comments) =>
-      Promise.resolve<Review>({
-        checkout: { ...opening("/a").checkout, head: { kind: "detached", commit: "def" } },
-        base,
-        fingerprint: null,
-        snapshot: { old: null, new: { kind: "workingTree" } },
-        files: [],
-        comments: comments.map((c) => ({ ...c, state: "outdated" })),
-      }),
-    );
-    await useStore.getState().reload();
-    expect(useStore.getState().comments).toEqual([]);
-  });
-
   it("keeps a hidden comment whose code is still gone", async () => {
     const hidden: Comment = { ...comment("c"), state: "outdated" };
-    await openWith("/a", { comments: [hidden] });
+    await openWith("/a", { comments: [hidden], rounds: [] });
     answerNextLoadWithCodeGone("/a");
     await useStore.getState().reload();
     expect(useStore.getState().comments).toEqual([hidden]);
   });
 
-  it("keeps a comment being edited whose code is gone", async () => {
-    await openWith("/a", { comments: [comment("c")] });
-    useStore.getState().editComment("c");
-    answerNextLoadWithCodeGone("/a");
-    await useStore.getState().reload();
-    expect(useStore.getState().comments.map((c) => c.id)).toEqual(["c"]);
-  });
-
   it("jumps past a hidden comment", async () => {
     const hidden: Comment = { ...comment("h"), state: "outdated" };
-    await openWith("/a", { comments: [hidden, comment("c")] });
+    await openWith("/a", { comments: [hidden, comment("c")], rounds: [] });
     useStore.getState().jumpComment(1);
     expect(useStore.getState().openComment).toBe("c");
     useStore.getState().jumpComment(1);
@@ -421,7 +384,7 @@ describe("reloading", () => {
   });
 
   it("while watching, checks for changes by loading, not by a fingerprint", async () => {
-    await openWith("/a", { comments: [] });
+    await openWith("/a", { comments: [], rounds: [] });
     useStore.setState({ watching: true });
     vi.mocked(api.loadReview).mockClear();
     await useStore.getState().poll();
@@ -431,20 +394,10 @@ describe("reloading", () => {
 });
 
 describe("the banner's detail", () => {
-  it("says how many comments were removed, then what became of the rest", () => {
-    expect(bannerDetail(2, 1, 4)).toBe(
-      "2 comments were addressed and removed. 1 is not in this diff. 3 are still open.",
-    );
-    expect(bannerDetail(1, 0, 1)).toBe("1 comment was addressed and removed. 1 is still open.");
-  });
-
-  it("names comments in its first sentence, whichever that is", () => {
-    expect(bannerDetail(0, 2, 3)).toBe("2 comments are not in this diff. 1 is still open.");
-    expect(bannerDetail(0, 0, 1)).toBe("1 comment is still open.");
-  });
-
-  it("is empty when there are no comments", () => {
-    expect(bannerDetail(0, 0, 0)).toBe("");
+  it("counts the open comments not in this diff, and says nothing with none", () => {
+    expect(bannerDetail(1)).toBe("1 comment is not in this diff.");
+    expect(bannerDetail(2)).toBe("2 comments are not in this diff.");
+    expect(bannerDetail(0)).toBe("");
   });
 });
 
@@ -497,7 +450,7 @@ describe("the composer's range", () => {
   beforeEach(async () => {
     answerWithFiles("/a", [added("a.ts", 6)]);
     vi.mocked(api.openRepository).mockResolvedValue(opening("/a"));
-    vi.mocked(api.savedReview).mockResolvedValue({ comments: [] });
+    vi.mocked(api.savedReview).mockResolvedValue({ comments: [], rounds: [] });
     await useStore.getState().open("/a");
     useStore.getState().composeOnLines("a.ts", "new", 2, 2);
   });
@@ -527,7 +480,7 @@ describe("viewed files", () => {
   it("count their changed lines as each is marked, and again at each load", async () => {
     answerWithFiles("/a", [added("a.ts", 3), added("b.ts", 5)]);
     vi.mocked(api.openRepository).mockResolvedValue(opening("/a"));
-    vi.mocked(api.savedReview).mockResolvedValue({ comments: [] });
+    vi.mocked(api.savedReview).mockResolvedValue({ comments: [], rounds: [] });
     await useStore.getState().open("/a");
     useStore.getState().toggleViewed("a.ts");
     useStore.getState().toggleViewed("b.ts");
@@ -556,7 +509,7 @@ describe("viewed files", () => {
   it("follow the tree's order", async () => {
     answerWithFiles("/a", [added("z.ts", 1), added("src/b.ts", 1), added("src/a.ts", 1)]);
     vi.mocked(api.openRepository).mockResolvedValue(opening("/a"));
-    vi.mocked(api.savedReview).mockResolvedValue({ comments: [] });
+    vi.mocked(api.savedReview).mockResolvedValue({ comments: [], rounds: [] });
     await useStore.getState().open("/a");
     expect(useStore.getState().review?.order.map((f) => f.path)).toEqual(["src/a.ts", "src/b.ts", "z.ts"]);
     expect(useStore.getState().selected).toBe("src/a.ts");
@@ -605,7 +558,8 @@ describe("find across files", () => {
 
 describe("the preview's kept edit", () => {
   beforeEach(async () => {
-    await openWith("/a", { comments: [comment("c")] });
+    vi.mocked(api.endRound).mockImplementation((r) => Promise.resolve(r.review));
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
   });
 
   const kept = () => keptEdit(useStore.getState().previewEdit, reviewKey(requestOf(useStore.getState())));
@@ -650,7 +604,7 @@ describe("editing a comment saved with an indented suggestion", () => {
       target: { kind: "lines", side: "new", start: 3, code: ["    a();"] },
       suggestion: "    a();",
     };
-    await openWith("/a", { comments: [old] });
+    await openWith("/a", { comments: [old], rounds: [] });
     useStore.getState().editComment("c");
     const composer = useStore.getState().composer!;
     expect(composer.suggestion).toBe("a();");
@@ -662,7 +616,7 @@ describe("editing a comment saved with an indented suggestion", () => {
 async function openFiles(files: FileDiff[]) {
   answerWithFiles("/a", files);
   vi.mocked(api.openRepository).mockResolvedValue(opening("/a"));
-  vi.mocked(api.savedReview).mockResolvedValue({ comments: [] });
+  vi.mocked(api.savedReview).mockResolvedValue({ comments: [], rounds: [] });
   await useStore.getState().open("/a");
 }
 
@@ -765,7 +719,7 @@ describe("showing every unchanged line", () => {
 
 describe("checking for changes now", () => {
   beforeEach(async () => {
-    await openWith("/a", { comments: [] });
+    await openWith("/a", { comments: [], rounds: [] });
     useStore.setState({ watching: true });
     vi.mocked(api.loadReview).mockClear();
   });
@@ -803,7 +757,7 @@ describe("keys that would lose work", () => {
 describe("Copy review", () => {
   it("says why it failed, until a copy succeeds", async () => {
     const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
-    await openWith("/a", { comments: [comment("c")] });
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
     useStore.getState().setPreviewEdit({ key: reviewKey(requestOf(useStore.getState())), text: "mine" });
     vi.mocked(writeText).mockRejectedValueOnce(new Error("no clipboard"));
     await useStore.getState().copyReview();
@@ -815,7 +769,7 @@ describe("Copy review", () => {
 
   it("drops a failure that settles once the checkout is closed", async () => {
     const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
-    await openWith("/a", { comments: [comment("c")] });
+    await openWith("/a", { comments: [comment("c")], rounds: [] });
     useStore.getState().setPreviewEdit({ key: reviewKey(requestOf(useStore.getState())), text: "mine" });
     let fail: (error: Error) => void = () => {};
     vi.mocked(writeText).mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)));
@@ -829,7 +783,7 @@ describe("Copy review", () => {
 
 describe("closing the checkout", () => {
   it("closes its lists and dialogs, and forgets a failed copy, so the next one opens without them", async () => {
-    await openWith("/a", { comments: [] });
+    await openWith("/a", { comments: [], rounds: [] });
     const left = { commentList: true, basePicker: true, preview: true, copyProblem: { title: "t", detail: "no clipboard" } };
     useStore.setState(left);
     useStore.getState().closeRepository();
@@ -840,7 +794,275 @@ describe("closing the checkout", () => {
     expect(now()).toEqual([false, false, false, null]);
     // Opening another without closing the first does the same.
     useStore.setState(left);
-    await openWith("/b", { comments: [] });
+    await openWith("/b", { comments: [], rounds: [] });
     expect(now()).toEqual([false, false, false, null]);
+  });
+});
+
+describe("rounds", () => {
+  beforeEach(async () => {
+    vi.mocked(api.saveReview).mockReset().mockResolvedValue(null);
+    vi.mocked(api.endRound).mockReset().mockImplementation((r) =>
+      Promise.resolve({
+        comments: r.review.comments.map((c) => (c.resolved === null ? sent(c, r.review.rounds.length + 1) : c)),
+        rounds: [...r.review.rounds, { ...round(r.review.rounds.length + 1), markdown: r.markdown }],
+      }),
+    );
+    await openWith("/a", { comments: [comment("a"), { ...sent(comment("r")), resolved: "byReviewer" }], rounds: [round(1)] });
+  });
+
+  it("are ended by a copy: every open comment is sent, the round is kept, and the copy says so", async () => {
+    await useStore.getState().copyReview();
+    const s = useStore.getState();
+    expect(s.rounds.map((r) => r.number)).toEqual([1, 2]);
+    expect(s.comments.map((c) => c.sent?.round)).toEqual([2, 1]);
+    expect(s.copied).toEqual({ round: 2 });
+    expect(vi.mocked(api.endRound).mock.calls[0]?.[0]).toMatchObject({ markdown: "md", place: { base: { kind: "uncommitted" }, head: { kind: "branch", name: "agent/x" } } });
+    await vi.waitFor(() => expect(api.saveReview).toHaveBeenLastCalledWith("/a", { comments: s.comments, rounds: s.rounds }));
+  });
+
+  it("can be taken back as not sent until the next load changes something", async () => {
+    await useStore.getState().copyReview();
+    expect(useStore.getState().unsend?.rounds.length).toBe(1);
+    useStore.getState().unsendRound();
+    expect(useStore.getState().rounds.map((r) => r.number)).toEqual([1]);
+    expect(useStore.getState().comments[0]?.sent).toBeNull();
+    expect(useStore.getState().copied).toBeNull();
+    await useStore.getState().copyReview();
+    useStore.getState().dismissCopied();
+    expect(useStore.getState().unsend).toBeNull();
+    await useStore.getState().copyReview();
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    await useStore.getState().reload();
+    expect(useStore.getState().unsend).toBeNull();
+    expect(useStore.getState().copied).toBeNull();
+  });
+
+  it("does not offer Not sent when a comment changed while the round was recorded", async () => {
+    let answer = () => {};
+    vi.mocked(api.endRound).mockImplementationOnce(
+      (r) => new Promise((resolve) => (answer = () => resolve({ comments: r.review.comments.map((c) => sent(c, 2)), rounds: [...r.review.rounds, round(2)] }))),
+    );
+    const copying = useStore.getState().copyReview();
+    await vi.waitFor(() => expect(api.endRound).toHaveBeenCalled());
+    useStore.setState({ comments: [...useStore.getState().comments, comment("new")] });
+    answer();
+    await copying;
+    expect(useStore.getState().rounds.map((r) => r.number)).toEqual([1, 2]);
+    expect(useStore.getState().unsend).toBeNull();
+  });
+
+  /** Regression: a comment changed while the round was recorded made the copy record no round. */
+  it("records the round even when a comment changed while it was being recorded", async () => {
+    let answer = () => {};
+    vi.mocked(api.endRound).mockImplementationOnce(
+      (r) =>
+        new Promise((resolve) => {
+          answer = () => resolve({ comments: r.review.comments.map((c) => (c.resolved === null ? sent(c, 2) : c)), rounds: [...r.review.rounds, round(2)] });
+        }),
+    );
+    const copying = useStore.getState().copyReview();
+    await vi.waitFor(() => expect(api.endRound).toHaveBeenCalled());
+    useStore.setState({ comments: [{ ...comment("a"), text: "edited" }, ...useStore.getState().comments.slice(1), comment("new")] });
+    answer();
+    await copying;
+    const s = useStore.getState();
+    expect(s.rounds.map((r) => r.number)).toEqual([1, 2]);
+    expect(s.comments.map((c) => [c.id, c.text, c.sent?.round ?? null])).toEqual([
+      ["a", "edited", 2],
+      ["r", "t", 1],
+      ["new", "t", null],
+    ]);
+  });
+
+  it("ends the offer to take a round back once a comment is written", async () => {
+    await useStore.getState().copyReview();
+    expect(useStore.getState().unsend).not.toBeNull();
+    useStore.getState().composeOnFile("a.ts");
+    useStore.getState().updateComposer({ text: "next" });
+    useStore.getState().saveComposer();
+    expect(useStore.getState().unsend).toBeNull();
+    expect(useStore.getState().copied).toBeNull();
+  });
+
+  it("ends the offer to take a round back once a comment is resolved", async () => {
+    await useStore.getState().copyReview();
+    expect(useStore.getState().unsend).not.toBeNull();
+    const id = useStore.getState().comments[0]?.id ?? "";
+    useStore.getState().resolveComment(id);
+    expect(useStore.getState().comments[0]?.resolved).toBe("byReviewer");
+    expect(useStore.getState().unsend).toBeNull();
+    expect(useStore.getState().copied).toBeNull();
+  });
+
+  it("send nothing when every comment is resolved", async () => {
+    useStore.setState({ comments: [{ ...sent(comment("r")), resolved: "byReviewer" }] });
+    await useStore.getState().copyReview();
+    expect(api.endRound).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolving", () => {
+  const draft = comment("d");
+  const open = sent(comment("s"));
+
+  beforeEach(() => {
+    useStore.setState({ comments: [draft, open], openComment: "s", review: null, commentFilter: null });
+  });
+
+  it("resolves a sent comment and closes its card, then unresolves it and opens the card again", () => {
+    useStore.getState().resolveComment("s");
+    expect(useStore.getState().comments[1]?.resolved).toEqual("byReviewer");
+    expect(useStore.getState().openComment).toBeNull();
+    expect(useStore.getState().lastResolved).toBe("s");
+    useStore.getState().resolveComment("s");
+    expect(useStore.getState().comments[1]?.resolved).toBeNull();
+    expect(useStore.getState().openComment).toBe("s");
+    expect(useStore.getState().lastResolved).toBeNull();
+  });
+
+  it("unresolves a comment with no card without showing it", () => {
+    const away: Comment = { ...sent(comment("o")), state: "outdated", resolved: "byReviewer" };
+    useStore.setState({ comments: [away], openComment: null, selected: "a.ts" });
+    useStore.getState().resolveComment("o");
+    expect(useStore.getState().comments[0]?.resolved).toBeNull();
+    expect(useStore.getState().openComment).toBeNull();
+  });
+
+  it("forgets the comment R last resolved once another is shown, by the list or a pin", () => {
+    useStore.getState().resolveComment("s");
+    useStore.getState().showComment("d");
+    expect(useStore.getState().lastResolved).toBeNull();
+    useStore.getState().resolveComment("s");
+    useStore.getState().toggleComment("d");
+    expect(useStore.getState().lastResolved).toBeNull();
+  });
+
+  it("leaves a draft never sent alone", () => {
+    useStore.getState().resolveComment("d");
+    expect(useStore.getState().comments[0]).toBe(draft);
+  });
+
+  it("jumps past lost and resolved comments, and with a filter only through those it names", () => {
+    const lost: Comment = { ...comment("l"), state: "lost" };
+    const changed: Comment = { ...sent(comment("c")), sent: { ...sent(comment("c")).sent!, verdict: "changed" } };
+    useStore.setState({ comments: [lost, { ...open, resolved: "byReviewer" }, draft, changed], openComment: null });
+    useStore.getState().jumpComment(1);
+    expect(useStore.getState().openComment).toBe("d");
+    useStore.getState().jumpComment(1);
+    expect(useStore.getState().openComment).toBe("c");
+    useStore.getState().setCommentFilter("changed");
+    expect(useStore.getState().openComment).toBe("c");
+    useStore.getState().jumpComment(1);
+    expect(useStore.getState().openComment).toBe("c");
+    useStore.getState().setCommentFilter("untouched");
+    expect(useStore.getState().openComment).toBe("c");
+  });
+
+  it("opens the list when a strip count names comments with no card", () => {
+    const gone: Comment = { ...sent(comment("g")), state: "outdated", sent: { ...sent(comment("g")).sent!, verdict: "removed" } };
+    useStore.setState({ comments: [gone], openComment: null, commentList: false });
+    useStore.getState().setCommentFilter("changed");
+    expect(useStore.getState().commentList).toBe(true);
+    expect(useStore.getState().openComment).toBeNull();
+  });
+
+  it("deletes only drafts, with Undo", () => {
+    useStore.getState().deleteDrafts();
+    expect(useStore.getState().comments).toEqual([open]);
+    expect(useStore.getState().undo?.label).toBe("1 draft deleted");
+    useStore.getState().undoLast();
+    expect(useStore.getState().comments).toEqual([draft, open]);
+  });
+});
+
+describe("placing a lost draft again", () => {
+  beforeEach(async () => {
+    await openFiles([added("a.ts", 3), added("b.ts", 3)]);
+    const lost: Comment = { ...comment("l"), path: "b.ts", target: { kind: "lines", side: "new", start: 9, code: ["gone"] }, state: "lost" };
+    useStore.setState({ comments: [lost] });
+  });
+
+  it("goes to its file, takes the chosen line as its code, and can be undone", () => {
+    useStore.getState().startReplace("l");
+    expect(useStore.getState().replacing).toBe("l");
+    expect(useStore.getState().selected).toBe("b.ts");
+    useStore.getState().placeComment("new", 2);
+    const placed = useStore.getState().comments[0]!;
+    expect(placed.target).toEqual({ kind: "lines", side: "new", start: 2, code: ["    line 2"] });
+    expect(placed.state).toBe("current");
+    expect(placed.place).toEqual({ base: { kind: "uncommitted" }, head: { kind: "branch", name: "agent/x" } });
+    expect(useStore.getState().replacing).toBeNull();
+    expect(useStore.getState().openComment).toBe("l");
+    expect(useStore.getState().undo?.label).toBe("Placed on line 2. It is a draft again.");
+    useStore.getState().undoLast();
+    expect(useStore.getState().comments[0]?.state).toBe("lost");
+  });
+
+  it("is left where it was by Esc", () => {
+    useStore.getState().startReplace("l");
+    useStore.getState().cancelReplace();
+    expect(useStore.getState().replacing).toBeNull();
+    expect(useStore.getState().comments[0]?.state).toBe("lost");
+  });
+
+  it("starts only for a lost comment", () => {
+    useStore.setState({ comments: [comment("c")] });
+    useStore.getState().startReplace("c");
+    expect(useStore.getState().replacing).toBeNull();
+  });
+});
+
+describe("a comment written now", () => {
+  it("records where it was written", async () => {
+    await openFiles([added("a.ts", 3)]);
+    useStore.getState().composeOnLines("a.ts", "new", 1, 1);
+    useStore.getState().updateComposer({ text: "hi" });
+    useStore.getState().saveComposer();
+    expect(useStore.getState().comments[0]).toMatchObject({
+      text: "hi",
+      place: { base: { kind: "uncommitted" }, head: { kind: "branch", name: "agent/x" } },
+      sent: null,
+      resolved: null,
+    });
+  });
+
+  it("keeps a sent comment's round when edited, which reopens it", async () => {
+    await openFiles([added("a.ts", 3)]);
+    const was = sent({ ...comment("s"), target: { kind: "lines", side: "new", start: 1, code: ["    line 1"] } });
+    useStore.setState({ comments: [was] });
+    useStore.getState().editComment("s");
+    useStore.getState().updateComposer({ text: "more" });
+    useStore.getState().saveComposer();
+    expect(useStore.getState().comments[0]).toMatchObject({ text: "more", sent: { round: 1, text: "t" } });
+  });
+});
+
+describe("the sidebar's folders", () => {
+  it("open for a file selected inside one", async () => {
+    await openFiles([added("src/a.ts", 1), added("z.ts", 1)]);
+    useStore.getState().toggleFolder("d:src/");
+    expect(useStore.getState().closed.has("d:src/")).toBe(true);
+    useStore.getState().select("z.ts");
+    expect(useStore.getState().closed.has("d:src/")).toBe(true);
+    useStore.getState().select("src/a.ts");
+    expect(useStore.getState().closed.has("d:src/")).toBe(false);
+  });
+
+  it("open for the file a load selects when the selected one left the diff", async () => {
+    await openFiles([added("a.ts", 1), added("src/b.ts", 1)]);
+    useStore.getState().select("a.ts");
+    useStore.getState().toggleFolder("d:src/");
+    answerWithFiles("/a", [added("src/b.ts", 1)]);
+    await useStore.getState().reload();
+    expect(useStore.getState().selected).toBe("src/b.ts");
+    expect(useStore.getState().closed.has("d:src/")).toBe(false);
+  });
+
+  it("keep the width inside its bounds", () => {
+    useStore.getState().setSidebarWidth(9000);
+    expect(useStore.getState().sidebarWidth).toBe(560);
+    useStore.getState().setSidebarWidth(10);
+    expect(useStore.getState().sidebarWidth).toBe(200);
   });
 });

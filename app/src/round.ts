@@ -1,0 +1,55 @@
+// What the round strip and the preview's subtitle say of the loop (ADR 0015).
+import type { Comment } from "./bindings/Comment";
+import type { Round } from "./bindings/Round";
+import { when } from "./format";
+import { changed, open as isOpen, reopened } from "./lifecycle";
+import { type CommentFilter, inFilter } from "./store";
+
+/** What the strip says of the last round: its title, its counts, and what goes at the right. */
+export function roundStrip(
+  rounds: Round[],
+  comments: Comment[],
+  autoResolved: number,
+  now: number,
+): { title: string; quiet: boolean; parts: StripPart[]; meta: string } {
+  const last = rounds.at(-1);
+  if (!last) {
+    const drafts = comments.filter((c) => c.sent === null && c.resolved === null).length;
+    return { title: "Nothing sent yet", quiet: true, parts: [], meta: drafts > 0 ? `${drafts} ${drafts === 1 ? "draft" : "drafts"}` : "" };
+  }
+  const sent = comments.filter((c) => c.sent?.round === last.number);
+  // A reopened comment is the reviewer's again: neither changed nor untouched until sent once more.
+  const open = sent.filter((c) => c.resolved === null && !reopened(c));
+  const changedN = open.filter(changed).length;
+  const untouchedN = open.filter((c) => inFilter(c, "untouched")).length;
+  // Until the agent's work shows, the round reads as what was just sent.
+  if (changedN === 0 && autoResolved === 0 && open.length === sent.length) {
+    const n = sent.length;
+    return {
+      title: `Round ${last.number} sent`,
+      quiet: false,
+      parts: [{ filter: null, glyph: "sent", text: `${n} ${n === 1 ? "comment" : "comments"}` }],
+      meta: when(last.at, now),
+    };
+  }
+  const parts: StripPart[] = [];
+  if (changedN > 0) parts.push({ filter: "changed", glyph: "changed", text: `${changedN} changed` });
+  if (untouchedN > 0) parts.push({ filter: "untouched", glyph: "sent", text: `${untouchedN} untouched` });
+  if (autoResolved > 0) parts.push({ filter: null, glyph: null, text: `${autoResolved} resolved automatically` });
+  return { title: `Round ${last.number}`, quiet: false, parts, meta: "" };
+}
+
+/** One count in the strip; clicking one with a `filter` steps N / P through those comments. */
+export type StripPart = { filter: CommentFilter; glyph: "changed" | "sent" | null; text: string };
+
+
+/** "5 comments across 3 files" before any round; "3 new · 2 still open" once one was sent. */
+export function previewSubtitle(comments: Comment[], rounds: number): string {
+  const open = comments.filter(isOpen);
+  if (rounds === 0) {
+    const files = new Set(open.map((c) => c.path)).size;
+    return `${open.length} ${open.length === 1 ? "comment" : "comments"} across ${files} ${files === 1 ? "file" : "files"}`;
+  }
+  const fresh = open.filter((c) => c.sent === null || reopened(c)).length;
+  return `${fresh} new · ${open.length - fresh} still open`;
+}

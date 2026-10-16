@@ -18,6 +18,8 @@ export function Composer({ floating = false }: { floating?: boolean }) {
   const update = useStore((s) => s.updateComposer);
   const save = useStore((s) => s.saveComposer);
   const cancel = useStore((s) => s.cancelComposer);
+  // Editing a sent comment reopens it: the card says what was sent, and that it copies as "Still: …" (ADR 0015 §5).
+  const sent = useStore((s) => s.comments.find((c) => c.id === s.composer?.editing)?.sent ?? null);
   const text = useRef<HTMLTextAreaElement>(null);
   const code = useRef<HTMLTextAreaElement>(null);
   const suggesting = composer?.suggestion !== null && composer?.suggestion !== undefined;
@@ -55,6 +57,12 @@ export function Composer({ floating = false }: { floating?: boolean }) {
       onKeyDown={onKeyDown}
       className={`overflow-hidden rounded-[14px] border border-ghost bg-bg text-[13.5px] leading-[1.55] ${floating ? "shadow-pop" : ""}`}
     >
+      {sent && (
+        <div className="mx-4 mt-3 flex flex-col gap-0.5 rounded-lg bg-chip px-2.5 py-2 text-[12.5px] leading-[1.5]">
+          <span className="text-[11.5px] text-muted3">You sent in round {sent.round}</span>
+          <span className="code whitespace-pre-wrap text-muted3">{sent.text === "" ? "Suggested change" : sent.text}</span>
+        </div>
+      )}
       <AutoTextarea
         inputRef={text}
         autoFocus
@@ -95,7 +103,7 @@ export function Composer({ floating = false }: { floating?: boolean }) {
         </div>
       )}
       <div className="flex items-center gap-2.5 px-4 pt-2.5 pb-3 text-[12.5px]">
-        <span className="text-faint">{targetLabel(target)}</span>
+        <span className="text-faint">{sent ? "Copies as “Still: …”" : targetLabel(target)}</span>
         {canSuggest && (
           <button
             type="button"

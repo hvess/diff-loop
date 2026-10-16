@@ -5,7 +5,7 @@ import type { Side } from "../bindings/Side";
 import type { Snapshot } from "../bindings/Snapshot";
 import { useDelayed } from "../delay";
 import { counts, hunksOf } from "../rows";
-import { useStore } from "../store";
+import { commentText, useStore } from "../store";
 import { baseLabel } from "./BasePicker";
 import { CommentCard } from "./CommentCard";
 import { Composer } from "./Composer";
@@ -58,8 +58,27 @@ export function FilePane() {
   return (
     <section className="flex min-w-0 flex-1 flex-col">
       <FileHeader file={file} />
+      <ReplaceBar />
       <FileBody key={file.path} file={file} snapshot={review.changes.snapshot} />
     </section>
+  );
+}
+
+/** While a lost draft is being placed: which, and how to choose its line (ADR 0015 §2). */
+function ReplaceBar() {
+  const comment = useStore((s) => s.comments.find((c) => c.id === s.replacing) ?? null);
+  const chosen = useStore((s) => s.replacing !== null && s.selection !== null);
+  const cancelReplace = useStore((s) => s.cancelReplace);
+  if (!comment) return null;
+  const text = commentText(comment);
+  return (
+    <div role="status" className="flex flex-none items-center gap-2.5 border-b border-border bg-chip px-8 py-2 text-[12.5px]">
+      <span className="truncate font-medium">Re-place “{text.length > 40 ? `${text.slice(0, 40)}…` : text}”</span>
+      <span className="ml-auto flex-none text-muted3">{chosen ? "↑ ↓ to move · Return to place · Esc" : "Click a line number · Esc"}</span>
+      <button type="button" className="flex-none font-medium" onClick={cancelReplace}>
+        Cancel
+      </button>
+    </div>
   );
 }
 

@@ -1,5 +1,6 @@
 import * as Popover from "@radix-ui/react-popover";
 import { useEffect } from "react";
+import { notInDiff } from "../lifecycle";
 import { bannerDetail, useStore } from "../store";
 import { BasePicker } from "./BasePicker";
 import { FilePane } from "./FilePane";
@@ -56,17 +57,15 @@ export function ReviewScreen() {
   );
 }
 
-/** The code or the checkout changed under the review. */
+/** The checkout changed under the review: a switched, moved or rewritten branch (ADR 0015 §10). */
 function Banner() {
   const banner = useStore((s) => s.banner);
   const showWhatChanged = useStore((s) => s.showWhatChanged);
-  const undoRemoved = useStore((s) => s.undoRemoved);
   const dismiss = useStore((s) => s.dismissBanner);
-  const notInDiff = useStore((s) => (s.banner ? s.comments.filter((c) => c.state === "outdated").length : 0));
-  const total = useStore((s) => (s.banner ? s.comments.length : 0));
+  const notInDiffCount = useStore((s) => (s.banner ? s.comments.filter(notInDiff).length : 0));
   const setCommentList = useStore((s) => s.setCommentList);
   if (!banner) return null;
-  const detail = bannerDetail(banner.removed.length, notInDiff, total);
+  const detail = bannerDetail(notInDiffCount);
   return (
     <div role="status" className="flex flex-none items-center gap-3 border-b border-border bg-side px-6 py-2.5 text-[13px]">
       <span className="size-[7px] flex-none rounded-full bg-live" />
@@ -77,7 +76,7 @@ function Banner() {
         </span>
       )}
       <span className="ml-auto flex flex-none gap-3 whitespace-nowrap">
-        {notInDiff > 0 && (
+        {notInDiffCount > 0 && (
           <button type="button" className="font-medium" onClick={() => setCommentList(true)}>
             Show comments
           </button>
@@ -85,11 +84,6 @@ function Banner() {
         {banner.previous !== null && (
           <button type="button" className="font-medium" onClick={() => void showWhatChanged()}>
             Show what changed
-          </button>
-        )}
-        {banner.removed.length > 0 && (
-          <button type="button" className="text-muted3" onClick={undoRemoved}>
-            Undo removal
           </button>
         )}
         <button type="button" className="text-muted3" onClick={dismiss}>
@@ -100,16 +94,21 @@ function Banner() {
   );
 }
 
-/** Undo for deleting or clearing comments, offered for 10 s or until the next one replaces it. */
+/**
+ * Undo for deleting comments, or placing a lost one, offered for 10 s or until
+ * the next one replaces it. The 10 s wait while the preview covers the bar
+ * (HIG undo-and-redo: no needless limit on undoing), and start over once it closes.
+ */
 function UndoBar() {
   const undo = useStore((s) => s.undo);
+  const covered = useStore((s) => s.preview);
   const undoLast = useStore((s) => s.undoLast);
   const clearUndo = useStore((s) => s.clearUndo);
   useEffect(() => {
-    if (!undo) return;
+    if (!undo || covered) return;
     const timer = window.setTimeout(clearUndo, 10000);
     return () => window.clearTimeout(timer);
-  }, [undo, clearUndo]);
+  }, [undo, covered, clearUndo]);
   if (!undo) return null;
   return (
     <div

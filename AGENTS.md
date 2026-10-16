@@ -80,7 +80,7 @@ before reopening a decision they cover.
   Virtual and Shiki; Rust types reach TypeScript through `ts-rs`; git is
   read by running `git` with optional locks off; two `localStorage` keys
   (recent folders, instruction preferences; the second unused since
-  0013).
+  0013, and replaced by the sidebar's width in 0016).
 - **0002 — Watch the checkout instead of polling it.** `Repository::watch`
   on the port; `diff-loop-git` watches with `notify`; the app emits
   `repository-changed`, and polls every 2 s only when a watch cannot start.
@@ -127,6 +127,15 @@ before reopening a decision they cover.
 - **0014 — A full read on request.** `load_review` takes `full`, which
   reads everything even while a watch runs; ⌘/Ctrl-R asks for one, so
   changes the watch cannot see show on request.
+- **0015 — Rounds, and comments resolved rather than removed.** A copy
+  ends a round and sends every open comment with its code and context;
+  a load judges each sent comment against what it was sent on
+  (untouched, nearby changed, changed, removed, applied), marks a draft
+  whose code went lost rather than removing it, and the reviewer
+  resolves with R; `reviews.json` is version 2, with rounds.
+- **0016 — The sidebar folds, merges lone folders, and resizes.** Folders
+  fold on a click, a chain of lone folders is one row, the edge drags
+  the width, kept under `diff-loop.sidebar`.
 
 ## Key Constraints (non-negotiable)
 

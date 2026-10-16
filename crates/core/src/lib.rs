@@ -6,15 +6,17 @@
 
 mod anchor;
 mod base;
+mod code;
 mod diff;
 mod instructions;
 mod lines;
 mod repository;
 mod review;
+mod rounds;
 mod saved;
 mod update;
 
-pub use anchor::{AnchorState, Comment, Target};
+pub use anchor::{AnchorState, Comment, Place, Resolution, Sent, Target, Verdict};
 pub use base::{Base, BaseRef, RefKind};
 pub use diff::{Content, FileDiff, Hunk, Line, Side, Status};
 pub use instructions::{InstructionsRequest, instructions};
@@ -24,4 +26,5 @@ pub use repository::{
     WatchGuard,
 };
 pub use review::{KnownFile, Loaded, Opening, Review, ReviewFile, load, open};
+pub use rounds::{Round, RoundRequest, end_round, merge};
 pub use saved::{ReviewStore, SavedReview, StoreError};

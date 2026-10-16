@@ -99,10 +99,10 @@ each as **pass** or the specific failure.
 5. **Errors say what happened and what to do.** In plain language, per
    `writing` — "Write clear error messages".
 6. **Nothing destructive by accident.** Irreversible actions need a
-   deliberate step; reversible ones can be undone. A comment whose code
-   changed is removed without asking, and the banner that says so has
-   Undo (diff-loop-app Decision 16); until 2026-10-14 it had none, an
-   exception the developer has since withdrawn.
+   deliberate step; reversible ones can be undone. Nothing removes a
+   comment but the reviewer (ADR 0015): a load marks one lost or
+   outdated, a copy sends it, and R resolves it, each undone by its
+   own control.
 7. **Consistent.** The same thing looks, reads and behaves the same
    everywhere in the app.
 8. **Accessible.** Readable in light and dark, and meaning never carried
@@ -115,12 +115,13 @@ each as **pass** or the specific failure.
 The HIG stays the authority for behaviour; these are the developer's
 own decisions to depart from it, each recorded with both halves.
 
-- **The sidebar's tree does not fold** (diff-loop-app Decision 23; the
-  developer's call, 2026-10-14). The HIG `sidebars` page says to show no
-  more than two levels and to group deeper ones under disclosure
-  controls. The developer chose the v2 design's tree, which nests
-  changed files as deep as their folders go, with no disclosure
-  triangles: only changed paths are listed, so the tree stays short.
+- **The sidebar's tree nests as deep as its folders** (diff-loop-app
+  Decision 23; the developer's call, 2026-10-14). The HIG `sidebars`
+  page says to show no more than two levels of hierarchy. The developer
+  chose the v2 design's tree, which nests changed files as deep as their
+  folders go: only changed paths are listed, chains of lone folders read
+  as one row, and since 2026-10-15 each folder folds behind a disclosure
+  triangle (ADR 0016).
 - **The design's pale greys stay, for now** (the developer's call,
   2026-10-14; open-tasks 16). The HIG `accessibility` page asks for
   4.5:1 contrast for text; `--ui-faint` and `--ui-muted` draw line
@@ -173,7 +174,26 @@ own decisions to depart from it, each recorded with both halves.
   people "discover faster ways to accomplish a task". The developer chose
   to build the keys first and show them later, in a list of their own;
   the hints already there (V on Viewed, C on the range pill, N / P in the
-  comments list) stay.
+  comments list, R on a sent card's Resolve, ⌘/Ctrl-↵ on the preview's
+  Copy) stay.
+- **"Not sent" names a state, not a verb** (ADR 0015 §1; the design's
+  red-pen note 02, the developer's call, 2026-10-15). The HIG `writing`
+  page prefers a verb on a button; the popover's second action keeps the
+  design's "Not sent", which says what it makes true of the round.
+- **The preview's footer keeps its own words** (diff-loop-app Decision
+  25; the developer's call, 2026-10-15). The design as edited 2026-10-15
+  says "Click into the text to edit before copying.", "Changes apply to
+  this copy only." and "Reset"; the app keeps "You can edit the text
+  before copying.", "Edits change this text, not your comments." and
+  "Reset to original", which say what the edit touches and what Reset
+  goes back to (HIG `writing`).
+- **The preview has a ✕ as well as Cancel** (diff-loop-app Decision
+  25; the developer's call, 2026-10-15). The HIG `modality` page asks
+  for one obvious way to dismiss a modal view and warns against a
+  second control that could be taken for it; the design as edited
+  2026-10-15 draws a ✕ in the dialog's header and Cancel in its
+  footer, both closing it and keeping any edit, and the app follows
+  the design.
 
 ## Settled wording
 
@@ -185,13 +205,31 @@ against other wording that would also do.
   everywhere: the comment count ("2 comments (1 not in this diff)"),
   the list chip ("Not in this diff"), the list hint ("N / P to jump
   between comments in this diff"), and the banner.
-- **The banner's detail** (diff-loop-app Decision 16; the design's
-  words, the developer's call, 2026-10-14). One sentence per group, only
-  the first naming comments: "2 comments were addressed and removed.",
-  "1 is not in this diff.", "3 are still open."; with nothing removed,
-  "2 comments are not in this diff. 1 is still open." Its title, when
-  `HEAD` did not move, is "The agent updated the code"; its button,
-  "Undo removal".
+- **The banner's detail** (diff-loop-app Decision 16; the developer's
+  call, 2026-10-15). One sentence, only when it holds: "2 comments are
+  not in this diff." A banner names only a context change ("Switched to
+  agent/share-retry", "The branch moved: 2 new commits", "The branch was
+  rewritten"); nothing says the agent updated the code, and nothing is
+  removed (ADR 0015 §10). Until 2026-10-15 it counted comments
+  "addressed and removed", with "Undo removal".
+- **A comment's marks** (ADR 0015; the design's words, the developer's
+  call, 2026-10-15). In the list: "Sent", "Changed", "Reopened", "Code
+  gone", "Not in this diff", "Resolved" and "Resolved · suggestion
+  applied". On a card: the chip repeats the mark, and the footer says
+  "Untouched since sent", "Untouched since sent · nearby lines changed",
+  "Code changed since sent", "Code removed since sent", "Suggestion
+  applied" or "Copies as “Still: …”". In the round strip: "Nothing sent
+  yet", "Round 2 sent", "N changed", "N untouched", "N resolved
+  automatically". The copy says "✓ Copied · round 2 sent" and "… copied
+  as instructions and marked Sent."; its actions are "Preview
+  instructions…", as the list's, and "Not sent"; the list's clearing is
+  "Delete drafts". Placing a lost draft again is "Re-place",
+  ADR 0015 §2's word and the design's; its bar says "Re-place “…”" and
+  its undo bar "Placed on line 16. It is a draft again." In the
+  instructions, "Still: …" prefixes a reopened comment's new text and
+  "Still open" heads the sent comments not resolved yet, both ADR 0015
+  §5 and §6's words: the one is the reviewer's repeat, the other the
+  agent's leftover.
 - **The reason for suggested code** (diff-loop-app Decision 22; the
   developer's call, 2026-10-14). The composer's text field has no label:
   its placeholder says what it needs, "Why this change? (optional)"

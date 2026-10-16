@@ -63,6 +63,7 @@ describe("commandOf", () => {
     expect(command(press("c"))).toBe("comment");
     expect(command(press("Enter"))).toBe("comment");
     expect(command(press("e"))).toBe("editComment");
+    expect(command(press("r"))).toBe("resolveComment");
     expect(command(press("X", { shiftKey: true }))).toBe("showAllLines");
     expect(command(press("Escape"))).toBe("escape");
   });

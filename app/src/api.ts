@@ -12,6 +12,7 @@ import type { RepoError } from "./bindings/RepoError";
 import type { Review } from "./bindings/Review";
 import type { ReviewFile } from "./bindings/ReviewFile";
 import type { ReviewPart } from "./bindings/ReviewPart";
+import type { RoundRequest } from "./bindings/RoundRequest";
 import type { SavedReview } from "./bindings/SavedReview";
 import type { Side } from "./bindings/Side";
 import type { Snapshot } from "./bindings/Snapshot";
@@ -44,6 +45,10 @@ export const api = {
   launchPath: () => invoke<string | null>("launch_path"),
   instructions: (request: InstructionsRequest) =>
     invoke<string>("instructions", { request }),
+  /** The review after a copy: a round ended, every unresolved comment sent (ADR 0015 §1). */
+  endRound: (request: RoundRequest) => invoke<SavedReview>("end_round", { request }),
+  /** The saved review merged into the window's, once a failed read is read again (ADR 0004 §5). */
+  mergeReviews: (window: SavedReview, saved: SavedReview) => invoke<SavedReview>("merge_reviews", { window, saved }),
 };
 
 /** Whether `error` is a command's own failure, not one from the IPC layer (a string). */

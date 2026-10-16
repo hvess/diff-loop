@@ -21,8 +21,8 @@ mod reviews;
 
 use diff_loop_core::{
     Base, BaseRef, Comment, Content, InstructionsRequest, KnownFile, Loaded, Opening, RepoError,
-    Repository, Review, ReviewFile, ReviewStore, SavedReview, Side, Snapshot, StoreError, Touched,
-    WatchGuard,
+    Repository, Review, ReviewFile, ReviewStore, RoundRequest, SavedReview, Side, Snapshot,
+    StoreError, Touched, WatchGuard,
 };
 use diff_loop_git::Git;
 use serde::Serialize;
@@ -463,6 +463,19 @@ fn instructions(request: InstructionsRequest) -> String {
     diff_loop_core::instructions(&request)
 }
 
+/// The review after a copy of the instructions: a round ended, every
+/// unresolved comment sent (ADR 0015 §1).
+#[tauri::command]
+fn end_round(request: RoundRequest) -> SavedReview {
+    diff_loop_core::end_round(request)
+}
+
+/// The saved review merged into the window's, once a failed read is read again (ADR 0004 §5).
+#[tauri::command]
+fn merge_reviews(window: SavedReview, saved: SavedReview) -> SavedReview {
+    diff_loop_core::merge(window, saved)
+}
+
 /// The adapter this app reads repositories with (ADR 0001 §4).
 fn open_git(path: &Path) -> Result<Shared, RepoError> {
     Ok(Arc::new(Git::open(path)?))
@@ -527,6 +540,8 @@ pub fn run() -> TauriResult<()> {
             blob,
             file_lines,
             instructions,
+            end_round,
+            merge_reviews,
             launch_path,
             watch_repository,
             saved_review,

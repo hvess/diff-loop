@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    anchor::{Comment, Target},
+    anchor::{AnchorState, Comment, Target, Verdict},
     base::Base,
+    code::dedent,
     diff::Side,
     repository::Head,
 };
@@ -22,13 +23,15 @@ pub struct InstructionsRequest {
     /// What it is compared with.
     pub base: Base,
     /// Grouped by file in order of first appearance; by line within a file.
+    /// A resolved comment is left out.
     pub comments: Vec<Comment>,
 }
 
 /// Longest quoted code before it is cut with `…`, in characters.
 const QUOTE_MAX: usize = 60;
 
-/// The review as Markdown instructions an agent can act on.
+/// The review as Markdown instructions an agent can act on: what is new,
+/// then what was sent before and is still open (ADR 0015 §6).
 #[must_use]
 pub fn instructions(request: &InstructionsRequest) -> String {
     let mut out = String::new();
@@ -39,14 +42,39 @@ pub fn instructions(request: &InstructionsRequest) -> String {
         head_label(&request.head),
         base_label(&request.base)
     );
-    for (path, comments) in by_file(&request.comments) {
+    let (still, new): (Vec<&Comment>, Vec<&Comment>) = request
+        .comments
+        .iter()
+        .filter(|c| c.resolved.is_none())
+        .partition(|c| c.sent.is_some() && !c.reopened());
+    for (path, comments) in by_file(&new) {
         let _ = write!(out, "\n### {path}\n");
         for comment in comments {
             write_comment(&mut out, comment);
         }
     }
+    if !still.is_empty() {
+        let _ = write!(out, "\n### Still open\n{}\n", still_open(&still));
+        for (path, comments) in by_file(&still) {
+            let _ = write!(out, "\n#### {path}\n");
+            for comment in comments {
+                write_comment(&mut out, comment);
+            }
+        }
+    }
     out.push_str("\nWhen done, reply with one line per comment saying what you changed.\n");
     out
+}
+
+/// The sentence under "Still open": which rounds the comments were sent in.
+fn still_open(still: &[&Comment]) -> String {
+    let mut rounds = still.iter().filter_map(|c| Some(c.sent.as_ref()?.round));
+    match rounds.next() {
+        Some(first) if rounds.all(|r| r == first) => {
+            format!("Sent in round {first} and not resolved yet.")
+        }
+        _ => "Sent in earlier rounds and not resolved yet.".to_owned(),
+    }
 }
 
 fn head_label(head: &Head) -> String {
@@ -65,7 +93,7 @@ fn base_label(base: &Base) -> String {
 }
 
 /// Comments grouped by path in order of first appearance, sorted by line within.
-fn by_file(comments: &[Comment]) -> Vec<(&str, Vec<&Comment>)> {
+fn by_file<'a>(comments: &[&'a Comment]) -> Vec<(&'a str, Vec<&'a Comment>)> {
     // A loop, not a chain: grouping in first-appearance order searches the
     // groups built so far. Linear per comment; comments are written by hand.
     let mut files: Vec<(&str, Vec<&Comment>)> = Vec::new();
@@ -95,26 +123,14 @@ fn by_file(comments: &[Comment]) -> Vec<(&str, Vec<&Comment>)> {
 
 fn write_comment(out: &mut String, comment: &Comment) {
     let text = comment.text.trim();
-    // Suggested code may stand without a reason.
-    let text = if text.is_empty() {
-        String::new()
-    } else {
-        format!(": {text}")
+    let still = if comment.reopened() { "Still: " } else { "" };
+    // Suggested code may stand without a reason; reopened, it still says so.
+    let text = match (text.is_empty(), comment.reopened()) {
+        (true, true) => ": Still: see the suggested change.".to_owned(),
+        (true, false) => String::new(),
+        (false, _) => format!(": {still}{text}"),
     };
-    let _ = match &comment.target {
-        Target::File => writeln!(out, "- The whole file{text}"),
-        target @ Target::Lines { side, start, code } => {
-            let removed = if *side == Side::Old { "removed " } else { "" };
-            let end = target.end().unwrap_or(*start);
-            let lines = if *start == end {
-                format!("L{start}")
-            } else {
-                format!("L{start}–{end}")
-            };
-            let quote = quote(code).unwrap_or_default();
-            writeln!(out, "- {removed}{lines}{quote}{text}")
-        }
-    };
+    let _ = writeln!(out, "- {}{text}", where_label(comment));
     if let Some(suggestion) = &comment.suggestion {
         let _ = writeln!(
             out,
@@ -128,6 +144,70 @@ fn write_comment(out: &mut String, comment: &Comment) {
     }
 }
 
+/// Where the comment is: its lines and their code, or what became of them.
+fn where_label(comment: &Comment) -> String {
+    let sent = comment.sent.as_ref();
+    let verdict = sent.and_then(|s| s.verdict);
+    match &comment.target {
+        Target::File => "The whole file".to_owned(),
+        Target::Lines { code, .. } if comment.state == AnchorState::Lost => {
+            format!(
+                "Code no longer in the diff, was{}",
+                quote(code).unwrap_or_default()
+            )
+        }
+        target @ Target::Lines { side, code, .. } => {
+            let removed = if *side == Side::Old { "removed " } else { "" };
+            match (verdict, sent.map(|s| &s.target)) {
+                (
+                    Some(Verdict::Removed),
+                    Some(
+                        was @ Target::Lines {
+                            code: sent_code, ..
+                        },
+                    ),
+                ) => {
+                    format!(
+                        "Code removed since sent, was {removed}{}{}",
+                        lines_label(was),
+                        quote(sent_code).unwrap_or_default()
+                    )
+                }
+                (Some(Verdict::Changed | Verdict::Applied), Some(was @ Target::Lines { .. }))
+                    if lines_label(was) != lines_label(target) =>
+                {
+                    format!(
+                        "{removed}{}{}, was {}",
+                        lines_label(target),
+                        quote(code).unwrap_or_default(),
+                        lines_label(was)
+                    )
+                }
+                _ => format!(
+                    "{removed}{}{}",
+                    lines_label(target),
+                    quote(code).unwrap_or_default()
+                ),
+            }
+        }
+    }
+}
+
+/// `L7`, or `L21–24` for a range.
+fn lines_label(target: &Target) -> String {
+    match target {
+        Target::File => String::new(),
+        Target::Lines { start, .. } => {
+            let end = target.end().unwrap_or(*start);
+            if *start == end {
+                format!("L{start}")
+            } else {
+                format!("L{start}–{end}")
+            }
+        }
+    }
+}
+
 /// The first non-blank line of `code` in backticks, cut to [`QUOTE_MAX`],
 /// with `…` when more follows.
 fn quote(code: &[String]) -> Option<String> {
@@ -135,18 +215,6 @@ fn quote(code: &[String]) -> Option<String> {
     let cut: String = first.chars().take(QUOTE_MAX).collect();
     let more = cut.len() < first.len() || code.len() > 1;
     Some(format!(" `{cut}{}`", if more { "…" } else { "" }))
-}
-
-/// `text`'s lines with their common leading whitespace removed.
-fn dedent(text: &str) -> impl Iterator<Item = &str> {
-    let indent = text
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| l.len() - l.trim_start().len())
-        .min()
-        .unwrap_or(0);
-    text.lines()
-        .map(move |l| l.get(indent..).unwrap_or_else(|| l.trim_start()))
 }
 
 /// The Markdown fence language for `path`, or empty when unknown.
@@ -183,7 +251,7 @@ fn fence_language(path: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::anchor::AnchorState;
+    use crate::anchor::{Place, Resolution, Sent};
 
     fn comment(path: &str, start: u32, code: &[&str], text: &str) -> Comment {
         Comment {
@@ -197,6 +265,34 @@ mod tests {
             text: text.into(),
             suggestion: None,
             state: AnchorState::Current,
+            place: None,
+            sent: None,
+            resolved: None,
+        }
+    }
+
+    /// `comment` as sent in `round` on `code` at `start`, with `verdict`.
+    fn sent(comment: Comment, round: u32, start: u32, code: &[&str], verdict: Verdict) -> Comment {
+        Comment {
+            sent: Some(Sent {
+                round,
+                place: Place {
+                    base: Base::Uncommitted,
+                    head: Head::Branch { name: "b".into() },
+                },
+                commit: None,
+                target: Target::Lines {
+                    side: Side::New,
+                    start,
+                    code: code.iter().map(|s| (*s).to_owned()).collect(),
+                },
+                before: vec![],
+                after: vec![],
+                text: comment.text.clone(),
+                suggestion: comment.suggestion.clone(),
+                verdict: Some(verdict),
+            }),
+            ..comment
         }
     }
 
@@ -265,12 +361,156 @@ When done, reply with one line per comment saying what you changed.
     }
 
     #[test]
+    fn sent_comments_still_open_follow_the_new_ones_and_resolved_ones_are_left_out() {
+        let handler = "src/api/share/handler.ts";
+        let new = comment(
+            handler,
+            19,
+            &["res.setHeader('X-RateLimit-Limit', …)"],
+            "Send limit.max.",
+        );
+        let lost = Comment {
+            state: AnchorState::Lost,
+            ..comment(
+                "src/api/share/rateLimit.ts",
+                20,
+                &["const ttl = await redis.ttl(key);"],
+                "ttl is −1 when the key has no expiry.",
+            )
+        };
+        let reopened = Comment {
+            text: "Make it 50 for team accounts.".into(),
+            ..sent(
+                comment(
+                    "config/limits.yaml",
+                    7,
+                    &["maxPerWindow: 20"],
+                    "20 is too low.",
+                ),
+                2,
+                7,
+                &["maxPerWindow: 20"],
+                Verdict::Untouched,
+            )
+        };
+        let untouched = sent(
+            comment(
+                handler,
+                18,
+                &["res.setHeader('X-RateLimit-Remaining', …)"],
+                "Also send X-RateLimit-Limit.",
+            ),
+            2,
+            18,
+            &["res.setHeader('X-RateLimit-Remaining', …)"],
+            Verdict::Untouched,
+        );
+        let changed = sent(
+            comment(
+                handler,
+                23,
+                &["return tooManyRequests(res, limit.resetAt);"],
+                "Pull this into a helper.",
+            ),
+            2,
+            21,
+            &["return res.status(429).json({", "});"],
+            Verdict::Changed,
+        );
+        let removed = sent(
+            comment(handler, 31, &[], "Return a 503 here."),
+            1,
+            31,
+            &["throw new Error('rate limiter unavailable');"],
+            Verdict::Removed,
+        );
+        let resolved = Comment {
+            resolved: Some(Resolution::ByReviewer),
+            ..sent(
+                comment(handler, 22, &["x"], "Hash it."),
+                2,
+                22,
+                &["x"],
+                Verdict::Untouched,
+            )
+        };
+        let expected = "\
+Please address these review comments on agent/share-rate-limit (compared with main).
+
+### src/api/share/handler.ts
+- L19 `res.setHeader('X-RateLimit-Limit', …)`: Send limit.max.
+
+### src/api/share/rateLimit.ts
+- Code no longer in the diff, was `const ttl = await redis.ttl(key);`: ttl is −1 when the key has no expiry.
+
+### config/limits.yaml
+- L7 `maxPerWindow: 20`: Still: Make it 50 for team accounts.
+
+### Still open
+Sent in earlier rounds and not resolved yet.
+
+#### src/api/share/handler.ts
+- L18 `res.setHeader('X-RateLimit-Remaining', …)`: Also send X-RateLimit-Limit.
+- L23 `return tooManyRequests(res, limit.resetAt);`, was L21–22: Pull this into a helper.
+- Code removed since sent, was L31 `throw new Error('rate limiter unavailable');`: Return a 503 here.
+
+When done, reply with one line per comment saying what you changed.
+";
+        let comments = vec![new, lost, reopened, untouched, changed, removed, resolved];
+        assert_eq!(instructions(&request(comments)), expected);
+    }
+
+    #[test]
+    fn still_open_names_the_one_round_its_comments_were_sent_in() {
+        let one = sent(
+            comment("a.rs", 1, &["x"], "t"),
+            3,
+            1,
+            &["x"],
+            Verdict::Untouched,
+        );
+        let text = instructions(&request(vec![one]));
+        assert!(
+            text.contains("### Still open\nSent in round 3 and not resolved yet.\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_changed_comment_at_its_own_lines_says_nothing_of_where_it_was() {
+        let changed = sent(
+            comment("a.rs", 4, &["new"], "t"),
+            1,
+            4,
+            &["old"],
+            Verdict::Changed,
+        );
+        let text = instructions(&request(vec![changed]));
+        assert!(text.contains("\n- L4 `new`: t\n"), "{text}");
+    }
+
+    #[test]
     fn a_suggestion_without_a_reason_has_no_trailing_colon() {
         let mut only_code = comment("a.rs", 3, &["let x = 1;"], "");
         only_code.suggestion = Some("let x = 2;".into());
         let text = instructions(&request(vec![only_code]));
         assert!(
             text.contains("\n- L3 `let x = 1;`\n  Suggested change:\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_comment_reopened_by_its_suggestion_alone_still_says_so() {
+        let mut only_code = comment("a.rs", 3, &["let x = 1;"], "");
+        only_code.suggestion = Some("let x = 2;".into());
+        let mut reopened = sent(only_code, 1, 3, &["let x = 1;"], Verdict::Untouched);
+        reopened.suggestion = Some("let x = 3;".into());
+        let text = instructions(&request(vec![reopened]));
+        assert!(
+            text.contains(
+                "\n- L3 `let x = 1;`: Still: see the suggested change.\n  Suggested change:\n"
+            ),
             "{text}"
         );
     }

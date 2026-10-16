@@ -13,9 +13,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::lock;
 
-/// The format [`JsonReviews`] reads and writes. A file with any other
-/// version is refused, never overwritten (ADR 0004 §3).
-const VERSION: u32 = 1;
+/// The format [`JsonReviews`] writes (ADR 0015 §9). It also reads
+/// [`EARLIER`]; a file with any other version is refused, never overwritten
+/// (ADR 0004 §3).
+const VERSION: u32 = 2;
+
+/// The format before rounds (ADR 0004 §3): its comments read as drafts, and
+/// the file is written back as [`VERSION`] at the next save.
+const EARLIER: u32 = 1;
 
 /// The file's contents.
 #[derive(Debug, Serialize, Deserialize)]
@@ -61,7 +66,7 @@ impl JsonReviews {
         };
         let unreadable = |e: serde_json::Error| failed(&self.path, &e);
         let Version { version } = serde_json::from_slice(&bytes).map_err(unreadable)?;
-        if version != VERSION {
+        if version != VERSION && version != EARLIER {
             return Err(StoreError::Failed {
                 message: format!(
                     "{} was written by another version of Diff Loop (format {version})",
@@ -69,7 +74,11 @@ impl JsonReviews {
                 ),
             });
         }
-        serde_json::from_slice(&bytes).map_err(unreadable)
+        let kept: Kept = serde_json::from_slice(&bytes).map_err(unreadable)?;
+        Ok(Kept {
+            version: VERSION,
+            ..kept
+        })
     }
 
     /// Replaces the file whole: written beside it, then renamed over it, so
@@ -129,7 +138,11 @@ mod tests {
                 text: text.into(),
                 suggestion: None,
                 state: AnchorState::Current,
+                place: None,
+                sent: None,
+                resolved: None,
             }],
+            rounds: vec![],
         }
     }
 
@@ -160,6 +173,21 @@ mod tests {
     }
 
     #[test]
+    fn an_earlier_format_reads_its_comments_as_drafts_and_is_written_back_as_the_current_one() {
+        let dir = TempDir::new().unwrap();
+        let store = reviews(&dir);
+        fs::create_dir_all(store.path.parent().unwrap()).unwrap();
+        let earlier = r#"{"version":1,"reviews":{"/a":{"comments":[{"id":"c","path":"a.ts","target":{"kind":"file"},"text":"one","suggestion":null,"state":"current"}]}}}"#;
+        fs::write(&store.path, earlier).unwrap();
+        assert_eq!(store.saved("/a").unwrap(), with_comment("one"));
+        store.save("/b", &with_comment("two")).unwrap();
+        let written: serde_json::Value =
+            serde_json::from_slice(&fs::read(&store.path).unwrap()).unwrap();
+        assert_eq!(written["version"], 2);
+        assert_eq!(store.saved("/a").unwrap(), with_comment("one"));
+    }
+
+    #[test]
     fn saving_an_empty_review_removes_it() {
         let dir = TempDir::new().unwrap();
         let store = reviews(&dir);
@@ -185,7 +213,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = reviews(&dir);
         fs::create_dir_all(store.path.parent().unwrap()).unwrap();
-        let newer = r#"{"version":2,"reviews":"elsewhere"}"#;
+        let newer = r#"{"version":3,"reviews":"elsewhere"}"#;
         fs::write(&store.path, newer).unwrap();
         let Err(StoreError::Failed { message }) = store.saved("/a") else {
             panic!("a newer format was read");

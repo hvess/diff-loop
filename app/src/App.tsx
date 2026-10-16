@@ -52,8 +52,14 @@ function run(command: WindowCommand, e: KeyboardEvent): boolean {
       s.jumpComment(command === "nextComment" ? 1 : -1);
       return true;
     case "comment":
-      // Return stays a focused button's; C is no button's.
-      if (!s.selection || s.composer || (e.key === "Enter" && !onPage(e.target))) return false;
+      if (!s.selection || s.composer) return false;
+      // Placing a lost draft, Return puts it on the chosen line wherever focus was left (ADR 0015 §2).
+      if (s.replacing !== null) {
+        s.placeComment(s.selection.side, s.selection.head);
+        return true;
+      }
+      // Otherwise Return stays a focused button's; C is no button's.
+      if (e.key === "Enter" && !onPage(e.target)) return false;
       s.composeOnSelection();
       return true;
     case "editComment":
@@ -64,11 +70,16 @@ function run(command: WindowCommand, e: KeyboardEvent): boolean {
       if (!s.openComment) return false;
       s.deleteComment(s.openComment);
       return true;
+    case "resolveComment": {
+      // The open card's comment; with none, the one R just resolved, which R again unresolves (ADR 0015 §4).
+      const id = s.openComment ?? s.lastResolved;
+      if (!id) return false;
+      s.resolveComment(id);
+      return true;
+    }
     case "undo":
-      // The user's own delete or clear first: its bar says so, for 10 s.
-      if (s.undo) s.undoLast();
-      else if (s.banner && s.banner.removed.length > 0) s.undoRemoved();
-      else return false;
+      if (!s.undo) return false;
+      s.undoLast();
       return true;
     case "copyReview":
       if (s.comments.length === 0) return false;
@@ -98,8 +109,9 @@ function run(command: WindowCommand, e: KeyboardEvent): boolean {
       s.closeRepository();
       return true;
     case "escape":
-      // The open card first, then a find bar the reader can see (its field closes it itself).
-      if (s.openComment) s.toggleComment(null);
+      // Placing a draft, then the open card, then a find bar the reader can see (its field closes it itself).
+      if (s.replacing !== null) s.cancelReplace();
+      else if (s.openComment) s.toggleComment(null);
       else if (s.find && findShown()) s.closeFind();
       else if (s.selection) s.setSelection(null);
       else return false;

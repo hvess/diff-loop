@@ -14,7 +14,8 @@ side: Side,
  */
 start: number, 
 /**
- * The lines' text when the comment was written. Empty reads as the
- * one line `start`, whose code is unknown, so it never re-anchors.
+ * The lines' text when the comment was written, or as they are now
+ * for a sent comment whose code changed. Empty reads as the one line
+ * `start`, whose code is unknown, so a draft never re-anchors from it.
  */
 code: Array<string>, };

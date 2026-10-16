@@ -17,5 +17,6 @@ head: Head,
 base: Base, 
 /**
  * Grouped by file in order of first appearance; by line within a file.
+ * A resolved comment is left out.
  */
 comments: Array<Comment>, };

@@ -5,7 +5,7 @@ Work that is known, understood and not done. Each entry says what was seen, wher
 **Status:** active — a ledger, not a spec. Nothing here blocks anything else.
 **Scope:** everything outstanding.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-16
 
 An entry leaves this file by being done, or by being decided against — in
 which case the decision goes where it belongs (an ADR, or the spec it
@@ -23,7 +23,8 @@ contradicts) and the entry says so before it goes.
    instances.** `reviews.json` (ADR 0004) keeps an entry for every
    working tree ever reviewed, moved or deleted ones included, and each
    save rewrites it whole (`JsonReviews::save`,
-   `app/src-tauri/src/reviews.rs`). Its lock is per process, so two
+   `app/src-tauri/src/reviews.rs`); since ADR 0015 §9 each entry also
+   holds up to 20 rounds with their Markdown. Its lock is per process, so two
    running instances can overwrite each other's saves. Closes when
    entries for working trees that no longer exist are dropped, and
    saving is safe across processes, or the developer decides against
@@ -69,12 +70,28 @@ contradicts) and the entry says so before it goes.
     developer chose to build the keys first and show them later
     (2026-10-15): only the Viewed checkbox's tooltip (V), the composer's
     Comment button (⌘/Ctrl-Return), the welcome screen's Open folder
-    (⌘/Ctrl-O), the comments list's hint (N / P), the range pill (C) and
+    (⌘/Ctrl-O), the comments list's hint (N / P), the range pill (C), a
+    sent card's Resolve button (R), the preview's Copy (⌘/Ctrl-↵) and
     the macOS menu bar's Open Folder and Find items name a key, and Linux
     has no menu bar (Decision 18). The HIG `offering-help` page offers
     tips to help people "discover faster ways to accomplish a task". Closes when ? (and ⌘-? on macOS, with a Help menu
     item) opens a list of the shortcuts drawn from `BINDINGS`, or the
     developer decides against one.
+
+18. **Against Uncommitted changes, a commit by the agent reads as every
+    sent comment removed.** The diff against `HEAD` empties when the agent
+    commits, so each sent comment is judged removed (ADR 0015 §3), and
+    changing the base to see the work suspends the judgement (§8,
+    `anchor::reanchor`). Closes when a round sent against Uncommitted
+    changes is judged against the commit that followed, or the developer
+    decides the base's meaning is fine.
+19. **The design's README is not the repository's.** The design project
+    holds a `README.md` for a public repository (an MIT licence, release
+    badges, a screenshot at `docs/review-screen.png`, build-from-source
+    steps); the repository's README is the private one. The developer
+    left it for later, 2026-10-15. Closes when the README is brought in,
+    with its claims made true (a `LICENSE`, a public repository), or the
+    developer decides against it.
 
 ## Distribution
 
