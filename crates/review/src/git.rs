@@ -91,16 +91,7 @@ impl Repo {
                 });
             }
         }
-        let exclude = git(
-            &self.root,
-            &[
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-path",
-                "info/exclude",
-            ],
-        )?;
-        let exclude = PathBuf::from(exclude.trim_end_matches('\n'));
+        let exclude = self.git_path("info/exclude")?;
         // Read whole or not at all: it is written back with what it held.
         let mut text = match fs::read_to_string(&exclude) {
             Ok(text) => text,
@@ -122,16 +113,22 @@ impl Repo {
 
     /// Where the pass record for `tree` lives, inside the git directory.
     pub(crate) fn pass_record(&self, tree: &str) -> Result<PathBuf, Failure> {
-        let path = git(
+        self.git_path(&format!("diff-loop-review/passed/{tree}"))
+    }
+
+    /// Where this checkout's pass records live: under `.git/worktrees/<name>/`
+    /// for a linked worktree, outside its own tree.
+    pub(crate) fn pass_records(&self) -> Result<PathBuf, Failure> {
+        self.git_path("diff-loop-review/passed")
+    }
+
+    /// `path` inside this checkout's git directory, absolute.
+    fn git_path(&self, path: &str) -> Result<PathBuf, Failure> {
+        let out = git(
             &self.root,
-            &[
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-path",
-                &format!("diff-loop-review/passed/{tree}"),
-            ],
+            &["rev-parse", "--path-format=absolute", "--git-path", path],
         )?;
-        Ok(PathBuf::from(path.trim_end_matches('\n')))
+        Ok(PathBuf::from(out.trim_end_matches('\n')))
     }
 }
 

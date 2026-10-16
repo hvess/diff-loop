@@ -5,7 +5,7 @@ The review loop's commit gate: a dev-only command that runs the loop's stages, r
 **Status:** active — first version landed.
 **Scope:** `crates/review`, `.githooks/`, and the local Claude Code guard it writes. Excludes the loop's rules themselves (`.agents/skills/review/SKILL.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-13
+**Last Updated:** 2026-10-16
 
 ## Why
 
@@ -69,7 +69,10 @@ skipping it deliberate, not impossible.
    `info/exclude` when nothing ignores it (`begin` refuses untracked
    files), and writes `.claude/settings.json`, which
    sets `AGENT`, denies edits to `.githooks/`, the pass records and the
-   run directories (but see Pitfalls for a linked worktree), and runs `guard`
+   run directories (a linked worktree's records, which lie in the main
+   checkout's `.git/worktrees/<name>/`, outside its project, also by
+   their absolute path, Claude Code's `//` form, on Unix, where the
+   guard's own hook runs too; since 2026-10-16), and runs `guard`
    before every Bash command (the built binary, else through cargo).
    `guard` refuses `--no-verify`, `git commit -n`, any setting of
    `core.hooksPath` or a git alias, git config set through `GIT_CONFIG*`
@@ -87,11 +90,19 @@ skipping it deliberate, not impossible.
 ## Pitfalls
 
 - A linked worktree's pass records sit in the main checkout's git
-  directory (`.git/worktrees/<name>/`), outside the worktree's project,
-  where its Claude Code deny rules may not reach.
+  directory (`.git/worktrees/<name>/`), outside the worktree's project:
+  a deny rule relative to the project does not reach them, so
+  `install-guard` adds one by absolute path (Decision 9). A worktree
+  installed before 2026-10-16 is guarded once `install-guard` runs in it
+  again.
 
 - A hook's `git write-tree` must see the index git is committing, so
   nothing in `check` may clear `GIT_INDEX_FILE`.
+
+## Progress (2026-10-16, a linked worktree's records)
+
+`install-guard` denies a linked worktree's pass records by their
+absolute path (Decision 9), closing open-tasks 11.
 
 ## Progress (2026-10-13, first version)
 

@@ -13,13 +13,6 @@ contradicts) and the entry says so before it goes.
 
 ## App
 
-11. **A linked worktree's pass records may be unguarded.** They sit in the
-    main checkout's git directory (`.git/worktrees/<name>/`), outside the
-    worktree's project, where the Claude Code deny rules `install-guard`
-    writes may not reach (`docs/spec/diff-loop-review.md`, Pitfalls).
-    Closes when a worktree's records are shown to be protected, or are
-    kept where they are, or the developer decides the gap is fine.
-
 15. **The macOS side of ADR 0010 has not run on a Mac**: the menu bar
     (`app/src/menuBar.ts`), the traffic lights' position and background
     throttling (`app/src-tauri/tauri.conf.json`), and the beep rule
