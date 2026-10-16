@@ -165,16 +165,23 @@ pub struct Sent {
     pub verdict: Option<Verdict>,
 }
 
+/// Whether `name` names the commit `id`: in full, or by a prefix of at least
+/// seven hex digits, as the window shows one (ADR 0021 §2).
+fn names(name: &str, id: &str) -> bool {
+    name == id
+        || (name.len() >= 7 && name.bytes().all(|b| b.is_ascii_hexdigit()) && id.starts_with(name))
+}
+
 impl Sent {
     /// Whether it is judged at `now`, with `commit` at `HEAD` (ADR 0015 §8,
-    /// and for the uncommitted changes ADR 0017 §1).
+    /// and for the uncommitted changes ADR 0017 §1 and ADR 0021 §2).
     fn judged_at(&self, now: &Place, commit: Option<&str>) -> bool {
         match (&self.place.base, &now.base) {
             (Base::Uncommitted, Base::Uncommitted) => {
                 self.place.same_head(now) && commit == self.commit.as_deref()
             }
             (Base::Uncommitted, Base::Ref { name }) => {
-                self.place.same_head(now) && self.commit.as_deref() == Some(name.as_str())
+                self.place.same_head(now) && self.commit.as_deref().is_some_and(|c| names(name, c))
             }
             _ => self.place.same(now),
         }
@@ -988,6 +995,29 @@ mod tests {
         let comment = reanchor(sent_uncommitted(), &[], &at(Base::Uncommitted), Some("def"));
         assert_eq!(verdict_of(&comment), None);
         assert_eq!(comment.state, AnchorState::Outdated);
+    }
+
+    #[test]
+    fn comparing_with_the_short_id_uncommitted_changes_were_sent_on_judges_them() {
+        let mut comment = sent_uncommitted();
+        if let Some(sent) = &mut comment.sent {
+            sent.commit = Some("9671d8a0c3b1e2f4a5b6c7d8e9f0a1b2c3d4e5f6".into());
+        }
+        let short = at(Base::Ref {
+            name: "9671d8a".into(),
+        });
+        let comment = reanchor(comment, &[sent_file(&["y"])], &short, Some("def"));
+        assert_eq!(verdict_of(&comment), Some(Verdict::Changed));
+    }
+
+    #[test]
+    fn a_commit_is_named_in_full_or_by_a_short_id_of_seven_or_more() {
+        let id = "9671d8a0c3b1e2f4a5b6c7d8e9f0a1b2c3d4e5f6";
+        assert!(names(id, id));
+        assert!(names("9671d8a", id));
+        assert!(!names("9671d8", id), "six digits is not a short id");
+        assert!(!names("9671d8b", id));
+        assert!(!names("main", id));
     }
 
     #[test]

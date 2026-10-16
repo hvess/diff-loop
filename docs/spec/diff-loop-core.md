@@ -123,7 +123,8 @@ Each is a pure function tested here.
     Elsewhere it is found by its current target as a draft is, and
     carries no verdict; sent against the uncommitted changes, it is
     judged only at the commit it was sent on, or with that commit as the
-    base by its full id (ADR 0017 §1, `Sent::judged_at`). A sent comment resolves itself once when its
+    base by its full id or a short one of seven or more hex digits
+    (ADR 0017 §1, ADR 0021 §2, `Sent::judged_at`). A sent comment resolves itself once when its
     verdict becomes applied from another known verdict;
     `Resolution::SuggestionApplied`.
 15. **Whitespace alone is not a change** (ADR 0015 §7, `code::same_code`):

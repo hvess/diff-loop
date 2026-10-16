@@ -153,6 +153,9 @@ before reopening a decision they cover.
   saved in turn.** `reviews.json` version 3 records when each tree was
   last seen; a save drops a review whose tree has been missing for 30
   days, and holds a lock beside the file so two instances take turns.
+- **0021 — A commit made while the window was closed is followed.** On
+  opening, the newest round's commit stands in for the load before, and a
+  short id of seven or more hex digits names a round's commit.
 
 ## Key Constraints (non-negotiable)
 

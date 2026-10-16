@@ -345,6 +345,44 @@ describe("reloading", () => {
     expect(useStore.getState().banner).toBeNull();
   });
 
+  it("follows a commit made on top of the newest round while the window was closed", async () => {
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    answerNextLoadWithCodeGone("/a", "current", "agent/x", "def");
+    vi.mocked(api.roundToFollow).mockResolvedValueOnce(1);
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    expect(vi.mocked(api.roundToFollow).mock.lastCall?.[2]).toBe("abc");
+    expect(useStore.getState().base).toEqual({ kind: "ref", name: "abc" });
+    expect(useStore.getState().banner?.title).toBe("The branch moved: 1 new commit · showing changes since round 1 (abc)");
+  });
+
+  it("says nothing on opening after the newest round's commit was rewritten away", async () => {
+    vi.mocked(api.roundToFollow).mockClear();
+    vi.mocked(api.commitsBetween).mockResolvedValueOnce(null);
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    expect(api.roundToFollow).not.toHaveBeenCalled();
+    expect(useStore.getState().base).toEqual({ kind: "uncommitted" });
+    expect(useStore.getState().banner).toBeNull();
+  });
+
+  it("follows nothing when the reviewer chooses the uncommitted changes after a failed load", async () => {
+    vi.mocked(api.loadReview).mockRejectedValueOnce(new Error("no such ref"));
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    expect(useStore.getState().review).toBeNull();
+    vi.mocked(api.roundToFollow).mockClear();
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    await useStore.getState().setBase({ kind: "uncommitted" });
+    expect(api.roundToFollow).not.toHaveBeenCalled();
+    expect(useStore.getState().base).toEqual({ kind: "uncommitted" });
+  });
+
+  it("says nothing on opening at the newest round's own commit", async () => {
+    vi.mocked(api.roundToFollow).mockClear();
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    expect(api.roundToFollow).not.toHaveBeenCalled();
+    expect(useStore.getState().banner).toBeNull();
+  });
+
   it("does not follow a commit when the reviewer has just chosen the uncommitted changes", async () => {
     await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
     await useStore.getState().setBase({ kind: "lastCommit" });

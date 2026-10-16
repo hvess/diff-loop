@@ -100,6 +100,8 @@ type State = {
   loading: boolean;
   /** A check asked for while loading, run when the load ends: a full read once ⌘/Ctrl-R asked for one. */
   recheck: "changes" | "everything" | null;
+  /** The next load is the one that opens the checkout: only it may follow a commit made while closed (ADR 0021 §1). */
+  opensCheckout: boolean;
   loadProblem: Problem | null;
   comments: Comment[];
   /** The rounds sent for the open checkout, the latest last (ADR 0015 §9). */
@@ -252,6 +254,11 @@ export function orderedComments(review: LoadedReview | null, comments: Comment[]
   return [...comments].sort((a, b) => at(a) - at(b) || line(a) - line(b));
 }
 
+/** The banner's title for `HEAD` moved on by `count` commits (`ux` skill, "Settled wording"). */
+function moved(count: number): string {
+  return `The branch moved: ${count} new ${count === 1 ? "commit" : "commits"}`;
+}
+
 /** The banner's offer to compare with the commit before `HEAD` moved. */
 function whatChanged(previous: string): Banner["action"] {
   return { label: "Show what changed", base: { kind: "ref", name: previous } };
@@ -368,6 +375,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   review: null,
   loading: false,
   recheck: null,
+  opensCheckout: false,
   loadProblem: null,
   comments: [],
   rounds: [],
@@ -443,6 +451,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         previewEdit: null,
         saveProblem: saved.problem,
         closed: new Set(),
+        opensCheckout: true,
       });
       await get().reload();
       // Only the answer for the repository still open counts: a slow answer
@@ -491,8 +500,8 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   async reload(full = false) {
-    const { base, review: before } = get();
-    set({ loading: true });
+    const { base, review: before, opensCheckout } = get();
+    set({ loading: true, opensCheckout: false });
     try {
       const held = before && sameBase(before.base, base) ? before : null;
       const sent = get().comments;
@@ -545,8 +554,12 @@ export const useStore = create<State & Actions>()((set, get) => ({
     // Only a change of context gets a banner (ADR 0015 §10): the agent's work shows in the round strip.
     async function announceMove(before: LoadedReview | null, after: LoadedReview, sameBaseBefore: boolean) {
       const stillHere = () => sameBase(get().base, base) && get().review?.checkout.root === after.checkout.root;
-      const previous = before?.checkout.commit;
       const now = after.checkout.commit;
+      if (!before) {
+        if (opensCheckout) await followSinceOpened(now, after.checkout.head, stillHere);
+        return;
+      }
+      const previous = before.checkout.commit;
       if (!previous || !now || previous === now) return;
       const headBefore = before.checkout.head;
       const headNow = after.checkout.head;
@@ -561,10 +574,23 @@ export const useStore = create<State & Actions>()((set, get) => ({
         set({ banner: { title: "The branch was rewritten", action: whatChanged(previous) } });
         return;
       }
-      const title = `The branch moved: ${count} new ${count === 1 ? "commit" : "commits"}`;
+      const title = moved(count);
       // Not on a base the reviewer has just chosen: they stay on it.
       if (sameBaseBefore && (await followCommit(title, previous, headNow, stillHere))) return;
       if (stillHere()) set({ banner: { title, action: whatChanged(previous) } });
+    }
+
+    /**
+     * Opened after a commit made on top of the newest round while the window was closed: that round's
+     * commit stands in for the load before, and it is followed as a move seen open would be
+     * (ADR 0021 §1). Nothing is said otherwise: the first load has no context to have changed.
+     */
+    async function followSinceOpened(now: string | null, head: Head, stillHere: () => boolean) {
+      const previous = get().rounds.at(-1)?.commit;
+      if (!previous || !now || previous === now) return;
+      const count = await api.commitsBetween(previous, now).catch(() => null);
+      if (count === null || !stillHere()) return;
+      await followCommit(moved(count), previous, head, stillHere);
     }
 
     /**

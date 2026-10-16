@@ -41,7 +41,8 @@ change, annotate, hand off to the agent, next round.
    strip and on each sent comment instead (step 13, ADR 0015); since
    2026-10-16 a commit on top of a round sent against the uncommitted
    changes is followed, comparing with the round's commit, "The branch
-   moved: 1 new commit · showing changes since round 3 (a1f3c9e)" (ADR 0017).
+   moved: 1 new commit · showing changes since round 3 (a1f3c9e)" (ADR 0017),
+   and on opening after such a commit made while closed (ADR 0021).
 6. Expand unchanged lines: "Show N unchanged lines" before a hunk, and
    "Show the rest of the file" after the last, read them (`file_lines`,
    diff-loop-core `lines`) and show them, highlighted, in place (Decisions
@@ -570,6 +571,11 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-16, a commit made while closed)
+
+ADR 0021: on opening, a commit made on top of the newest round is
+followed (`followSinceOpened`, `app/src/store.ts`), closing open-tasks 20.
 
 ## Progress (2026-10-16, saved reviews pruned and locked)
 

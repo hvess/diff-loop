@@ -25,7 +25,8 @@ developer asked for every open task to be fixed, 2026-10-16.
    A comment sent against them (`Sent::place`'s base `Uncommitted`) is
    judged only while `HEAD` is still `Sent::commit`, or while the base
    is that commit by name (`Base::Ref`, its full id), on the same branch
-   (`Sent::judged_at`). Anywhere else its judgement is suspended, as
+   (`Sent::judged_at`; amended by ADR 0021 §2: or a short id of seven or
+   more hex digits). Anywhere else its judgement is suspended, as
    under another base (ADR 0015 §8): it is found by its code and shows
    no verdict, so a commit never makes it read as removed.
 2. **A commit on top is followed.** When a load on the uncommitted
@@ -43,6 +44,8 @@ developer asked for every open task to be fixed, 2026-10-16.
    comment is not, nor a commit made while the window was closed: the
    first load has no load before it to have moved from, and the
    reviewer compares with the round's commit through the base picker.
+   (Amended by ADR 0021: on opening, the newest round's commit stands in
+   for the load before, and a short id names the commit too.)
    A base or repository the reviewer picked while the move was looked
    into, or while the follow loaded, is kept, and gets no banner; nor
    does a follow whose load failed, which reports its problem instead.
