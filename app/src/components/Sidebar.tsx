@@ -274,7 +274,10 @@ function RoundStrip() {
   );
 }
 
-/** The vertical lines that show which folder a row is in. */
+/**
+ * The vertical lines that show which folder a row is in. Each depth is 16px, and its line runs under
+ * the icon of the folder it hangs from, which fills that folder row's 16px.
+ */
 function Guides({ guides }: { guides: Guide[] }) {
   if (guides.length === 0) return null;
   return (
@@ -291,9 +294,8 @@ function Guides({ guides }: { guides: Guide[] }) {
 }
 
 /**
- * A folder: a click folds or opens it (ADR 0016 §1). A disclosure triangle on its leading edge says
- * which, as the comment list's Resolved section does (HIG `disclosure-controls`); folded, it says how
- * many changed files it holds.
+ * A folder: a click folds or opens it (ADR 0016 §1). Its icon, open or closed, says which, as the
+ * design draws it; folded, it says how many changed files it holds.
  */
 function FolderRow({ row, open, files }: { row: Extract<TreeRow, { kind: "folder" }>; open: boolean; files: number }) {
   const toggleFolder = useStore((s) => s.toggleFolder);
@@ -303,12 +305,9 @@ function FolderRow({ row, open, files }: { row: Extract<TreeRow, { kind: "folder
       aria-expanded={open}
       aria-label={`${row.name}, ${files} ${files === 1 ? "file" : "files"}`}
       onClick={() => toggleFolder(row.key)}
-      className="flex h-full items-center gap-1.5 rounded-lg pr-2 text-muted3 hover:bg-chip"
+      className="flex h-full items-center gap-1.5 rounded-lg px-2 text-muted3 hover:bg-chip"
     >
       <Guides guides={row.guides} />
-      <span aria-hidden className="-mr-0.5 w-2 flex-none text-center text-[9px]">
-        {open ? "▾" : "▸"}
-      </span>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinejoin="round" strokeLinecap="round" className="flex-none" aria-hidden>
         {open ? (
           <>

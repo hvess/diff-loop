@@ -120,8 +120,15 @@ own decisions to depart from it, each recorded with both halves.
   page says to show no more than two levels of hierarchy. The developer
   chose the v2 design's tree, which nests changed files as deep as their
   folders go: only changed paths are listed, chains of lone folders read
-  as one row, and since 2026-10-15 each folder folds behind a disclosure
-  triangle (ADR 0016).
+  as one row, and since 2026-10-15 each folder folds on a click (ADR
+  0016).
+- **A folder folds by its icon, with no disclosure triangle** (diff-loop-app
+  Decision 23; the developer's call, 2026-10-16). The HIG
+  `disclosure-controls` page shows a folder hierarchy revealed by
+  disclosure triangles, pointing inward when hidden and down when shown,
+  and the `sidebars` page groups hierarchy with disclosure controls. The
+  developer chose the v2 design, which draws only the open or closed
+  folder icon; a folded folder also says how many files it holds.
 - **The design's pale greys stay, for now** (the developer's call,
   2026-10-14; open-tasks 16). The HIG `accessibility` page asks for
   4.5:1 contrast for text; `--ui-faint` and `--ui-muted` draw line

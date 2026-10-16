@@ -223,9 +223,11 @@ change, annotate, hand off to the agent, next round.
 23. **The sidebar is a tree of the changed files** (`app/src/tree.ts`,
     ADR 0013 §1): only their folders, nested as on disk, each folder
     before its files and both by name, numbers by value. Since
-    2026-10-15 (ADR 0016) a folder folds on a click, with a disclosure
-    triangle on its leading edge (HIG `disclosure-controls`, where the
-    design draws only the open or closed folder icon) and, folded, how
+    2026-10-15 (ADR 0016) a folder folds on a click, its open or closed
+    folder icon saying which, as the design draws it (a disclosure
+    triangle on its leading edge was removed, against the HIG
+    `disclosure-controls` page, the developer's call, 2026-10-16) and,
+    folded, how
     many changed files it holds ("3 files"), a chain of folders holding nothing but one folder reads
     as one row (`src/api/share`), a selected file opens the folders it is
     under, names are not cut short, and the sidebar's edge drags its
@@ -471,7 +473,7 @@ change, annotate, hand off to the agent, next round.
       where the design draws a small rounded square: that reads as an
       unticked checkbox beside Viewed (the author's call, 2026-10-16,
       under the developer's instruction of 2026-10-15 to run the review
-      until clean; so for the triangle and the pills below). Lost, resolved and
+      until clean; so for the pills below). Lost, resolved and
       outdated comments draw none. A copy turns the pins and list entries
       to paper top to bottom, 40 ms apart (`.pin` in `styles.css`, `--i`
       the comment's index).

@@ -38,7 +38,11 @@ chose to follow the new design, 2026-10-15.
 ## Consequences
 
 - The `ux` skill's note that the tree does not fold is withdrawn: the HIG
-  `sidebars` page's disclosure controls are followed.
+  `sidebars` page's disclosure controls are followed (since 2026-10-16
+  only in part: a folder still folds, but its open or closed icon is the
+  control, with no disclosure triangle, as the design draws it, against
+  the HIG `disclosure-controls` page; the developer's call, recorded in
+  the `ux` skill and diff-loop-app Decision 23).
 - The review's `order`, and so J / K and N / P, still runs through every
   file, folded or not: a key that lands on a folded file opens its
   folders.
