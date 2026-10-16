@@ -43,5 +43,5 @@ every open task to be fixed, 2026-10-16.
 - A program that refreshes the index often (an editor's git panel)
   costs a full read each time it writes it.
 - A file newly created, or newly deleted, while the review holds files
-  of the opposite kind costs a second partial read, once; while it holds
-  more than `MOST_PATHS` of them, a full read.
+  of the opposite kind costs a second partial read, once; when they and
+  the touched paths pass `MOST_PATHS`, a full read (§2).
