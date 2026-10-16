@@ -33,5 +33,6 @@ paths would not show those two changes.
 
 - An index-only change, or a rename the watch did not see, shows at the
   next full read: a moved snapshot, another base, reopening, or ⌘/Ctrl-R.
-  Open task 10 stays open: no load notices them on its own.
+  Open task 10 stays open: no load notices them on its own. (Since
+  2026-10-16 a load does: ADR 0018.)
 - ⌘/Ctrl-R costs one full diff of the checkout, as the first load does.

@@ -29,13 +29,6 @@ contradicts) and the entry says so before it goes.
    entries for working trees that no longer exist are dropped, and
    saving is safe across processes, or the developer decides against
    either.
-10. **Two changes show only at the next full read** (ADR 0005,
-    Consequences): a change to the index alone (`git rm --cached`) moves
-    no snapshot and touches no working-tree path, and a rename into a
-    path the watch did not touch shows as an addition and a deletion
-    (`update`, `crates/core/src/update.rs`). ⌘/Ctrl-R reads everything
-    on request (ADR 0014). Closes when a load since the
-    last notices both, or the developer decides the wait is fine.
 11. **A linked worktree's pass records may be unguarded.** They sit in the
     main checkout's git directory (`.git/worktrees/<name>/`), outside the
     worktree's project, where the Claude Code deny rules `install-guard`

@@ -140,6 +140,10 @@ before reopening a decision they cover.
   Comments sent against the uncommitted changes are judged only at the
   commit they were sent on, or compared with it by name; when the agent
   commits on top, the window compares with that commit and says so.
+- **0018 — A change to the index, and a rename's other half.** A change
+  to the working tree's index makes the watch report everything, and an
+  update reads a new addition or deletion with the opposite kind it
+  holds, so neither waits for a full read.
 
 ## Key Constraints (non-negotiable)
 

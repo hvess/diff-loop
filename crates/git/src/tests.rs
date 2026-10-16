@@ -365,6 +365,30 @@ fn a_watch_reports_an_edit_and_stops_when_dropped() {
 }
 
 #[test]
+fn a_change_to_the_index_alone_touches_everything_but_a_read_does_not() {
+    let dir = repo();
+    let git_repo = Git::open(dir.path()).unwrap();
+    let (changed, seen) = mpsc::channel();
+    let _guard = git_repo
+        .watch(Box::new(move |touched| {
+            let _ = changed.send(touched);
+        }))
+        .unwrap();
+    // The app's own reads never write the index.
+    git_repo.changes(&Base::Uncommitted).unwrap();
+    assert!(
+        seen.recv_timeout(Duration::from_secs(1))
+            .map_or(true, |t| t != Touched::Everything)
+    );
+    git(dir.path(), &["rm", "-q", "--cached", "src/handler.ts"]);
+    let everything = (0..10).any(|_| {
+        seen.recv_timeout(Duration::from_secs(5))
+            .is_ok_and(|t| t == Touched::Everything)
+    });
+    assert!(everything);
+}
+
+#[test]
 fn a_worktree_watch_sees_a_commit() {
     let dir = repo();
     let worktree = TempDir::new().unwrap();

@@ -1,6 +1,7 @@
-//! Bringing a checkout's changes up to date by reading only what was touched.
+//! Bringing a checkout's changes up to date by reading only what was
+//! touched, and what a rename there may pair with.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::{
     base::Base,
@@ -24,8 +25,9 @@ pub(crate) struct Updated {
 }
 
 /// `previous`, the changes against `base`, with every touched path read
-/// again; everything is read again when the snapshot moved or `touched`
-/// names too much.
+/// again, and with them the other halves of a rename they newly show
+/// (`halves`); everything is read again when the snapshot moved, or
+/// `touched`, or it with those halves, names too much.
 ///
 /// # Errors
 /// As [`Repository::changes`].
@@ -66,9 +68,22 @@ pub(crate) fn update(
         .flatten()
         .collect();
     paths.extend(partners);
-    let fresh = repository.changes_in(base, &paths)?;
+    let mut fresh = repository.changes_in(base, &paths)?;
     if fresh.snapshot != previous.snapshot {
         return everything();
+    }
+    // A staged addition and a deletion pair as a rename only when git reads
+    // them together, and the watch may have touched one (ADR 0018 §2).
+    let others = halves(&previous.files, &fresh.files, &paths);
+    if !others.is_empty() {
+        if paths.len() + others.len() > MOST_PATHS {
+            return everything();
+        }
+        paths.extend(others);
+        fresh = repository.changes_in(base, &paths)?;
+        if fresh.snapshot != previous.snapshot {
+            return everything();
+        }
     }
     let mut files: Vec<FileDiff> = previous
         .files
@@ -84,6 +99,36 @@ pub(crate) fn update(
         },
         reread: Some(paths),
     })
+}
+
+/// The paths in `previous`, not under `paths`, that could be the other half
+/// of a rename `fresh` newly shows: its additions when a file is newly
+/// deleted, its deletions when one is newly added. A file added or deleted
+/// before, saved again, asks for nothing. O(p · d · log t + f) for p
+/// previous and f fresh files, d a path's depth and t touched paths
+/// (`covers`).
+fn halves(previous: &[FileDiff], fresh: &[FileDiff], paths: &BTreeSet<String>) -> BTreeSet<String> {
+    let before: HashMap<&str, &Status> = previous
+        .iter()
+        .map(|f| (f.path.as_str(), &f.status))
+        .collect();
+    let newly = |status: Status| {
+        fresh
+            .iter()
+            .any(|f| f.status == status && before.get(f.path.as_str()) != Some(&&f.status))
+    };
+    let adds = newly(Status::Added);
+    let deletes = newly(Status::Deleted);
+    previous
+        .iter()
+        .filter(|f| match f.status {
+            Status::Added => deletes,
+            Status::Deleted => adds,
+            Status::Modified | Status::Renamed { .. } => false,
+        })
+        .filter(|f| !covers(paths, &f.path))
+        .map(|f| f.path.clone())
+        .collect()
 }
 
 /// Whether `path` or a directory holding it is in `paths`; O(depth · log n).
@@ -132,16 +177,32 @@ mod tests {
                 files: self.files.clone(),
             })
         }
+        /// As git reads them: a rename with only one of its paths named is
+        /// that half, an addition or a deletion.
         fn changes_in(&self, _: &Base, paths: &BTreeSet<String>) -> Result<Changes, RepoError> {
             self.reads.borrow_mut().push(Some(paths.clone()));
+            let files = self
+                .files
+                .iter()
+                .filter_map(
+                    |f| match (covers(paths, &f.path), covers(paths, f.old_path())) {
+                        (true, true) => Some(f.clone()),
+                        (true, false) => Some(FileDiff {
+                            status: Status::Added,
+                            ..f.clone()
+                        }),
+                        (false, true) => Some(FileDiff {
+                            status: Status::Deleted,
+                            path: f.old_path().to_owned(),
+                            ..f.clone()
+                        }),
+                        (false, false) => None,
+                    },
+                )
+                .collect();
             Ok(Changes {
                 snapshot: self.snapshot.clone(),
-                files: self
-                    .files
-                    .iter()
-                    .filter(|f| covers(paths, &f.path) && covers(paths, f.old_path()))
-                    .cloned()
-                    .collect(),
+                files,
             })
         }
         fn fingerprint(&self, _: &Base) -> Result<String, RepoError> {
@@ -249,6 +310,71 @@ mod tests {
             *repo.reads.borrow(),
             [Some(["new.ts".into(), "old.ts".into()].into())]
         );
+    }
+
+    fn with_status(path: &str, status: Status) -> FileDiff {
+        FileDiff {
+            status,
+            ..text_file(path, vec![])
+        }
+    }
+
+    #[test]
+    fn a_deletion_is_read_with_an_addition_the_watch_did_not_touch_and_pairs_as_a_rename() {
+        // `new.ts` was staged earlier; the agent then deleted `old.ts`.
+        let repo = now(vec![renamed("old.ts", "new.ts")]);
+        let before = changes(vec![with_status("new.ts", Status::Added)]);
+        let updated = update(&repo, &Base::Uncommitted, before, paths(&["old.ts"])).unwrap();
+        assert_eq!(updated.changes.files, [renamed("old.ts", "new.ts")]);
+        assert_eq!(
+            *repo.reads.borrow(),
+            [
+                Some(["old.ts".into()].into()),
+                Some(["new.ts".into(), "old.ts".into()].into())
+            ]
+        );
+    }
+
+    #[test]
+    fn an_addition_is_read_with_a_deletion_the_watch_did_not_touch() {
+        let repo = now(vec![renamed("old.ts", "new.ts")]);
+        let before = changes(vec![with_status("old.ts", Status::Deleted)]);
+        let updated = update(&repo, &Base::Uncommitted, before, paths(&["new.ts"])).unwrap();
+        assert_eq!(updated.changes.files, [renamed("old.ts", "new.ts")]);
+    }
+
+    #[test]
+    fn an_addition_saved_again_reads_nothing_more() {
+        let repo = now(vec![
+            with_status("new.ts", Status::Added),
+            with_status("old.ts", Status::Deleted),
+        ]);
+        let before = changes(vec![
+            with_status("new.ts", Status::Added),
+            with_status("old.ts", Status::Deleted),
+        ]);
+        update(&repo, &Base::Uncommitted, before, paths(&["new.ts"])).unwrap();
+        assert_eq!(*repo.reads.borrow(), [Some(["new.ts".into()].into())]);
+    }
+
+    #[test]
+    fn too_many_other_halves_read_everything() {
+        let held: Vec<FileDiff> = (0..=MOST_PATHS)
+            .map(|i| with_status(&format!("new{i}.ts"), Status::Added))
+            .collect();
+        let mut files = held.clone();
+        files.push(with_status("old.ts", Status::Deleted));
+        let repo = now(files);
+        let updated = update(&repo, &Base::Uncommitted, changes(held), paths(&["old.ts"])).unwrap();
+        assert!(updated.reread.is_none());
+    }
+
+    #[test]
+    fn an_edit_reads_nothing_more() {
+        let repo = now(vec![file("a.ts", "x"), with_status("b.ts", Status::Added)]);
+        let before = changes(vec![file("a.ts", "x"), with_status("b.ts", Status::Added)]);
+        update(&repo, &Base::Uncommitted, before, paths(&["a.ts"])).unwrap();
+        assert_eq!(*repo.reads.borrow(), [Some(["a.ts".into()].into())]);
     }
 
     #[test]

@@ -88,8 +88,12 @@ Each is a pure function tested here.
 12. **`load` since the last load reads only what was touched**
     (`update`, ADR 0005 §3), by their top-level directories past
     `MOST_PATHS`, and everything when the snapshot moved or the watch lost
-    track; it then takes no fingerprint, and keeps the signatures of files
-    it did not read again. `Loaded` is opaque: only `load` makes one.
+    track; a new addition or deletion is read again with the opposite kind
+    already held, so a staged addition pairs with a deletion as a rename,
+    and past `MOST_PATHS` in all everything is read (ADR 0018 §2,
+    `halves`). It then takes
+    no fingerprint, and keeps the signatures of files it did not read
+    again. `Loaded` is opaque: only `load` makes one.
 
 13. **"Behind" is `git status`'s sense:** `BaseRef::behind` counts the
     ref's commits the checkout lacks. The design shows only
@@ -158,6 +162,11 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-16, a rename's other half)
+
+ADR 0018 §2: `update` reads a new addition or deletion with the opposite
+kind already held (Decision 12).
 
 ## Progress (2026-10-16, a commit on top of a round)
 

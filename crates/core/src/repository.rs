@@ -90,8 +90,8 @@ pub type OnChange = Box<dyn Fn(Touched) + Send + Sync>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Touched {
     /// Paths relative to the root, files or directories; empty when only git's
-    /// own state changed. A fresh snapshot shows a moved `HEAD` or base, not
-    /// a change to the index alone (ADR 0005, Consequences).
+    /// own state changed. A fresh snapshot shows a moved `HEAD` or base; a
+    /// change to the index is `Everything` (ADR 0018 §1).
     Paths(BTreeSet<String>),
     /// More than the watch could name: read everything again.
     Everything,

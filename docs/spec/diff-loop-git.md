@@ -5,7 +5,7 @@ The `Repository` adapter over the `git` command line.
 **Status:** active — first version landed.
 **Scope:** `crates/git`. Excludes everything the core decides.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-13
+**Last Updated:** 2026-10-16
 
 ## Why
 
@@ -49,7 +49,8 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
    directory and common directory when they lie outside it (a worktree),
    and reports a burst of events once after 250 ms of quiet
    (`watch.rs`, `SETTLE`), with the working-tree paths it touched
-   (ADR 0005 §1). Dropping the guard stops it and its thread.
+   (ADR 0005 §1), or everything when the working tree's index changed
+   (ADR 0018 §1). Dropping the guard stops it and its thread.
 7. **Stdin is written on its own thread** (`command.rs`): git can fill
    its stdout pipe before it has read all its input.
 8. **Git is found as a terminal finds it** (`locate.rs`), once per
@@ -85,6 +86,11 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 - `git diff --git` headers are ambiguous for paths with spaces; only an
   identical pair is split from the header, and renames take their paths
   from `rename from` / `rename to`.
+
+## Progress (2026-10-16, the index)
+
+ADR 0018 §1: the watch reports everything when the index changes
+(Decision 6).
 
 ## Progress (2026-10-13, the base picker's notes)
 

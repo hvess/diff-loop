@@ -23,6 +23,7 @@ each time. The developer chose rebuilding per changed path, 2026-10-13.
    renamed one names itself (a folder moved in brings files that report
    nothing). Reading a file names nothing; closing one written to does.
    A git directory inside one already watched is not watched again.
+   (Amended by ADR 0018 §1: the working tree's index touches everything.)
 2. **The port reads a subset** (`Repository::changes_in`): the changes
    at or under given paths, untracked files included, as literal
    pathspecs. None for no paths, with the snapshot.
@@ -35,6 +36,8 @@ each time. The developer chose rebuilding per changed path, 2026-10-13.
    top-level directories. Such a load takes no fingerprint
    (`Review::fingerprint` is `None`), and a file not read again keeps its
    signature (`Loaded`), so no step costs the whole diff.
+   (Amended by ADR 0018 §2: an addition or deletion is read with the
+   opposite kind already in the review.)
 4. **The app keeps the last load only while a watch runs** (`Session`):
    a new watch, another repository or a failed load drops it, and the
    next load reads everything. Loads are numbered as they begin, and only
@@ -57,6 +60,7 @@ each time. The developer chose rebuilding per changed path, 2026-10-13.
   next full read: a moved snapshot, another base, or reopening.
   (Amended by ADR 0014: ⌘/Ctrl-R asks for a full read too.)
 - A rename into a path the watch did not touch shows as an addition and
-  a deletion until the next full read. Both are open-tasks 10.
+  a deletion until the next full read. Both are open-tasks 10 (since
+  2026-10-16: neither waits, ADR 0018).
 - Past 10,000 paths between loads (`MOST_KEPT`), what was touched counts
   as everything.

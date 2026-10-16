@@ -22,7 +22,8 @@ and offered Undo in a banner (Decision 16). Three things made that
 unreliable (2026-10-15):
 
 - The removal compared the previous load with this one, so what the
-  watch did or did not see (ADR 0005; open-tasks 10) decided *whether* a
+  watch did or did not see (ADR 0005; open-tasks 10, closed by ADR 0018)
+  decided *whether* a
   comment went, not only *when* the window caught up.
 - Changed code is not an addressed comment. A reformat, a rename or a
   file the agent had half written took the comment; a comment addressed

@@ -425,7 +425,11 @@ impl Repository for Git {
                 Ok(PathBuf::from(out.trim_end_matches('\n')))
             })
             .collect::<Result<Vec<_>, RepoError>>()?;
-        watch::watch(self.root(), &git_dirs, on_change)
+        let index =
+            self.run
+                .stdout(&["rev-parse", "--path-format=absolute", "--git-path", "index"])?;
+        let index = PathBuf::from(index.trim_end_matches('\n'));
+        watch::watch(self.root(), &git_dirs, &index, on_change)
     }
 
     fn uncommitted_files(&self) -> Result<u32, RepoError> {

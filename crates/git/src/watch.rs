@@ -21,7 +21,9 @@ const SETTLE: Duration = Duration::from_millis(250);
 /// Watches `root` and each of `git_dirs` recursively and calls `on_change`
 /// once per burst of events, with the paths under `root` it touched, until
 /// the returned guard is dropped. A git directory inside `root` is watched
-/// with it; none of its paths are reported.
+/// with it; none of its paths are reported, but a change to `index` touches
+/// everything: a change to the index alone names no working-tree path
+/// (`git rm --cached`; ADR 0018 §1).
 ///
 /// # Errors
 /// [`RepoError::Failed`] when the platform refuses a watch (on Linux, the
@@ -29,6 +31,7 @@ const SETTLE: Duration = Duration::from_millis(250);
 pub(crate) fn watch(
     root: &Path,
     git_dirs: &[PathBuf],
+    index: &Path,
     on_change: OnChange,
 ) -> Result<WatchGuard, RepoError> {
     let failed = |e: NotifyError| RepoError::Failed {
@@ -37,6 +40,7 @@ pub(crate) fn watch(
     let watched = WatchedPaths {
         root: root.to_path_buf(),
         git_dirs: git_dirs.to_vec(),
+        index: index.to_path_buf(),
     };
     let (events, bursts) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |event: Result<Event, NotifyError>| {
@@ -83,11 +87,15 @@ pub(crate) fn watch(
 struct WatchedPaths {
     root: PathBuf,
     git_dirs: Vec<PathBuf>,
+    /// The working tree's index; the app's own git calls never write it
+    /// (`GIT_OPTIONAL_LOCKS`), so its changes are someone else's.
+    index: PathBuf,
 }
 
 impl WatchedPaths {
-    /// The working-tree paths `event` touched; none for git's own files, and
-    /// everything when the platform lost events or a path is not UTF-8.
+    /// The working-tree paths `event` touched. Git's own files name none,
+    /// except the index, which touches everything; so do lost events and a
+    /// path that is not UTF-8.
     fn touched(&self, event: Result<Event, NotifyError>) -> Touched {
         let Ok(event) = event else {
             return Touched::Everything;
@@ -119,6 +127,9 @@ impl WatchedPaths {
     }
 
     fn relative(&self, path: &Path) -> Touched {
+        if path == self.index {
+            return Touched::Everything;
+        }
         if self.git_dirs.iter().any(|dir| path.starts_with(dir)) {
             return Touched::default();
         }
@@ -153,6 +164,7 @@ mod tests {
         WatchedPaths {
             root: PathBuf::from("/repo"),
             git_dirs: vec![PathBuf::from("/repo/.git"), PathBuf::from("/elsewhere/wt")],
+            index: PathBuf::from("/elsewhere/wt/index"),
         }
     }
 
@@ -177,10 +189,21 @@ mod tests {
     fn git_state_and_the_root_itself_name_nothing() {
         let touched = watched().touched(Ok(event(&[
             "/repo/.git/index",
+            "/repo/.git/HEAD",
             "/elsewhere/wt/HEAD",
+            "/elsewhere/wt/index.lock",
             "/repo",
         ])));
         assert_eq!(touched, Touched::default());
+    }
+
+    #[test]
+    fn a_change_to_the_working_trees_index_touches_everything() {
+        let renamed_in = Event {
+            paths: vec![PathBuf::from("/elsewhere/wt/index")],
+            ..Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To)))
+        };
+        assert_eq!(watched().touched(Ok(renamed_in)), Touched::Everything);
     }
 
     #[test]
@@ -210,6 +233,7 @@ mod tests {
         let watched = WatchedPaths {
             root: dir.path().to_path_buf(),
             git_dirs: vec![dir.path().join(".git")],
+            index: dir.path().join(".git/index"),
         };
         let src = dir.path().join("src");
         let at = |kind| Event {
