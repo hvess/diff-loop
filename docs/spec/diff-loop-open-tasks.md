@@ -86,6 +86,22 @@ contradicts) and the entry says so before it goes.
     with its claims made true (a `LICENSE`, a public repository), or the
     developer decides against it.
 
+20. **A commit made while the window was closed is not followed.**
+    ADR 0017 §2 follows only a move seen between two loads, so a round
+    sent against the uncommitted changes and committed on top while the
+    window was closed opens with its comments unjudged; the base picker
+    names the round's commit by its short id, but `Sent::judged_at`
+    judges only under its full id (`crates/core/src/anchor.rs`). Closes
+    when such a round can be judged on opening, or by the short id, or
+    the developer decides the wait is fine.
+21. **A second commit after a follow replaces the follow's banner.**
+    Following a round (ADR 0017 §2) sets the base to its commit; a
+    further commit then reads as a plain move ("The branch moved",
+    Show what changed, `announceMove` in `app/src/store.ts`), and the
+    banner's Show uncommitted changes goes, while the round is still
+    judged against its commit. Closes when the banner keeps saying what
+    is followed, or the developer decides the plain banner is fine.
+
 ## Distribution
 
 12. **macOS builds are not signed with a Developer ID or notarized**
