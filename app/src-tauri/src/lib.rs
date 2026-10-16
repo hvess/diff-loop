@@ -470,7 +470,8 @@ fn end_round(request: RoundRequest) -> SavedReview {
     diff_loop_core::end_round(request)
 }
 
-/// The round a commit on top of `previous` is followed for, seen at `now` (ADR 0017 §2).
+/// The round a commit on top of `previous` is followed for, seen at `now`
+/// (ADR 0017 §2, ADR 0022 §1).
 #[tauri::command]
 fn round_to_follow(comments: Vec<Comment>, now: Place, previous: String) -> Option<u32> {
     diff_loop_core::round_to_follow(&comments, &now, &previous)

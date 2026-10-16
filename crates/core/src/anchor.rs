@@ -189,8 +189,9 @@ impl Sent {
 
     /// Whether a commit on top of `previous`, seen at `now`, is followed
     /// for it: on the uncommitted changes, it was judged at `previous`
-    /// (ADR 0017 §2); or, `now` comparing with `previous` by name, the commit
-    /// it was sent on, it still is (ADR 0022 §1).
+    /// (ADR 0017 §2); or, `previous` the commit it was sent on and `now`
+    /// comparing with it by name, as a follow under way does, it still is
+    /// (ADR 0022 §1).
     pub(crate) fn follows(&self, now: &Place, previous: &str) -> bool {
         match &now.base {
             Base::Uncommitted => self.judged_at(now, Some(previous)),

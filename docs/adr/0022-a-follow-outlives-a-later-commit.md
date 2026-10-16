@@ -22,9 +22,9 @@ open task to be fixed, 2026-10-16.
 1. **While the base follows a round, a later commit keeps it
    followed:** the banner says so, counted from the round's commit, and
    still offers the uncommitted changes. The core answers whether the
-   round is still followed (`round_to_follow`): on a base naming the
-   commit the move started from, which a follow's is, a round sent
-   against the uncommitted changes there with an open comment.
+   round is still followed (`round_to_follow`, asked with the round's
+   commit): on a base naming that commit, a round sent against the
+   uncommitted changes there with an open comment.
 2. **The follow ends** when the reviewer chooses another base, the
    branch is switched or rewritten, or the core names the round no more,
    its comments resolved; the plain banner says what moved.

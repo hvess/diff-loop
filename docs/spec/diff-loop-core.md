@@ -167,9 +167,9 @@ Each is a pure function tested here.
 
 ## Progress (2026-10-16, a follow outlives a later commit)
 
-ADR 0022 §1: `Sent::follows` also answers on a base naming the commit a
-move started from, so a follow is kept across a later commit (Decision
-16).
+ADR 0022 §1: `Sent::follows` also answers on a base naming the round's
+commit, the one a follow under way asks with, so a follow is kept across
+a later commit (Decision 16).
 
 ## Progress (2026-10-16, a rename's other half)
 
