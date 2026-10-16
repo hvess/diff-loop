@@ -4,7 +4,8 @@
 **Amends:** ADR 0005 §1 (git's own files name nothing) and §3 (what an
 update reads); ADR 0014, Consequences (both waited for a full read)
 **Affects:** `crates/git/src/watch.rs`, `crates/git/src/lib.rs`
-(`Repository::watch`); `crates/core/src/update.rs` (`halves`);
+(`Repository::watch`); `crates/core/src/update.rs` (`with_other_halves`,
+`halves`);
 `docs/spec/diff-loop-git.md` Decision 6; `docs/spec/diff-loop-core.md`
 Decision 12; open-tasks 10, closed
 
@@ -41,5 +42,6 @@ every open task to be fixed, 2026-10-16.
   once, as a commit already did through its moved snapshot.
 - A program that refreshes the index often (an editor's git panel)
   costs a full read each time it writes it.
-- A file newly created, or newly deleted, while the review holds many of
-  the opposite kind costs a second partial read, once.
+- A file newly created, or newly deleted, while the review holds files
+  of the opposite kind costs a second partial read, once; while it holds
+  more than `MOST_PATHS` of them, a full read.

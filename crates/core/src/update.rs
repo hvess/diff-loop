@@ -26,7 +26,7 @@ pub(crate) struct Updated {
 
 /// `previous`, the changes against `base`, with every touched path read
 /// again, and with them the other halves of a rename they newly show
-/// (`halves`); everything is read again when the snapshot moved, or
+/// (`with_other_halves`); everything is read again when the snapshot moved, or
 /// `touched`, or it with those halves, names too much.
 ///
 /// # Errors
@@ -68,23 +68,13 @@ pub(crate) fn update(
         .flatten()
         .collect();
     paths.extend(partners);
-    let mut fresh = repository.changes_in(base, &paths)?;
+    let fresh = repository.changes_in(base, &paths)?;
     if fresh.snapshot != previous.snapshot {
         return everything();
     }
-    // A staged addition and a deletion pair as a rename only when git reads
-    // them together, and the watch may have touched one (ADR 0018 §2).
-    let others = halves(&previous.files, &fresh.files, &paths);
-    if !others.is_empty() {
-        if paths.len() + others.len() > MOST_PATHS {
-            return everything();
-        }
-        paths.extend(others);
-        fresh = repository.changes_in(base, &paths)?;
-        if fresh.snapshot != previous.snapshot {
-            return everything();
-        }
-    }
+    let Some(fresh) = with_other_halves(repository, base, &previous, fresh, &mut paths)? else {
+        return everything();
+    };
     let mut files: Vec<FileDiff> = previous
         .files
         .into_iter()
@@ -99,6 +89,30 @@ pub(crate) fn update(
         },
         reread: Some(paths),
     })
+}
+
+/// `fresh` read again with the other halves of a rename it newly shows
+/// (`halves`): git pairs a staged addition and a deletion only when it
+/// reads them together, and the watch may have touched one (ADR 0018 §2).
+/// `None` when they would pass `MOST_PATHS` in all, or the snapshot moved:
+/// everything is read.
+fn with_other_halves(
+    repository: &(impl Repository + ?Sized),
+    base: &Base,
+    previous: &Changes,
+    fresh: Changes,
+    paths: &mut BTreeSet<String>,
+) -> Result<Option<Changes>, RepoError> {
+    let others = halves(&previous.files, &fresh.files, paths);
+    if others.is_empty() {
+        return Ok(Some(fresh));
+    }
+    if paths.len() + others.len() > MOST_PATHS {
+        return Ok(None);
+    }
+    paths.extend(others);
+    let again = repository.changes_in(base, paths)?;
+    Ok((again.snapshot == previous.snapshot).then_some(again))
 }
 
 /// The paths in `previous`, not under `paths`, that could be the other half
