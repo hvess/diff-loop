@@ -45,7 +45,8 @@ developer asked for every open task to be fixed, 2026-10-16.
    first load has no load before it to have moved from, and the
    reviewer compares with the round's commit through the base picker.
    (Amended by ADR 0021: on opening, the newest round's commit stands in
-   for the load before, and a short id names the commit too.)
+   for the load before, and a short id names the commit too. Amended by
+   ADR 0022: a later commit while following keeps the follow.)
    A base or repository the reviewer picked while the move was looked
    into, or while the follow loaded, is kept, and gets no banner; nor
    does a follow whose load failed, which reports its problem instead.

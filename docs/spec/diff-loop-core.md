@@ -134,7 +134,8 @@ Each is a pure function tested here.
 16. **A round ends with a copy** (ADR 0015 §1, `rounds::end_round`); a
     commit on top of one sent against the uncommitted changes is followed
     for the newest with an open comment (`rounds::round_to_follow`, ADR
-    0017 §2). Every
+    0017 §2), and, the base already that round's commit, still followed
+    while one is open (ADR 0022 §1). Every
     unresolved comment is sent in a new round, numbered on from the last,
     with its target, text and suggestion as sent and up to `CONTEXT`
     lines either side of its code, read from the changed files the caller
@@ -163,6 +164,12 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-16, a follow outlives a later commit)
+
+ADR 0022 §1: `Sent::follows` also answers on a base naming the commit a
+move started from, so a follow is kept across a later commit (Decision
+16).
 
 ## Progress (2026-10-16, a rename's other half)
 

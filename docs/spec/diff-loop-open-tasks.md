@@ -50,14 +50,6 @@ contradicts) and the entry says so before it goes.
     with its claims made true (a `LICENSE`, a public repository), or the
     developer decides against it.
 
-21. **A second commit after a follow replaces the follow's banner.**
-    Following a round (ADR 0017 §2) sets the base to its commit; a
-    further commit then reads as a plain move ("The branch moved",
-    Show what changed, `announceMove` in `app/src/store.ts`), and the
-    banner's Show uncommitted changes goes, while the round is still
-    judged against its commit. Closes when the banner keeps saying what
-    is followed, or the developer decides the plain banner is fine.
-
 22. **Off Unix, a rewrite that restores an old mtime goes unseen without a
     watch.** The fingerprint shows a file's content by its size, mtime
     and, on Unix, its inode's change time and number (diff-loop-git.md

@@ -156,6 +156,10 @@ before reopening a decision they cover.
 - **0021 — A commit made while the window was closed is followed.** On
   opening, the newest round's commit stands in for the load before, and a
   short id of seven or more hex digits names a round's commit.
+- **0022 — A follow outlives a later commit.** While the base follows a
+  round, a later commit keeps it followed, counted from the round's
+  commit, until another base, a switched or rewritten branch, or no open
+  comment ends it.
 
 ## Key Constraints (non-negotiable)
 

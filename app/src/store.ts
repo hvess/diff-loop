@@ -83,6 +83,9 @@ export type Selection = { path: string; side: Side; anchor: number; head: number
  */
 export type Banner = { title: string; action: { label: string; base: Base } | null };
 
+/** A round the base follows: its number, and the full id of the commit it was sent on. */
+export type Following = { round: number; since: string };
+
 /** The comments N / P step through: every one with a card, or only the sent ones a round strip count names. */
 export type CommentFilter = "changed" | "untouched" | null;
 
@@ -102,6 +105,12 @@ type State = {
   recheck: "changes" | "everything" | null;
   /** The next load is the one that opens the checkout: only it may follow a commit made while closed (ADR 0021 §1). */
   opensCheckout: boolean;
+  /**
+   * The round the base follows, compared with the commit it was sent on (ADR 0017 §2); reset when
+   * a checkout opens, and null once another base is chosen, the branch is switched or rewritten,
+   * or the core names the round no more (ADR 0022).
+   */
+  following: Following | null;
   loadProblem: Problem | null;
   comments: Comment[];
   /** The rounds sent for the open checkout, the latest last (ADR 0015 §9). */
@@ -259,6 +268,14 @@ function moved(count: number): string {
   return `The branch moved: ${count} new ${count === 1 ? "commit" : "commits"}`;
 }
 
+/** The banner while the base follows a round: `count` commits since its commit, and the way back (ADR 0017 §2). */
+function followBanner(count: number, following: Following): Banner {
+  return {
+    title: `${moved(count)} · showing changes since round ${following.round} (${shortId(following.since)})`,
+    action: { label: "Show uncommitted changes", base: { kind: "uncommitted" } },
+  };
+}
+
 /** The banner's offer to compare with the commit before `HEAD` moved. */
 function whatChanged(previous: string): Banner["action"] {
   return { label: "Show what changed", base: { kind: "ref", name: previous } };
@@ -376,6 +393,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   loading: false,
   recheck: null,
   opensCheckout: false,
+  following: null,
   loadProblem: null,
   comments: [],
   rounds: [],
@@ -452,6 +470,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         saveProblem: saved.problem,
         closed: new Set(),
         opensCheckout: true,
+        following: null,
       });
       await get().reload();
       // Only the answer for the repository still open counts: a slow answer
@@ -489,8 +508,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   async setBase(base) {
+    const following = get().following;
+    const stillFollowing = following !== null && sameBase(base, { kind: "ref", name: following.since });
     // Expanded lines were read from the old base's snapshot.
-    set({ base, banner: null, expanded: new Map() });
+    set({ base, banner: null, expanded: new Map(), following: stillFollowing ? following : null });
     get().refreshRefs();
     await get().reload();
   },
@@ -563,21 +584,50 @@ export const useStore = create<State & Actions>()((set, get) => ({
       if (!previous || !now || previous === now) return;
       const headBefore = before.checkout.head;
       const headNow = after.checkout.head;
+      // A switched or rewritten branch ends any follow (ADR 0022 §2).
       if (headBefore.kind === "branch" && headNow.kind === "branch" && headBefore.name !== headNow.name) {
-        set({ banner: { title: `Switched to ${headNow.name}`, action: whatChanged(previous) } });
+        set({ banner: { title: `Switched to ${headNow.name}`, action: whatChanged(previous) }, following: null });
         return;
       }
       const count = await api.commitsBetween(previous, now).catch(() => null);
       // The reviewer may have picked another base, or repository, meanwhile.
       if (!stillHere()) return;
       if (count === null) {
-        set({ banner: { title: "The branch was rewritten", action: whatChanged(previous) } });
+        set({ banner: { title: "The branch was rewritten", action: whatChanged(previous) }, following: null });
         return;
       }
       const title = moved(count);
-      // Not on a base the reviewer has just chosen: they stay on it.
-      if (sameBaseBefore && (await followCommit(title, previous, headNow, stillHere))) return;
+      const following = get().following;
+      if (sameBaseBefore && following && sameBase(base, { kind: "ref", name: following.since })) {
+        await keepFollowing(following, title, previous, now, headNow, stillHere);
+        return;
+      }
+      // A follow starts only on the uncommitted changes, and not on a base the reviewer has just
+      // chosen: they stay on it (ADR 0017 §2, ADR 0022 §3).
+      const fromUncommitted = sameBaseBefore && base.kind === "uncommitted";
+      if (fromUncommitted && (await followCommit(count, previous, headNow, stillHere))) return;
       if (stillHere()) set({ banner: { title, action: whatChanged(previous) } });
+    }
+
+    /**
+     * A later commit while the base follows a round: the banner keeps saying so, counted from the
+     * round's commit, while the core still names the round; otherwise the follow ends
+     * (ADR 0022).
+     */
+    async function keepFollowing(following: Following, title: string, previous: string, now: string, head: Head, stillHere: () => boolean) {
+      const since = await api.commitsBetween(following.since, now).catch(() => null);
+      const round =
+        since === null ? null : await api.roundToFollow(get().comments, { base, head }, following.since).catch(() => null);
+      if (!stillHere()) return;
+      if (since === null) {
+        // The round's commit no longer under `HEAD`: rewritten away.
+        set({ banner: { title: "The branch was rewritten", action: whatChanged(previous) }, following: null });
+      } else if (round === null) {
+        set({ banner: { title, action: whatChanged(previous) }, following: null });
+      } else {
+        const kept = { round, since: following.since };
+        set({ banner: followBanner(since, kept), following: kept });
+      }
     }
 
     /**
@@ -590,22 +640,22 @@ export const useStore = create<State & Actions>()((set, get) => ({
       if (!previous || !now || previous === now) return;
       const count = await api.commitsBetween(previous, now).catch(() => null);
       if (count === null || !stillHere()) return;
-      await followCommit(moved(count), previous, head, stillHere);
+      await followCommit(count, previous, head, stillHere);
     }
 
     /**
      * A commit on top of a round sent against the uncommitted changes: compared with the commit it
      * was sent on, the round's comments are judged again (ADR 0017 §2). Whether the core named one to follow.
      */
-    async function followCommit(title: string, previous: string, head: Head, stillHere: () => boolean): Promise<boolean> {
+    async function followCommit(count: number, previous: string, head: Head, stillHere: () => boolean): Promise<boolean> {
       const round = await api.roundToFollow(get().comments, { base, head }, previous).catch(() => null);
       if (round === null || !stillHere()) return false;
       const since: Base = { kind: "ref", name: previous };
       await get().setBase(since);
       // The reviewer may have picked another base while it loaded, or it may have failed.
       if (!sameBase(get().base, since) || get().loadProblem) return true;
-      const back = { label: "Show uncommitted changes", base: { kind: "uncommitted" } as const };
-      set({ banner: { title: `${title} · showing changes since round ${round} (${shortId(previous)})`, action: back } });
+      const following = { round, since: previous };
+      set({ following, banner: followBanner(count, following) });
       return true;
     }
   },

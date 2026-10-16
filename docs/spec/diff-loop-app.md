@@ -185,7 +185,11 @@ change, annotate, hand off to the agent, next round.
     "N comments are not in this diff." and Show comments, which opens the
     list below it, and Show what changed when `HEAD` moved, or Show
     uncommitted changes when it follows a commit on top of a round,
-    already showing what changed (ADR 0017 §2). The wording
+    already showing what changed (ADR 0017 §2); a later commit while it
+    follows keeps that banner, counting the commits since the round's
+    (`following`, `followBanner`; since 2026-10-16), until another base
+    is chosen, the branch is switched or rewritten, or the core names no
+    round with an open comment there (`round_to_follow`; ADR 0022). The wording
     is the `ux` skill's "Settled wording". Until 2026-10-14 the removal
     had no undo and no notice unless `HEAD` moved.
 17. **The window behaves as a native one** (ADR 0010 §1): hidden until
@@ -571,6 +575,12 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-16, a second commit while following)
+
+A commit while the base follows a round keeps the follow's banner and
+its way back (ADR 0022, Decision 16, `following` in `app/src/store.ts`),
+closing open-tasks 21.
 
 ## Progress (2026-10-16, a commit made while closed)
 

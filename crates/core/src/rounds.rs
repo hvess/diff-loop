@@ -203,8 +203,9 @@ fn prune(review: SavedReview) -> SavedReview {
 
 /// The round a commit on top of `previous` is followed for, seen at `now`:
 /// the newest with an open comment sent against the uncommitted changes at
-/// `previous` on `now`'s branch (ADR 0017 §2). O(comments), once per move of
-/// `HEAD`.
+/// `previous` on `now`'s branch (ADR 0017 §2), or, `now` comparing with
+/// `previous` by name and `previous` a round's commit, the newest such round
+/// still open there (ADR 0022 §1). O(comments), once per move of `HEAD`.
 #[must_use]
 pub fn round_to_follow(comments: &[Comment], now: &Place, previous: &str) -> Option<u32> {
     comments
@@ -298,6 +299,19 @@ mod tests {
         second.comments[1].resolved = Some(Resolution::ByReviewer);
         second.comments[0].resolved = Some(Resolution::ByReviewer);
         assert_eq!(round_to_follow(&second.comments, &uncommitted, "abc"), None);
+    }
+
+    #[test]
+    fn compared_with_the_rounds_commit_a_later_commit_still_follows_it() {
+        let review = sent_uncommitted(vec![draft("a", 4, &["l4"])], vec![]);
+        let since = Place {
+            base: Base::Ref { name: "abc".into() },
+            ..place()
+        };
+        assert_eq!(round_to_follow(&review.comments, &since, "abc"), Some(1));
+        // A move that started elsewhere is not the round's: a base the reviewer
+        // picked stays as it is.
+        assert_eq!(round_to_follow(&review.comments, &since, "def"), None);
     }
 
     #[test]

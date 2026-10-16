@@ -414,6 +414,89 @@ describe("reloading", () => {
     expect(useStore.getState().banner).toBeNull();
   });
 
+  it("keeps saying it follows the round when a second commit lands on top", async () => {
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    vi.mocked(api.roundToFollow).mockResolvedValueOnce(1);
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    answerNextLoadWithCodeGone("/a", "current", "agent/x", "def");
+    await useStore.getState().reload();
+    expect(useStore.getState().base).toEqual({ kind: "ref", name: "abc" });
+    // The next commit: one since the last load, two since the round's commit.
+    vi.mocked(api.commitsBetween).mockResolvedValueOnce(1).mockResolvedValueOnce(2);
+    vi.mocked(api.roundToFollow).mockResolvedValueOnce(1);
+    answerNextLoadWithCodeGone("/a", "current", "agent/x", "ghi");
+    await useStore.getState().reload();
+    expect(useStore.getState().base).toEqual({ kind: "ref", name: "abc" });
+    expect(useStore.getState().banner).toEqual({
+      title: "The branch moved: 2 new commits · showing changes since round 1 (abc)",
+      action: { label: "Show uncommitted changes", base: { kind: "uncommitted" } },
+    });
+  });
+
+  it("stops following a round when the branch is switched or the round's commit rewritten away", async () => {
+    const follow = async () => {
+      await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+      vi.mocked(api.roundToFollow).mockResolvedValueOnce(1);
+      answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+      answerNextLoadWithCodeGone("/a", "current", "agent/x", "def");
+      await useStore.getState().reload();
+      expect(useStore.getState().following).toEqual({ round: 1, since: "abc" });
+    };
+    await follow();
+    answerNextLoadWithCodeGone("/a", "current", "agent/y", "ghi");
+    await useStore.getState().reload();
+    expect(useStore.getState().following).toBeNull();
+    expect(useStore.getState().banner?.title).toBe("Switched to agent/y");
+
+    await follow();
+    // One commit since the last load, but the round's own commit is gone from under HEAD.
+    vi.mocked(api.commitsBetween).mockResolvedValueOnce(1).mockResolvedValueOnce(null);
+    answerNextLoadWithCodeGone("/a", "current", "agent/x", "ghi");
+    await useStore.getState().reload();
+    expect(useStore.getState().following).toBeNull();
+    expect(useStore.getState().banner?.title).toBe("The branch was rewritten");
+  });
+
+  it("stops following a round the core no longer names, its comments resolved", async () => {
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    vi.mocked(api.roundToFollow).mockResolvedValueOnce(1);
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    answerNextLoadWithCodeGone("/a", "current", "agent/x", "def");
+    await useStore.getState().reload();
+    vi.mocked(api.commitsBetween).mockResolvedValueOnce(1).mockResolvedValueOnce(2);
+    vi.mocked(api.roundToFollow).mockResolvedValueOnce(null);
+    answerNextLoadWithCodeGone("/a", "current", "agent/x", "ghi");
+    await useStore.getState().reload();
+    expect(useStore.getState().following).toBeNull();
+    expect(useStore.getState().banner).toEqual({
+      title: "The branch moved: 1 new commit",
+      action: { label: "Show what changed", base: { kind: "ref", name: "def" } },
+    });
+  });
+
+  it("starts no follow from the round's commit the reviewer picked", async () => {
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    await useStore.getState().setBase({ kind: "ref", name: "abc1234" });
+    vi.mocked(api.roundToFollow).mockClear();
+    answerNextLoadWithCodeGone("/a", "current", "agent/x", "def");
+    await useStore.getState().reload();
+    expect(api.roundToFollow).not.toHaveBeenCalled();
+    expect(useStore.getState().base).toEqual({ kind: "ref", name: "abc1234" });
+    expect(useStore.getState().banner?.title).toBe("The branch moved: 1 new commit");
+  });
+
+  it("stops following a round once the reviewer picks another base", async () => {
+    await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
+    vi.mocked(api.roundToFollow).mockResolvedValueOnce(1);
+    answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
+    answerNextLoadWithCodeGone("/a", "current", "agent/x", "def");
+    await useStore.getState().reload();
+    expect(useStore.getState().following).toEqual({ round: 1, since: "abc" });
+    answerNextLoadWithCodeGone("/a", "current", "agent/x", "def");
+    await useStore.getState().setBase({ kind: "lastCommit" });
+    expect(useStore.getState().following).toBeNull();
+  });
+
   it("does not follow a commit once the reviewer has picked another base", async () => {
     await openWith("/a", { comments: [sent(comment("c"))], rounds: [round(1)] });
     vi.mocked(api.roundToFollow).mockImplementationOnce(() => {
