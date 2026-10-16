@@ -13,12 +13,6 @@ contradicts) and the entry says so before it goes.
 
 ## App
 
-7. **Without a watch, every check reads the whole diff.** When a watch
-   cannot start (ADR 0002 §4, e.g. the inotify limit on a very large
-   tree), focus and the 2 s poll take a full fingerprint, and a change
-   triggers a full load (`app/src/App.tsx`, `POLL_MS`; ADR 0005 §4). Closes when a
-   checkout too large to watch can be checked by less, or the developer
-   decides the cost is fine.
 9. **Saved reviews are never pruned, nor shared safely between
    instances.** `reviews.json` (ADR 0004) keeps an entry for every
    working tree ever reviewed, moved or deleted ones included, and each
@@ -94,6 +88,19 @@ contradicts) and the entry says so before it goes.
     banner's Show uncommitted changes goes, while the round is still
     judged against its commit. Closes when the banner keeps saying what
     is followed, or the developer decides the plain banner is fine.
+
+22. **Off Unix, a rewrite that restores an old mtime goes unseen without a
+    watch.** The fingerprint shows a file's content by its size, mtime
+    and, on Unix, its inode's change time and number (diff-loop-git.md
+    Decision 4); elsewhere the standard library gives neither, so a
+    same-size rewrite that restores an old mtime (`cp -p`), past the
+    three racy seconds, does not change it. No build ships off Unix
+    (ADR 0009). Closes when such a platform gets an equivalent, or the
+    developer decides it is fine.
+23. **Without a watch, a change loads everything.** The check is cheap
+    (diff-loop-git.md Decision 4), but a change it finds is loaded in
+    full (ADR 0005 §4), since nothing named what was touched. Closes when
+    such a load reads less, or the developer decides it is fine.
 
 ## Distribution
 

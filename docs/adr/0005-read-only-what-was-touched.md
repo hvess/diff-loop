@@ -3,7 +3,7 @@
 **Status:** accepted, 2026-10-13
 **Amends:** ADR 0002 §1 (the callback names what was touched) and §3 (a
 watch event loads instead of taking a fingerprint)
-**Affects:** open-tasks 7; `docs/spec/diff-loop-core.md`,
+**Affects:** open-tasks 7 (closed 2026-10-16, diff-loop-git.md Decision 4); `docs/spec/diff-loop-core.md`,
 `docs/spec/diff-loop-git.md`, `docs/spec/diff-loop-app.md`
 
 ## Context

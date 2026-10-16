@@ -36,11 +36,32 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
    out, so each path appears once in `Changes::files`.
 3. **Forced config:** `core.quotePath=false`, prefixes `a/` and `b/`, no
    external diff or textconv, renames on. `parse` relies on these.
-4. **The fingerprint** hashes the snapshot, the tracked diff and each
-   untracked file's path, size and mtime. It is compared only within one
-   run (`DefaultHasher` is not stable across Rust versions). Cost: one
-   `git diff` per check, which runs on focus or the 2 s poll only when
-   nothing watches (ADR 0005 §4).
+4. **The fingerprint** (`fingerprint.rs`) hashes the snapshot and,
+   against the working tree, which files differ and how (`git diff
+   --raw`, names, modes and status, no contents; `raw::raw_paths`) with each
+   such file's and each untracked file's path, size and mtime, and on
+   Unix its inode's change time and number (`identity`): a file's content
+   shows as its stat, as git's own index tells a change, so a rewrite
+   that restores an old mtime (`cp -p`, `tar`) is seen too; off Unix, where
+   the standard library gives neither, it is not (open-tasks 22). A file
+   modified within the last three seconds (`RACY`, past FAT's two-second
+   tick) adds, as git reads a racily clean entry, a symlink's target or a
+   regular file's first MiB (`RACY_BYTES`), at most 16 MiB a check
+   (`RACY_BUDGET`); a file past what is left makes the check read as
+   changed, and a load decides. Only a path found to be a regular file is
+   opened, so no link is followed, unless one is swapped in between the
+   look and the open (`hash_file`). A rewrite to the same
+   size within one tick of the file system's clock is so seen at once in
+   its first MiB, and past it when the file leaves the three seconds: the
+   next check then differs from the last and loads once more, as it does
+   for any racy file; one dated in the future stays racy until its time
+   passes. Between two commits the snapshot alone fixes it.
+   It is compared only within one run (`DefaultHasher` is not stable
+   across Rust versions). Cost: no patch is read; git stats the tracked
+   files and hashes those whose stat moved, and the app reads at most a
+   MiB of each file written in the last three seconds, and 16 MiB in
+   all. It runs on focus or the 2 s poll only when nothing watches
+   (ADR 0005 §4).
 5. **Blobs refuse paths that leave the tree**, on either side: only
    normal components (`relative`), and a working-tree path must
    canonicalize inside the root. A failed file operation reports its path
@@ -86,6 +107,11 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 - `git diff --git` headers are ambiguous for paths with spaces; only an
   identical pair is split from the header, and renames take their paths
   from `rename from` / `rename to`.
+
+## Progress (2026-10-16, a cheaper fingerprint)
+
+The fingerprint reads no patch: raw names and file stats (Decision 4),
+closing open-tasks 7; until then it hashed the whole patch.
 
 ## Progress (2026-10-16, the index)
 

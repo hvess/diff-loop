@@ -4,8 +4,10 @@
 //! never contends with an agent committing in the same repository.
 
 mod command;
+mod fingerprint;
 mod locate;
 mod parse;
+mod raw;
 mod untracked;
 mod watch;
 
@@ -379,17 +381,15 @@ impl Repository for Git {
         let snapshot = self.snapshot(base)?;
         let mut hasher = DefaultHasher::new();
         snapshot.hash(&mut hasher);
-        self.diff_output(&snapshot, None, &[])?.hash(&mut hasher);
+        // Between two commits, their ids fix the diff.
         if snapshot.new == NewSide::WorkingTree {
-            for path in self.untracked(None)? {
-                let meta = fs::symlink_metadata(self.root().join(&path)).ok();
-                (
-                    path,
-                    meta.as_ref().map(fs::Metadata::len),
-                    meta.and_then(|m| m.modified().ok()),
-                )
-                    .hash(&mut hasher);
-            }
+            // Which files differ, and how, without reading the patch (diff-loop-git.md Decision 4).
+            let raw = self.diff_output(&snapshot, None, &["--raw", "-z", "--no-abbrev"])?;
+            raw.hash(&mut hasher);
+            let paths = raw::raw_paths(&raw)
+                .map(str::to_owned)
+                .chain(self.untracked(None)?);
+            fingerprint::hash_files(self.root(), paths, &mut hasher);
         }
         // Compared only within one run of the app: DefaultHasher is not stable
         // across Rust versions.

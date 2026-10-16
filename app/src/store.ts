@@ -592,7 +592,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
       return;
     }
     // While watching, a load reads only what the watch saw touched, so it is
-    // the check; a fingerprint would be a full diff.
+    // the check (ADR 0005 §4).
     if (watching) {
       await get().reload();
       return;

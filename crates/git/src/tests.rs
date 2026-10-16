@@ -1,8 +1,15 @@
 //! The adapter against real repositories in temporary directories.
 
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::Path,
+    process::Command,
+    sync::mpsc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 #[cfg(unix)]
-use std::os::unix::fs::symlink;
-use std::{collections::BTreeSet, fs, path::Path, process::Command, sync::mpsc, time::Duration};
+use std::{os::unix::fs::symlink, thread};
 
 use diff_loop_core::{
     Base, Content, FileDiff, Head, Line, NewSide, RefKind, RepoError, Repository, Side, Status,
@@ -215,7 +222,7 @@ fn refs_list_other_branches_and_tags_but_not_the_checked_out_branch() {
 }
 
 #[test]
-fn the_fingerprint_changes_with_any_edit_and_only_then() {
+fn the_fingerprint_changes_with_an_edit_and_holds_without_one() {
     let dir = repo();
     let git = Git::open(dir.path()).unwrap();
     let base = Base::Ref {
@@ -228,6 +235,137 @@ fn the_fingerprint_changes_with_any_edit_and_only_then() {
     assert_ne!(edited, before);
     write(dir.path(), "new.ts", "x\n");
     assert_ne!(git.fingerprint(&base).unwrap(), edited);
+}
+
+#[test]
+fn the_fingerprint_sees_a_changed_file_edited_again_to_the_same_length() {
+    let dir = repo();
+    let git = Git::open(dir.path()).unwrap();
+    write(dir.path(), "src/handler.ts", "one\n");
+    let path = dir.path().join("src/handler.ts");
+    let at = |secs| {
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(UNIX_EPOCH + Duration::from_secs(secs))
+            .unwrap();
+    };
+    at(1_000);
+    let before = git.fingerprint(&Base::Uncommitted).unwrap();
+    write(dir.path(), "src/handler.ts", "two\n");
+    at(2_000);
+    assert_ne!(git.fingerprint(&Base::Uncommitted).unwrap(), before);
+}
+
+#[test]
+fn the_fingerprint_sees_a_same_size_rewrite_within_one_clock_tick() {
+    let dir = repo();
+    let git = Git::open(dir.path()).unwrap();
+    let path = dir.path().join("src/handler.ts");
+    let tick = SystemTime::now();
+    let stamp = || {
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(tick)
+            .unwrap();
+    };
+    write(dir.path(), "src/handler.ts", "one\n");
+    stamp();
+    let before = git.fingerprint(&Base::Uncommitted).unwrap();
+    write(dir.path(), "src/handler.ts", "two\n");
+    stamp();
+    assert_ne!(git.fingerprint(&Base::Uncommitted).unwrap(), before);
+}
+
+#[test]
+fn the_fingerprint_holds_while_a_file_just_written_is_left_alone() {
+    let dir = repo();
+    let git = Git::open(dir.path()).unwrap();
+    write(dir.path(), "src/handler.ts", "just written\n");
+    write(dir.path(), "new.ts", "just written\n");
+    let first = git.fingerprint(&Base::Uncommitted).unwrap();
+    assert_eq!(git.fingerprint(&Base::Uncommitted).unwrap(), first);
+}
+
+#[test]
+fn the_fingerprint_sees_an_untracked_file_rewritten_within_one_clock_tick() {
+    let dir = repo();
+    let git = Git::open(dir.path()).unwrap();
+    let path = dir.path().join("new.ts");
+    let tick = SystemTime::now();
+    let stamp = || {
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(tick)
+            .unwrap();
+    };
+    write(dir.path(), "new.ts", "one\n");
+    stamp();
+    let before = git.fingerprint(&Base::Uncommitted).unwrap();
+    write(dir.path(), "new.ts", "two\n");
+    stamp();
+    assert_ne!(git.fingerprint(&Base::Uncommitted).unwrap(), before);
+}
+
+#[cfg(unix)]
+#[test]
+fn the_fingerprint_sees_an_old_modification_time_restored() {
+    let dir = repo();
+    let git = Git::open(dir.path()).unwrap();
+    let path = dir.path().join("src/handler.ts");
+    let restore = || {
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(UNIX_EPOCH + Duration::from_secs(1_000))
+            .unwrap();
+    };
+    write(dir.path(), "src/handler.ts", "one\n");
+    restore();
+    let before = git.fingerprint(&Base::Uncommitted).unwrap();
+    // As `cp -p` does: the old time back, the inode's change time moved,
+    // past a whole second for a file system that keeps no finer time.
+    thread::sleep(Duration::from_millis(1_100));
+    write(dir.path(), "src/handler.ts", "two\n");
+    restore();
+    assert_ne!(git.fingerprint(&Base::Uncommitted).unwrap(), before);
+}
+
+#[cfg(unix)]
+#[test]
+fn the_fingerprint_follows_no_racy_link_even_to_a_pipe() {
+    let dir = repo();
+    let fifo = dir.path().join("pipe");
+    assert!(
+        Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    symlink(&fifo, dir.path().join("link")).unwrap();
+    let git = Git::open(dir.path()).unwrap();
+    let (done, finished) = mpsc::channel();
+    // Opening the pipe through the link would block until a writer came.
+    thread::spawn(move || {
+        let _ = done.send(git.fingerprint(&Base::Uncommitted).is_ok());
+    });
+    assert_eq!(finished.recv_timeout(Duration::from_secs(5)), Ok(true));
+}
+
+#[test]
+fn the_fingerprint_of_the_last_commit_is_its_ids() {
+    let dir = repo();
+    let git = Git::open(dir.path()).unwrap();
+    let before = git.fingerprint(&Base::LastCommit).unwrap();
+    write(dir.path(), "src/handler.ts", "edited, not committed\n");
+    assert_eq!(git.fingerprint(&Base::LastCommit).unwrap(), before);
 }
 
 #[test]

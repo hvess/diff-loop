@@ -2,7 +2,7 @@
 
 **Status:** accepted, 2026-10-13
 **Amends:** ADR 0001 §2 (adds a dependency)
-**Affects:** open-tasks 7 (narrowed by ADR 0005); `docs/spec/diff-loop-git.md`, `docs/spec/diff-loop-app.md`
+**Affects:** open-tasks 7 (narrowed by ADR 0005, closed 2026-10-16 by diff-loop-git.md Decision 4); `docs/spec/diff-loop-git.md`, `docs/spec/diff-loop-app.md`
 
 ## Context
 

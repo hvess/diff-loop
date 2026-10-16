@@ -47,7 +47,10 @@ pub trait Repository {
     /// As [`Repository::changes`].
     fn changes_in(&self, base: &Base, paths: &BTreeSet<String>) -> Result<Changes, RepoError>;
 
-    /// A value that changes whenever [`Repository::changes`] for `base` would.
+    /// A value that changes when [`Repository::changes`] for `base` would, as
+    /// far as an adapter can tell without reading every changed file; cheaper
+    /// than `changes`, it is what the app polls when no watch runs (ADR 0005
+    /// §4).
     ///
     /// # Errors
     /// As [`Repository::changes`].
