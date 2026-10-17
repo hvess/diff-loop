@@ -1,21 +1,32 @@
-# The review loop's deterministic stages (.agents/skills/review/SKILL.md):
-# Rust's on every platform tauri.conf.json bundles for, the front end's on one.
+# The review loop's deterministic stages (.agents/skills/review/SKILL.md).
+# A push checks Linux only; macOS and Windows, billed at 10x and 2x in a
+# private repository, are checked on a version tag or when run by hand
+# (ADR 0024).
 name: CI
 
 on:
   push:
     branches: [main]
+    tags: ["v*"]
+    paths-ignore: ["docs/**", "**/*.md"]
   pull_request:
+    paths-ignore: ["docs/**", "**/*.md"]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+# A newer push to the same ref makes the older run's result moot.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   rust:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
+        os: ${{ fromJSON((github.ref_type == 'tag' || github.event_name == 'workflow_dispatch') && '["ubuntu-24.04", "macos-15", "windows-2025"]' || '["ubuntu-24.04"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5

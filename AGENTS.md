@@ -165,6 +165,10 @@ before reopening a decision they cover.
 - **0023 — A load with no watch reads only what changed.** The port
   tells each changed file's state; with no watch a load keeps them, and
   the next reads again only the paths whose state changed.
+- **0024 — CI checks macOS and Windows at a release.** A push checks
+  Linux only, skips docs-only changes and cancels an older run; the
+  macOS and Windows Rust checks run on a `v*` tag or by hand, as
+  Actions bills them at 10x and 2x on a private repository.
 
 ## Key Constraints (non-negotiable)
 
