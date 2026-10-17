@@ -3,7 +3,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { create } from "zustand";
 import { api, describe } from "./api";
 import type { Base } from "./bindings/Base";
-import type { BaseRef } from "./bindings/BaseRef";
+import type { BaseChoices } from "./bindings/BaseChoices";
 import type { Comment } from "./bindings/Comment";
 import type { FileDiff } from "./bindings/FileDiff";
 import type { Head } from "./bindings/Head";
@@ -97,7 +97,7 @@ type State = {
   busy: boolean;
   /** Whether the checkout is watched; when not, App polls instead. */
   watching: boolean;
-  refs: BaseRef[];
+  choices: BaseChoices;
   base: Base;
   review: LoadedReview | null;
   loading: boolean;
@@ -177,8 +177,8 @@ type Actions = {
   open: (path: string) => Promise<void>;
   closeRepository: () => void;
   setBase: (base: Base) => Promise<void>;
-  /** Reads the branches and tags again, with their behind counts. */
-  refreshRefs: () => void;
+  /** Reads the branches, tags and default branch again. */
+  refreshChoices: () => void;
   /** Loads the review again; `full` reads everything, even what a running watch saw untouched (ADR 0014 §1). */
   reload: (full?: boolean) => Promise<void>;
   poll: () => Promise<void>;
@@ -387,7 +387,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   openProblem: null,
   busy: false,
   watching: false,
-  refs: [],
+  choices: { refs: [], defaultBranch: null },
   base: { kind: "uncommitted" },
   review: null,
   loading: false,
@@ -440,7 +440,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
       const saved = await readSaved(root);
       set({
         opening,
-        refs: opening.refs,
+        choices: opening.choices,
         base: opening.base,
         review: null,
         comments: saved.review.comments,
@@ -512,12 +512,16 @@ export const useStore = create<State & Actions>()((set, get) => ({
     const stillFollowing = following !== null && sameBase(base, { kind: "ref", name: following.since });
     // Expanded lines were read from the old base's snapshot.
     set({ base, banner: null, expanded: new Map(), following: stillFollowing ? following : null });
-    get().refreshRefs();
+    get().refreshChoices();
     await get().reload();
   },
 
-  refreshRefs() {
-    api.refs().then((refs) => set({ refs }), () => {});
+  refreshChoices() {
+    const root = get().opening?.checkout.root;
+    api.baseChoices().then(
+      (choices) => get().opening?.checkout.root === root && set({ choices }),
+      () => {},
+    );
   },
 
   async reload(full = false) {

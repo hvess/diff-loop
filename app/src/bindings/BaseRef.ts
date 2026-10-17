@@ -14,7 +14,8 @@ name: string,
  */
 kind: RefKind, 
 /**
- * How many commits it has that the checkout lacks: the checkout is this
- * many behind it, as `git status` counts. `None` when unknown.
+ * When it last moved: its commit's committer date, or an annotated
+ * tag's tagger date, in milliseconds since the Unix epoch. `None` when
+ * git gives none.
  */
-behind: number | null, };
+updated: number | null, };

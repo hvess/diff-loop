@@ -17,14 +17,16 @@ mod saved;
 mod update;
 
 pub use anchor::{AnchorState, Comment, Place, Resolution, Sent, Target, Verdict};
-pub use base::{Base, BaseRef, RefKind};
-pub use diff::{Content, FileDiff, Hunk, Line, Side, Status};
+pub use base::{Base, BaseChoices, BaseRef, RefKind};
+pub use diff::{Content, FileDiff, Hunk, Line, LineCounts, Side, Status};
 pub use instructions::{InstructionsRequest, instructions};
 pub use lines::lines;
 pub use repository::{
     Changes, Checkout, FileStates, Head, NewSide, OnChange, RepoError, Repository, Snapshot,
     Touched, WatchGuard,
 };
-pub use review::{KnownFile, Loaded, Opening, Review, ReviewFile, load, load_polled, open};
+pub use review::{
+    KnownFile, Loaded, Opening, Review, ReviewFile, choices, load, load_polled, open,
+};
 pub use rounds::{Round, RoundRequest, end_round, merge, round_to_follow};
 pub use saved::{ReviewStore, SavedReview, StoreError};

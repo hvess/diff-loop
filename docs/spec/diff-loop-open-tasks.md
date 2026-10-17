@@ -25,7 +25,10 @@ contradicts) and the entry says so before it goes.
     draw the composer's and the card's line label ("Line 17"), the
     suggestion box's header and a viewed file's name in the sidebar at
     about 2–3.3:1 in light, 2.8–2.9:1 in dark (the UI judge's captures,
-    2026-10-14). The developer kept the design's palette for now
+    2026-10-14); since 2026-10-17 also the base picker's search
+    placeholders, a remote's faint prefix ("origin/") and the dimmed
+    checked-out branch, at about 1.6–2.4:1 (diff-loop-app.md Decision
+    32). The developer kept the design's palette for now
     (`ux` skill, "Where the developer chose against the HIG"). Closes when
     those tokens, or the text drawn in them, reach 4.5:1, or the developer
     decides the palette stays.
@@ -50,6 +53,15 @@ contradicts) and the entry says so before it goes.
     same-size rewrite that restores an old mtime (`cp -p`), past the
     three racy seconds, does not change it. No build ships off Unix
     (ADR 0009). Closes when such a platform gets an equivalent, or the
+    developer decides it is fine.
+
+24. **A remote whose name has a slash is listed under its first part.**
+    The base picker groups remote-tracking branches by the name before
+    their first `/` (`remoteOf`, `app/src/components/BasePicker.tsx`), as
+    `default_branch` splits `origin/main` (`crates/core/src/base.rs`); a
+    remote named `team/fork` lists as `team`, its branches as `fork/…`.
+    git's short name cannot tell the two apart. Closes when `BaseRef`
+    names a remote branch's remote (read with `git remote`), or the
     developer decides it is fine.
 
 ## Distribution

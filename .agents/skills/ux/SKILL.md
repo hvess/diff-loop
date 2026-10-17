@@ -132,7 +132,25 @@ own decisions to depart from it, each recorded with both halves.
 - **The design's pale greys stay, for now** (the developer's call,
   2026-10-14; open-tasks 16). The HIG `accessibility` page asks for
   4.5:1 contrast for text; `--ui-faint` and `--ui-muted` draw line
-  labels, the suggestion box's header and viewed files' names below it.
+  labels, the suggestion box's header and viewed files' names below it,
+  and since 2026-10-17 the base picker's search placeholders, a
+  remote's prefix and the dimmed checked-out branch.
+- **The base picker's lists look as the design draws them**
+  (diff-loop-app Decision 32; the developer's call, 2026-10-17). The
+  HIG `writing` page warns against abbreviations people may not know,
+  and `layout` asks that items align for scanning; the design ends a
+  ref's row with a short age ("5m", "3mo", the full date on hover), and
+  puts a list row's count before its ›, not in line with the trails
+  above it. Its first list has no headings: the HIG `menus` page groups
+  related items under a title, and without one "Last commit", which
+  narrows the diff, sits beside the default branch, which is a base;
+  the design relies on the order and the "Default" trail. It is a list
+  in a popover with its own search, not a menu, so its rows take the
+  app's sentence case ("Last commit", "Local branches"), not the
+  title case HIG `menus` asks of menu items. Its search field, which
+  holds focus while the picker is open, is drawn flat, with no focus
+  ring (HIG `focus-and-selection`); the highlighted row shows where
+  Return goes.
 - **The range handles look as the design draws them** (diff-loop-app
   Decision 28; the developer's call, 2026-10-14): a 4 px bar on the
   row's edge, in a 28 × 20 px target. The HIG `accessibility` page asks
@@ -250,3 +268,6 @@ against other wording that would also do.
   whatever the code, so nothing is left to explain when the placeholder
   goes; the HIG `text-fields` advice to add a separate label is passed
   over here.
+- **The base picker's search** (diff-loop-app Decision 32; the
+  developer's call, 2026-10-17): "Search branches, tags or commits",
+  where the design says "SHAs", and the typed row "Compare with “…”".

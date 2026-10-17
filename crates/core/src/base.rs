@@ -31,9 +31,22 @@ pub struct BaseRef {
     pub name: String,
     /// Where it lives.
     pub kind: RefKind,
-    /// How many commits it has that the checkout lacks: the checkout is this
-    /// many behind it, as `git status` counts. `None` when unknown.
-    pub behind: Option<u32>,
+    /// When it last moved: its commit's committer date, or an annotated
+    /// tag's tagger date, in milliseconds since the Unix epoch. `None` when
+    /// git gives none.
+    #[ts(type = "number | null")]
+    pub updated: Option<i64>,
+}
+
+/// What the checkout can be compared with.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BaseChoices {
+    /// As [`Repository::refs`](crate::Repository::refs) lists them.
+    pub refs: Vec<BaseRef>,
+    /// The [`default_branch`].
+    pub default_branch: Option<String>,
 }
 
 /// Where a [`BaseRef`] lives.
@@ -52,13 +65,17 @@ pub enum RefKind {
 /// Names tried, in order, when the remote names no default branch.
 const CONVENTIONAL: [&str; 4] = ["main", "master", "origin/main", "origin/master"];
 
-/// The base a newly opened checkout is compared with: the repository's
-/// default branch, local copy first, or only the uncommitted changes when the
-/// checkout is that branch or none exists.
+/// The repository's default branch, local copy first, unless the checkout is
+/// that branch: what a newly opened checkout is compared with. `None` when
+/// the checkout is that branch or none exists.
 ///
 /// `remote_default` is the remote's default branch, short name (`origin/main`).
 #[must_use]
-pub(crate) fn default_base(head: &Head, refs: &[BaseRef], remote_default: Option<&str>) -> Base {
+pub(crate) fn default_branch(
+    head: &Head,
+    refs: &[BaseRef],
+    remote_default: Option<&str>,
+) -> Option<String> {
     let has = |name: &str| refs.iter().any(|r| r.name == name);
     let local = remote_default
         .and_then(|remote| remote.split_once('/'))
@@ -72,15 +89,20 @@ pub(crate) fn default_base(head: &Head, refs: &[BaseRef], remote_default: Option
         current.is_some_and(|c| c == name || name.split_once('/').is_some_and(|(_, b)| b == c))
     };
     // The checked-out branch counts as existing: `refs` leaves it out.
-    match candidates
+    candidates
         .into_iter()
         .find(|name| has(name) || is_current(name))
-    {
-        Some(name) if !is_current(name) => Base::Ref {
-            name: name.to_owned(),
-        },
-        _ => Base::Uncommitted,
-    }
+        .filter(|name| !is_current(name))
+        .map(str::to_owned)
+}
+
+/// The base a newly opened checkout is compared with: its [`default_branch`],
+/// or only the uncommitted changes when there is none.
+#[must_use]
+pub(crate) fn default_base(default_branch: Option<&str>) -> Base {
+    default_branch.map_or(Base::Uncommitted, |name| Base::Ref {
+        name: name.to_owned(),
+    })
 }
 
 #[cfg(test)]
@@ -97,7 +119,7 @@ mod tests {
                 } else {
                     RefKind::Branch
                 },
-                behind: None,
+                updated: None,
             })
             .collect()
     }
@@ -108,18 +130,12 @@ mod tests {
         }
     }
 
-    fn named(name: &str) -> Base {
-        Base::Ref {
-            name: name.to_owned(),
-        }
-    }
-
     #[test]
     fn prefers_the_local_copy_of_the_remote_default() {
         let refs = refs(&["trunk", "origin/trunk", "main"]);
         assert_eq!(
-            default_base(&on("agent/x"), &refs, Some("origin/trunk")),
-            named("trunk")
+            default_branch(&on("agent/x"), &refs, Some("origin/trunk")),
+            Some("trunk".to_owned())
         );
     }
 
@@ -127,58 +143,55 @@ mod tests {
     fn falls_back_to_the_remote_default_when_there_is_no_local_copy() {
         let refs = refs(&["origin/trunk"]);
         assert_eq!(
-            default_base(&on("agent/x"), &refs, Some("origin/trunk")),
-            named("origin/trunk")
+            default_branch(&on("agent/x"), &refs, Some("origin/trunk")),
+            Some("origin/trunk".to_owned())
         );
     }
 
     #[test]
     fn falls_back_to_main_then_master_without_a_remote_default() {
         assert_eq!(
-            default_base(&on("x"), &refs(&["master", "main"]), None),
-            named("main")
+            default_branch(&on("x"), &refs(&["master", "main"]), None),
+            Some("main".to_owned())
         );
         assert_eq!(
-            default_base(&on("x"), &refs(&["master"]), None),
-            named("master")
+            default_branch(&on("x"), &refs(&["master"]), None),
+            Some("master".to_owned())
         );
         assert_eq!(
-            default_base(&on("x"), &refs(&["origin/main"]), None),
-            named("origin/main")
+            default_branch(&on("x"), &refs(&["origin/main"]), None),
+            Some("origin/main".to_owned())
         );
     }
 
     #[test]
-    fn on_the_default_branch_only_uncommitted_changes_are_compared() {
+    fn on_the_default_branch_there_is_no_default_to_compare_with() {
         let refs = refs(&["main", "origin/main"]);
         assert_eq!(
-            default_base(&on("main"), &refs, Some("origin/main")),
-            Base::Uncommitted
+            default_branch(&on("main"), &refs, Some("origin/main")),
+            None
         );
     }
 
     #[test]
-    fn on_main_a_master_branch_is_not_the_base() {
+    fn on_main_a_master_branch_is_not_the_default() {
         // `refs` leaves out the checked-out branch.
-        assert_eq!(
-            default_base(&on("main"), &refs(&["master"]), None),
-            Base::Uncommitted
-        );
+        assert_eq!(default_branch(&on("main"), &refs(&["master"]), None), None);
     }
 
     #[test]
-    fn with_no_known_branch_only_uncommitted_changes_are_compared() {
-        assert_eq!(
-            default_base(&on("x"), &refs(&["feature"]), None),
-            Base::Uncommitted
-        );
+    fn with_no_known_branch_there_is_no_default() {
+        assert_eq!(default_branch(&on("x"), &refs(&["feature"]), None), None);
     }
 
     #[test]
-    fn a_detached_head_compares_with_the_default_branch() {
+    fn a_detached_head_has_the_default_branch() {
         let head = Head::Detached {
             commit: "4e1b2a0".into(),
         };
-        assert_eq!(default_base(&head, &refs(&["main"]), None), named("main"));
+        assert_eq!(
+            default_branch(&head, &refs(&["main"]), None),
+            Some("main".to_owned())
+        );
     }
 }

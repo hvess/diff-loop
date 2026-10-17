@@ -10,9 +10,9 @@ use ts_rs::TS;
 
 use crate::{
     anchor::{Comment, Place, reanchor},
-    base::{Base, BaseRef, default_base},
+    base::{Base, BaseChoices, default_base, default_branch},
     diff::FileDiff,
-    repository::{Changes, Checkout, FileStates, RepoError, Repository, Snapshot, Touched},
+    repository::{Changes, Checkout, FileStates, Head, RepoError, Repository, Snapshot, Touched},
     update::{Updated, covers, update},
 };
 
@@ -78,8 +78,8 @@ pub struct KnownFile {
 pub struct Opening {
     /// What is checked out.
     pub checkout: Checkout,
-    /// Branches and tags to compare with.
-    pub refs: Vec<BaseRef>,
+    /// What it can be compared with.
+    pub choices: BaseChoices,
     /// The [`default_base`].
     pub base: Base,
 }
@@ -90,16 +90,32 @@ pub struct Opening {
 /// As [`Repository::checkout`], [`Repository::refs`] and [`Repository::remote_default`].
 pub fn open(repository: &(impl Repository + ?Sized)) -> Result<Opening, RepoError> {
     let checkout = repository.checkout()?;
-    let refs = repository.refs()?;
-    let base = default_base(
-        &checkout.head,
-        &refs,
-        repository.remote_default()?.as_deref(),
-    );
+    let choices = choices_at(repository, &checkout.head)?;
+    let base = default_base(choices.default_branch.as_deref());
     Ok(Opening {
         checkout,
-        refs,
+        choices,
         base,
+    })
+}
+
+/// What `repository`'s checkout can be compared with now.
+///
+/// # Errors
+/// As [`Repository::checkout`], [`Repository::refs`] and [`Repository::remote_default`].
+pub fn choices(repository: &(impl Repository + ?Sized)) -> Result<BaseChoices, RepoError> {
+    choices_at(repository, &repository.checkout()?.head)
+}
+
+fn choices_at(
+    repository: &(impl Repository + ?Sized),
+    head: &Head,
+) -> Result<BaseChoices, RepoError> {
+    let refs = repository.refs()?;
+    let default_branch = default_branch(head, &refs, repository.remote_default()?.as_deref());
+    Ok(BaseChoices {
+        refs,
+        default_branch,
     })
 }
 
@@ -264,12 +280,12 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         anchor::{AnchorState, Sent, Target, Verdict},
-        base::RefKind,
+        base::{BaseRef, RefKind},
         diff::{
-            Side,
+            LineCounts, Side,
             tests::{add, text_file},
         },
-        repository::{Head, NewSide, OnChange, WatchGuard},
+        repository::{NewSide, OnChange, WatchGuard},
     };
 
     /// A repository with these changes, whose every blob is `one\r\ntwo\nthree\nfour`.
@@ -290,7 +306,7 @@ pub(crate) mod tests {
             Ok(vec![BaseRef {
                 name: "main".into(),
                 kind: RefKind::Branch,
-                behind: None,
+                updated: None,
             }])
         }
         fn remote_default(&self) -> Result<Option<String>, RepoError> {
@@ -341,8 +357,8 @@ pub(crate) mod tests {
         fn commits_between(&self, _: &str, _: &str) -> Result<Option<u32>, RepoError> {
             Ok(Some(0))
         }
-        fn uncommitted_files(&self) -> Result<u32, RepoError> {
-            Ok(0)
+        fn uncommitted_lines(&self) -> Result<LineCounts, RepoError> {
+            Ok(LineCounts::default())
         }
         fn watch(&self, _: OnChange) -> Result<WatchGuard, RepoError> {
             Ok(Box::new(()))
@@ -498,7 +514,15 @@ pub(crate) mod tests {
                 name: "main".into()
             }
         );
-        assert_eq!(opening.refs.len(), 1);
+        assert_eq!(opening.choices.refs.len(), 1);
+        assert_eq!(opening.choices.default_branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn choices_name_the_default_branch_with_the_refs() {
+        let choices = choices(&Fixed(vec![])).unwrap();
+        assert_eq!(choices.default_branch.as_deref(), Some("main"));
+        assert_eq!(choices.refs.len(), 1);
     }
 
     #[test]

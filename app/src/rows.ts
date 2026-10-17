@@ -2,6 +2,7 @@
 import type { FileDiff } from "./bindings/FileDiff";
 import type { Hunk } from "./bindings/Hunk";
 import type { Line } from "./bindings/Line";
+import type { LineCounts } from "./bindings/LineCounts";
 import type { Side } from "./bindings/Side";
 
 /**
@@ -243,13 +244,11 @@ export function linesOn(file: FileDiff, side: Side, start: number, end: number):
 /** A line's key on one side, `side:no`: how the diff's marks and find's matches name a line. */
 export const lineKey = (side: Side, no: number) => `${side}:${no}`;
 
-type Counts = { added: number; removed: number };
-
 /** Per file, built on first use, like `boundsCache`: a refresh carries unchanged files over. */
-const countsCache = new WeakMap<FileDiff, Counts>();
+const countsCache = new WeakMap<FileDiff, LineCounts>();
 
 /** Added and removed lines in `file`; O(1) after the file's first call. */
-export function counts(file: FileDiff): Counts {
+export function counts(file: FileDiff): LineCounts {
   let cached = countsCache.get(file);
   if (!cached) {
     cached = { added: 0, removed: 0 };

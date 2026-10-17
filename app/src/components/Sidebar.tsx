@@ -9,6 +9,7 @@ import { counts } from "../rows";
 import { DEFAULT_WIDTH } from "../sidebar";
 import { useStore } from "../store";
 import { fold, type Guide, type TreeRow } from "../tree";
+import { LineTotals } from "./LineTotals";
 import { Glyph } from "./Pin";
 
 /** Each tree row's height, from the design. */
@@ -224,9 +225,7 @@ function Progress() {
         {detail && <span className="truncate text-xs text-muted3">{detail}</span>}
       </div>
       <span className="flex-none font-mono text-xs">
-        {total.added > 0 && <span className="text-add">+{total.added}</span>}
-        {total.added > 0 && total.removed > 0 && " "}
-        {total.removed > 0 && <span className="text-del">−{total.removed}</span>}
+        <LineTotals counts={total} />
       </span>
     </div>
   );

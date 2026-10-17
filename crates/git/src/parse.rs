@@ -3,7 +3,7 @@
 //! Expects what `command::DIFF_FLAGS` sets (`a/` and `b/` prefixes, renames
 //! detected, no colour) and `command::CONFIG` forces (`core.quotePath=false`).
 
-use diff_loop_core::{Content, FileDiff, Hunk, Line, Status};
+use diff_loop_core::{Content, FileDiff, Hunk, Line, LineCounts, Status};
 
 /// The files in `output`, in output order. Binary files get no sizes; the
 /// caller fills them in.
@@ -29,6 +29,36 @@ pub(crate) fn parse(output: &str) -> Vec<FileDiff> {
             }
         }
         files.push(file.finish());
+    }
+    files
+}
+
+/// Each file in `git diff --numstat -z` output, with its new-side path;
+/// `None` counts for a binary file, which git counts as `-`.
+pub(crate) fn numstat(output: &str) -> Vec<(Option<LineCounts>, &str)> {
+    let mut files = Vec::new();
+    let mut fields = output.split('\0');
+    // A loop, not an iterator chain: a rename's entry takes the next two
+    // fields of the same iterator.
+    while let Some(entry) = fields.next() {
+        let mut parts = entry.splitn(3, '\t');
+        let (Some(added), Some(removed), Some(path)) = (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        // A rename leaves the path empty and gives the old and new paths
+        // as the next two fields.
+        let path = if path.is_empty() {
+            fields.nth(1).unwrap_or_default()
+        } else {
+            path
+        };
+        let counts = added
+            .parse()
+            .ok()
+            .zip(removed.parse().ok())
+            .map(|(added, removed)| LineCounts { added, removed });
+        files.push((counts, path));
     }
     files
 }
@@ -397,5 +427,31 @@ index 0000000..4ae8ef0
     #[test]
     fn empty_output_has_no_files() {
         assert!(parse("").is_empty());
+    }
+
+    #[test]
+    fn numstat_reads_counts_renames_and_binaries() {
+        let output = "2\t1\tsrc/a.ts\0-\t-\tlogo.png\x003\t0\t\0old name.txt\0new\tname.txt\0";
+        assert_eq!(
+            numstat(output),
+            [
+                (
+                    Some(LineCounts {
+                        added: 2,
+                        removed: 1
+                    }),
+                    "src/a.ts"
+                ),
+                (None, "logo.png"),
+                (
+                    Some(LineCounts {
+                        added: 3,
+                        removed: 0
+                    }),
+                    "new\tname.txt"
+                ),
+            ]
+        );
+        assert!(numstat("").is_empty());
     }
 }

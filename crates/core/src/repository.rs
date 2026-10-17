@@ -11,7 +11,7 @@ use ts_rs::TS;
 
 use crate::{
     base::{Base, BaseRef},
-    diff::{FileDiff, Side},
+    diff::{FileDiff, LineCounts, Side},
 };
 
 /// A checkout the app reviews: one working tree of one repository.
@@ -23,7 +23,7 @@ pub trait Repository {
     fn checkout(&self) -> Result<Checkout, RepoError>;
 
     /// Branches and tags the checkout can be compared with, the checked-out
-    /// branch excluded.
+    /// branch excluded, most recently updated first.
     ///
     /// # Errors
     /// [`RepoError::Failed`] when the refs cannot be read.
@@ -83,12 +83,12 @@ pub trait Repository {
     /// [`RepoError::Failed`] when either commit cannot be read.
     fn commits_between(&self, from: &str, to: &str) -> Result<Option<u32>, RepoError>;
 
-    /// How many files differ from `HEAD`, untracked ones included: what
-    /// [`Base::Uncommitted`] would show.
+    /// How many lines differ from `HEAD`, untracked files included and
+    /// binary files left out: what [`Base::Uncommitted`] would show.
     ///
     /// # Errors
     /// [`RepoError::Failed`] when the checkout cannot be read.
-    fn uncommitted_files(&self) -> Result<u32, RepoError>;
+    fn uncommitted_lines(&self) -> Result<LineCounts, RepoError>;
 
     /// Calls `on_change` soon after anything in the checkout or its git state
     /// may have changed, with what was touched, until the returned guard is

@@ -12,14 +12,19 @@ use std::{
 use std::{os::unix::fs::symlink, thread};
 
 use diff_loop_core::{
-    Base, Content, FileDiff, Head, Line, NewSide, RefKind, RepoError, Repository, Side, Status,
-    Touched,
+    Base, Content, FileDiff, Head, Line, LineCounts, NewSide, RefKind, RepoError, Repository, Side,
+    Status, Touched,
 };
 use tempfile::TempDir;
 
 use super::Git;
 
 fn git(dir: &Path, args: &[&str]) {
+    git_with(dir, args, &[]);
+}
+
+/// As [`git`], with `env` set besides.
+fn git_with(dir: &Path, args: &[&str], env: &[(&str, &str)]) {
     let status = Command::new("git")
         .arg("-C")
         .arg(dir)
@@ -34,6 +39,7 @@ fn git(dir: &Path, args: &[&str]) {
         .args(args)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
+        .envs(env.iter().copied())
         .output()
         .unwrap();
     assert!(
@@ -677,24 +683,39 @@ fn changes_in_reads_a_path_literally() {
     assert_eq!(names(&only.files), ["*.ts"]);
 }
 
-#[test]
-fn refs_say_how_far_behind_them_the_checkout_is() {
-    let dir = repo();
-    let root = dir.path();
-    git(root, &["switch", "-q", "main"]);
-    git(root, &["commit", "-q", "--allow-empty", "-m", "main 1"]);
-    git(root, &["commit", "-q", "--allow-empty", "-m", "main 2"]);
-    git(root, &["switch", "-q", "agent/x"]);
-    git(root, &["commit", "-q", "--allow-empty", "-m", "agent"]);
-    git(root, &["tag", "here"]);
-    let refs = Git::open(root).unwrap().refs().unwrap();
-    let behind = |name: &str| refs.iter().find(|r| r.name == name).unwrap().behind;
-    assert_eq!(behind("main"), Some(2));
-    assert_eq!(behind("here"), Some(0));
+/// Commits on the current branch with `seconds` since the epoch as its
+/// committer date.
+fn commit_at(dir: &Path, seconds: u64, message: &str) {
+    let date = format!("@{seconds} +0000");
+    git_with(
+        dir,
+        &["commit", "-q", "--allow-empty", "-m", message],
+        &[("GIT_COMMITTER_DATE", &date)],
+    );
 }
 
 #[test]
-fn refs_before_the_first_commit_come_without_counts() {
+fn refs_come_most_recently_updated_first_with_their_dates() {
+    let dir = repo();
+    let root = dir.path();
+    git(root, &["switch", "-q", "main"]);
+    commit_at(root, 1_700_000_000, "older");
+    git(root, &["switch", "-qc", "newer"]);
+    commit_at(root, 1_800_000_000, "newer");
+    git(root, &["switch", "-q", "agent/x"]);
+    let refs = Git::open(root).unwrap().refs().unwrap();
+    let listed: Vec<_> = refs.iter().map(|r| (r.name.as_str(), r.updated)).collect();
+    assert_eq!(
+        listed,
+        [
+            ("newer", Some(1_800_000_000_000)),
+            ("main", Some(1_700_000_000_000))
+        ]
+    );
+}
+
+#[test]
+fn refs_before_the_first_commit_are_listed() {
     let source = repo();
     let dir = TempDir::new().unwrap();
     git(dir.path(), &["init", "-q", "-b", "main"]);
@@ -702,37 +723,96 @@ fn refs_before_the_first_commit_come_without_counts() {
     git(dir.path(), &["fetch", "-q", from, "main:refs/heads/other"]);
     let refs = Git::open(dir.path()).unwrap().refs().unwrap();
     assert_eq!(refs.len(), 1);
-    assert_eq!((refs[0].name.as_str(), refs[0].behind), ("other", None));
+    assert_eq!(refs[0].name, "other");
+    assert!(refs[0].updated.is_some());
+}
+
+/// The lines `changes(Uncommitted)` shows, counted as `uncommitted_lines` counts them.
+fn shown_lines(git: &Git) -> LineCounts {
+    let changes = git.changes(&Base::Uncommitted).unwrap();
+    changes
+        .files
+        .iter()
+        .filter_map(|file| match &file.content {
+            Content::Text { hunks } => Some(hunks),
+            Content::Binary { .. } => None,
+        })
+        .flatten()
+        .flat_map(|hunk| &hunk.lines)
+        .fold(LineCounts::default(), |sum, line| match line {
+            Line::Added { .. } => LineCounts {
+                added: sum.added + 1,
+                ..sum
+            },
+            Line::Removed { .. } => LineCounts {
+                removed: sum.removed + 1,
+                ..sum
+            },
+            Line::Context { .. } => sum,
+        })
 }
 
 #[test]
-fn uncommitted_files_count_each_changed_file_once() {
+fn uncommitted_lines_count_tracked_and_untracked_changes() {
     let dir = repo();
-    assert_eq!(
-        Git::open(dir.path()).unwrap().uncommitted_files().unwrap(),
-        0
-    );
-    write(dir.path(), "src/handler.ts", "edited\n");
-    write(dir.path(), "new/a.ts", "a\n");
-    write(dir.path(), "new/b.ts", "b\n");
-    git(dir.path(), &["mv", "old.txt", "moved.txt"]);
     let git_ = Git::open(dir.path()).unwrap();
-    assert_eq!(git_.uncommitted_files().unwrap(), 4);
-    let shown = git_.changes(&Base::Uncommitted).unwrap().files.len();
-    assert_eq!(git_.uncommitted_files().unwrap() as usize, shown);
+    assert_eq!(git_.uncommitted_lines().unwrap(), LineCounts::default());
+    write(dir.path(), "src/handler.ts", "a\nB\nc\nd\n");
+    write(dir.path(), "new/a.ts", "1\n2\n");
+    write(dir.path(), "new/no-newline.ts", "x");
+    fs::write(dir.path().join("new/blob.bin"), [0u8, 9, 9]).unwrap();
+    fs::write(dir.path().join("logo.png"), [0u8, 4]).unwrap();
+    git(dir.path(), &["mv", "old.txt", "moved.txt"]);
+    write(dir.path(), "moved.txt", "keep\nmore\n");
+    let counts = git_.uncommitted_lines().unwrap();
+    // handler.ts +2 −1, a.ts +2, no-newline.ts +1, moved.txt +1; binaries none.
+    assert_eq!(
+        counts,
+        LineCounts {
+            added: 6,
+            removed: 1
+        }
+    );
+    assert_eq!(counts, shown_lines(&git_));
 }
 
-/// A file removed from the index but still on disk counts once, and a staged
-/// change undone on disk not at all, as the list shows them.
+/// A file removed from the index but still on disk counts as the deletion
+/// the list shows, and a staged change undone on disk not at all.
 #[test]
-fn uncommitted_files_match_what_uncommitted_changes_list() {
+fn uncommitted_lines_match_what_uncommitted_changes_show() {
     let dir = repo();
     git(dir.path(), &["rm", "-q", "--cached", "old.txt"]);
     write(dir.path(), "src/handler.ts", "staged\n");
     git(dir.path(), &["add", "src/handler.ts"]);
     write(dir.path(), "src/handler.ts", "a\nb\nc\n");
     let git_ = Git::open(dir.path()).unwrap();
-    let shown = git_.changes(&Base::Uncommitted).unwrap().files.len();
-    assert_eq!(shown, 1);
-    assert_eq!(git_.uncommitted_files().unwrap(), 1);
+    let counts = git_.uncommitted_lines().unwrap();
+    assert_eq!(counts, shown_lines(&git_));
+    assert_eq!(
+        counts,
+        LineCounts {
+            added: 0,
+            removed: 1
+        }
+    );
+}
+
+/// Counted in pieces, a file past the binary probe, with and without a last
+/// newline, and a symlink count as the list shows them.
+#[test]
+fn uncommitted_lines_count_long_files_and_links_as_shown() {
+    let dir = repo();
+    write(dir.path(), "long.txt", &"line\n".repeat(5000));
+    write(
+        dir.path(),
+        "open.txt",
+        &format!("{}tail", "x\n".repeat(9000)),
+    );
+    #[cfg(unix)]
+    symlink("src/handler.ts", dir.path().join("link")).unwrap();
+    let git_ = Git::open(dir.path()).unwrap();
+    let counts = git_.uncommitted_lines().unwrap();
+    assert_eq!(counts, shown_lines(&git_));
+    let link = if cfg!(unix) { 1 } else { 0 };
+    assert_eq!(counts.added, 5000 + 9001 + link);
 }

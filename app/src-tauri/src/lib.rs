@@ -20,9 +20,9 @@ mod renderer;
 mod reviews;
 
 use diff_loop_core::{
-    Base, BaseRef, Comment, Content, InstructionsRequest, KnownFile, Loaded, Opening, Place,
-    RepoError, Repository, Review, ReviewFile, ReviewStore, RoundRequest, SavedReview, Side,
-    Snapshot, StoreError, Touched, WatchGuard,
+    Base, BaseChoices, Comment, Content, InstructionsRequest, KnownFile, LineCounts, Loaded,
+    Opening, Place, RepoError, Repository, Review, ReviewFile, ReviewStore, RoundRequest,
+    SavedReview, Side, Snapshot, StoreError, Touched, WatchGuard,
 };
 use diff_loop_git::Git;
 use serde::Serialize;
@@ -349,11 +349,11 @@ async fn watch_repository(
     Ok(session.keep_watch(&watched, watching))
 }
 
-/// Branches and tags the open checkout can be compared with.
+/// What the open checkout can be compared with.
 #[tauri::command]
-async fn refs(session: State<'_, Session>) -> Result<Vec<BaseRef>, CommandError> {
+async fn base_choices(session: State<'_, Session>) -> Result<BaseChoices, CommandError> {
     let repository = session.current()?;
-    blocking(move || repository.refs()).await
+    blocking(move || diff_loop_core::choices(&*repository)).await
 }
 
 /// Sends the open checkout against `base` through `parts`, with `comments`
@@ -396,11 +396,11 @@ async fn fingerprint(base: Base, session: State<'_, Session>) -> Result<String, 
     blocking(move || repository.fingerprint(&base)).await
 }
 
-/// How many files the open checkout has not committed, untracked ones included.
+/// How many lines the open checkout has not committed, untracked files included.
 #[tauri::command]
-async fn uncommitted_files(session: State<'_, Session>) -> Result<u32, CommandError> {
+async fn uncommitted_lines(session: State<'_, Session>) -> Result<LineCounts, CommandError> {
     let repository = session.current()?;
-    blocking(move || repository.uncommitted_files()).await
+    blocking(move || repository.uncommitted_lines()).await
 }
 
 /// How many commits `to` is ahead of `from`; `None` when history was rewritten.
@@ -552,7 +552,7 @@ pub fn run() -> TauriResult<()> {
         )))
         .invoke_handler(tauri::generate_handler![
             open_repository,
-            refs,
+            base_choices,
             load_review,
             fingerprint,
             commits_between,
@@ -566,7 +566,7 @@ pub fn run() -> TauriResult<()> {
             watch_repository,
             saved_review,
             save_review,
-            uncommitted_files,
+            uncommitted_lines,
         ])
         .run(tauri::generate_context!())
 }

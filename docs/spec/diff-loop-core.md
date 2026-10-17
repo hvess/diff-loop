@@ -25,9 +25,10 @@ Each is a pure function tested here.
 7. `lines`: a line range of either side of a file, for the unchanged lines a diff leaves out — done 2026-10-13.
 8. The `ReviewStore` port and `SavedReview` (ADR 0004) — done 2026-10-13.
 9. `update`, and `load` since the last load: read only what was touched (ADR 0005) — done 2026-10-13.
-10. `BaseRef::behind` and `Repository::uncommitted_files`, for the base picker — done 2026-10-13.
+10. `BaseRef::behind` and `Repository::uncommitted_files`, for the base picker — done 2026-10-13; replaced 2026-10-17 by step 13.
 11. Rounds (`rounds.rs`, ADR 0015): `end_round` sends every open comment with its code and context, and keeps the last 20 rounds — done 2026-10-15.
 12. Judging a sent comment (`anchor.rs`, ADR 0015 §3), and comparing code with whitespace aside (`code.rs`, §7) — done 2026-10-15.
+13. The base picker as designed 2026-10-17: `BaseRef::updated`, `Repository::uncommitted_lines` and `LineCounts`, and `choices` with the `default_branch` (Decisions 13 and 17) — done 2026-10-17.
 
 ## Decisions
 
@@ -98,9 +99,12 @@ Each is a pure function tested here.
     (`FileStates::touched_since`, ADR 0023), and gives the states'
     fingerprint. `Loaded` is opaque: only `load` and `load_polled` make one.
 
-13. **"Behind" is `git status`'s sense:** `BaseRef::behind` counts the
-    ref's commits the checkout lacks. The design shows only
-    "behind". The developer's call, 2026-10-13.
+13. **A ref says when it last moved, not how far behind it is**
+    (`BaseRef::updated`): the design of 2026-10-17 (scenes 2e and 2f)
+    ends each branch's row with its age and lists the newest first. The
+    developer's call, 2026-10-17. Until then `BaseRef::behind` counted
+    the ref's commits the checkout lacks, `git status`'s sense (the
+    developer's call, 2026-10-13).
 14. **A sent comment is judged where it was sent** (ADR 0015 §3 and §8,
     `anchor::judge`): under the base and branch of its `Sent::place`,
     or for the uncommitted changes as ADR 0017 §1 says (below),
@@ -156,6 +160,13 @@ Each is a pure function tested here.
     (`KEPT_ROUNDS`): an older one drops with the resolved comments sent
     in it.
 
+17. **The default branch is decided once, in the core** (`default_branch`,
+    `base.rs`): what a newly opened checkout is compared with
+    (`default_base`) and the base picker's Default row both come from
+    it. `choices` reads it again with the refs each time the picker
+    opens, so the row follows a switched branch, and names none while
+    the checkout is that branch.
+
 ## Pitfalls
 
 - A suspended judgement (ADR 0015 §8) clears the verdict, so "applied
@@ -167,6 +178,12 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-17, the base picker as designed)
+
+Step 13 landed: refs carry their date, newest first (Decision 13 as
+changed), the uncommitted changes are counted in lines, and `choices`
+gives the refs with the default branch (Decision 17), in `Opening` too.
 
 ## Progress (2026-10-17, a load with no watch)
 

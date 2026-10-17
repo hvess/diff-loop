@@ -2,11 +2,12 @@
 // must match the commands' parameter names (Tauri converts them to camelCase).
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Base } from "./bindings/Base";
-import type { BaseRef } from "./bindings/BaseRef";
+import type { BaseChoices } from "./bindings/BaseChoices";
 import type { CommandError } from "./bindings/CommandError";
 import type { Comment } from "./bindings/Comment";
 import type { InstructionsRequest } from "./bindings/InstructionsRequest";
 import type { KnownFile } from "./bindings/KnownFile";
+import type { LineCounts } from "./bindings/LineCounts";
 import type { Opening } from "./bindings/Opening";
 import type { Place } from "./bindings/Place";
 import type { RepoError } from "./bindings/RepoError";
@@ -20,7 +21,7 @@ import type { Snapshot } from "./bindings/Snapshot";
 
 export const api = {
   openRepository: (path: string) => invoke<Opening>("open_repository", { path }),
-  refs: () => invoke<BaseRef[]>("refs"),
+  baseChoices: () => invoke<BaseChoices>("base_choices"),
   /** `full` reads everything again, even while a watch runs (ADR 0014 §1). */
   loadReview: (base: Base, comments: Comment[], known: KnownFile[], full: boolean) =>
     new Promise<Review>((resolve, reject) => {
@@ -33,7 +34,7 @@ export const api = {
       invoke<null>("load_review", { base, comments, known, full, parts }).catch(reject);
     }),
   fingerprint: (base: Base) => invoke<string>("fingerprint", { base }),
-  uncommittedFiles: () => invoke<number>("uncommitted_files"),
+  uncommittedLines: () => invoke<LineCounts>("uncommitted_lines"),
   commitsBetween: (from: string, to: string) =>
     invoke<number | null>("commits_between", { from, to }),
   blob: (snapshot: Snapshot, side: Side, path: string) =>

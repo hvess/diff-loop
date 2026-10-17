@@ -20,7 +20,8 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 5. Watch the working tree and its git directories (ADR 0002) — done 2026-10-13.
 6. Find git as a terminal does (Decisions 8 and 9) — done 2026-10-13.
 7. `changes_in`: the changes under given paths (ADR 0005 §2) — done 2026-10-13.
-8. Behind counts on refs, and the uncommitted file count — done 2026-10-13.
+8. Behind counts on refs, and the uncommitted file count — done 2026-10-13; replaced 2026-10-17 by step 9.
+9. Ref dates, newest first, and the uncommitted line counts (Decision 11) — done 2026-10-17.
 
 ## Decisions
 
@@ -94,12 +95,18 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
     a touched file may be named `*.ts`. `changes_in` with no paths reads
     no files, since git reads an empty pathspec as every path.
 
-11. **Behind counts come from one `for-each-ref`** with
-    `%(ahead-behind:HEAD)` (git 2.41 or later). When git refuses it (an
-    older git, or no commit at `HEAD`), the refs are listed without
-    counts. **The uncommitted file count** is the files
-    `changes(Uncommitted)` would list, read by name only: the same diff
-    with `--name-only`, and untracked files it does not name.
+11. **Refs and their dates come from one `for-each-ref`**, sorted
+    `-creatordate` with `%(creatordate:unix)`: a commit's committer
+    date, or an annotated tag's tagger date. **The uncommitted line
+    count** is the lines `changes(Uncommitted)` would show: the same
+    diff with `--numstat -z` (`parse::numstat`; a binary file counts
+    none), and each untracked file it does not name, read as
+    `untracked::added` reads it (`untracked::open`) and counted without
+    keeping its text. It reads every changed and untracked file's bytes,
+    as a load against the uncommitted changes does, once each time the
+    base picker opens. Until 2026-10-17 refs carried behind
+    counts (`%(ahead-behind:HEAD)`, git 2.41 or later) and the
+    uncommitted changes were counted in files.
 
 ## Pitfalls
 
@@ -108,6 +115,11 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 - `git diff --git` headers are ambiguous for paths with spaces; only an
   identical pair is split from the header, and renames take their paths
   from `rename from` / `rename to`.
+
+## Progress (2026-10-17, the base picker as designed)
+
+Step 9 landed (Decision 11 as changed); git 2.41 is no longer needed
+for anything the picker shows.
 
 ## Progress (2026-10-17, file states)
 

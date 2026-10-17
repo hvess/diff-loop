@@ -18,8 +18,8 @@ use std::{
 };
 
 use diff_loop_core::{
-    Base, BaseRef, Changes, Checkout, Content, FileDiff, FileStates, Head, NewSide, OnChange,
-    RefKind, RepoError, Repository, Side, Snapshot, WatchGuard,
+    Base, BaseRef, Changes, Checkout, Content, FileDiff, FileStates, Head, LineCounts, NewSide,
+    OnChange, RefKind, RepoError, Repository, Side, Snapshot, WatchGuard,
 };
 
 use command::{Outcome, Runner};
@@ -303,28 +303,20 @@ impl Repository for Git {
             Outcome::Success(out) => Some(out.trim().to_owned()),
             Outcome::Failure => None,
         };
-        fn list(format: &str) -> [&str; 5] {
-            [
-                "for-each-ref",
-                format,
-                "refs/heads",
-                "refs/remotes",
-                "refs/tags",
-            ]
-        }
-        // `ahead-behind` needs git 2.41 and a commit at HEAD; without either,
-        // the refs come without counts.
-        let out = match self
-            .run
-            .outcome(&list("--format=%(refname)%00%(ahead-behind:HEAD)"))?
-        {
-            Outcome::Success(out) => out,
-            Outcome::Failure => self.run.stdout(&list("--format=%(refname)"))?,
-        };
+        // `creatordate` is a commit's committer date, or an annotated tag's
+        // tagger date.
+        let out = self.run.stdout(&[
+            "for-each-ref",
+            "--sort=-creatordate",
+            "--format=%(refname)%00%(creatordate:unix)",
+            "refs/heads",
+            "refs/remotes",
+            "refs/tags",
+        ])?;
         Ok(out
             .lines()
             .filter_map(|line| {
-                let (full, counts) = line.split_once('\0').unwrap_or((line, ""));
+                let (full, date) = line.split_once('\0').unwrap_or((line, ""));
                 if Some(full) == current.as_deref() || full.ends_with("/HEAD") {
                     return None;
                 }
@@ -335,12 +327,14 @@ impl Repository for Git {
                 ]
                 .into_iter()
                 .find_map(|(prefix, kind)| full.strip_prefix(prefix).map(|n| (kind, n)))?;
-                // The first count is the ref's commits HEAD lacks.
-                let behind = counts.split(' ').next().and_then(|n| n.parse().ok());
+                let updated = date
+                    .parse::<i64>()
+                    .ok()
+                    .and_then(|seconds| seconds.checked_mul(1000));
                 Some(BaseRef {
                     name: name.to_owned(),
                     kind,
-                    behind,
+                    updated,
                 })
             })
             .collect())
@@ -428,13 +422,30 @@ impl Repository for Git {
         watch::watch(self.root(), &git_dirs, &index, on_change)
     }
 
-    fn uncommitted_files(&self) -> Result<u32, RepoError> {
-        // The files `changes(Uncommitted)` lists, read by name only.
+    fn uncommitted_lines(&self) -> Result<LineCounts, RepoError> {
+        // The lines `changes(Uncommitted)` shows: tracked files counted by
+        // git, untracked ones read as `untracked::added` reads them.
         let snapshot = self.snapshot(&Base::Uncommitted)?;
-        let names = self.diff_output(&snapshot, None, &["--name-only", "-z"])?;
-        let tracked: HashSet<&str> = names.split('\0').filter(|n| !n.is_empty()).collect();
-        let untracked = self.untracked_beside(&tracked, None)?.len();
-        Ok(u32::try_from(tracked.len() + untracked).unwrap_or(u32::MAX))
+        let numstat = self.diff_output(&snapshot, None, &["--numstat", "-z"])?;
+        let tracked = parse::numstat(&numstat);
+        let names: HashSet<&str> = tracked.iter().map(|(_, path)| *path).collect();
+        let counted = tracked.iter().filter_map(|(counts, _)| *counts).fold(
+            LineCounts::default(),
+            |sum, counts| LineCounts {
+                added: sum.added.saturating_add(counts.added),
+                removed: sum.removed.saturating_add(counts.removed),
+            },
+        );
+        self.untracked_beside(&names, None)?
+            .iter()
+            .try_fold(counted, |sum, path| {
+                Ok(LineCounts {
+                    added: sum
+                        .added
+                        .saturating_add(untracked::added_lines(self.root(), path)?),
+                    ..sum
+                })
+            })
     }
 
     fn commits_between(&self, from: &str, to: &str) -> Result<Option<u32>, RepoError> {

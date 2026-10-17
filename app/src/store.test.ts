@@ -17,7 +17,7 @@ vi.mock("./api", () => ({
     fingerprint: vi.fn(),
     commitsBetween: vi.fn(() => Promise.resolve(1)),
     roundToFollow: vi.fn(() => Promise.resolve(null)),
-    refs: vi.fn(() => Promise.resolve([])),
+    baseChoices: vi.fn(() => Promise.resolve({ refs: [], defaultBranch: null })),
     watchRepository: vi.fn(() => Promise.resolve(true)),
     fileLines: vi.fn(),
     instructions: vi.fn(() => Promise.resolve("md")),
@@ -30,7 +30,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
 
 const opening = (root: string): Opening => ({
   checkout: { name: "r", root, head: { kind: "branch", name: "agent/x" }, commit: "abc" },
-  refs: [],
+  choices: { refs: [], defaultBranch: null },
   base: { kind: "uncommitted" },
 });
 
@@ -136,6 +136,24 @@ async function openWith(root: string, saved: SavedReview | Error) {
   answerLoads(root);
   await useStore.getState().open(root);
 }
+
+describe("the base picker's choices", () => {
+  it("are kept for the checkout they were read for, and dropped once another opens", async () => {
+    await openWith("/a", { comments: [], rounds: [] });
+    let answer: (choices: { refs: never[]; defaultBranch: string | null }) => void = () => {};
+    vi.mocked(api.baseChoices).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    useStore.getState().refreshChoices();
+    await openWith("/b", { comments: [], rounds: [] });
+    answer({ refs: [], defaultBranch: "main" });
+    await vi.waitFor(() => expect(api.baseChoices).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(useStore.getState().choices.defaultBranch).toBeNull();
+
+    vi.mocked(api.baseChoices).mockResolvedValueOnce({ refs: [], defaultBranch: "trunk" });
+    useStore.getState().refreshChoices();
+    await vi.waitFor(() => expect(useStore.getState().choices.defaultBranch).toBe("trunk"));
+  });
+});
 
 describe("saving the review", () => {
   beforeEach(() => {

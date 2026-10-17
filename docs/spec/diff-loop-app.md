@@ -51,7 +51,8 @@ change, annotate, hand off to the agent, next round.
    before a checkout's first load and saved as they change — done
    2026-10-13; comments only since 2026-10-14 (ADR 0013 §3).
 8. The base picker's notes: behind counts, the uncommitted file count
-   and the last commit's id (Decision 12) — done 2026-10-13.
+   and the last commit's id (Decision 12) — done 2026-10-13; replaced
+   2026-10-17 by step 14.
 9. The sidebar's captions: "tested by", "covers" and "new, imported by"
    (Decision 13) — done 2026-10-13; removed 2026-10-14 with the role
    groups (ADR 0013 §1).
@@ -73,6 +74,9 @@ change, annotate, hand off to the agent, next round.
     folding and resizing (ADR 0016, Decision 23), the preview's new
     layout (Decision 25) and the composer opening on a drag's release
     (Decision 30).
+14. The base picker as designed 2026-10-17 (scenes 2b, 2e and 2f):
+    the first list, the lists it opens in place, ages and line counts
+    (Decision 32) — done 2026-10-17.
 
 ## Decisions
 
@@ -119,7 +123,7 @@ change, annotate, hand off to the agent, next round.
    expanded ones included, show without highlighting (`highlight.ts`, `MAX_LINES`,
    which bounds the highlighting worker since ADR 0011); the base
    picker lists 50 matches, an exactly named ref first, and asks to type
-   to narrow (`SHOWN`); 8 recent
+   to narrow (`SHOWN`), in a search and in each list it opens; 8 recent
    folders are kept (`recent.ts`, `LIMIT`). The preview's 150 ms wait
    after the last change (`PREVIEW_DELAY_MS`) went with the note it
    waited for, 2026-10-14.
@@ -143,13 +147,11 @@ change, annotate, hand off to the agent, next round.
     or write failures show above the review (`SaveProblem` in
     `ReviewScreen.tsx`).
 
-12. **The base picker's notes:** a branch or remote the checkout is
-    behind says "N behind" (diff-loop-core Decision 13), a tag says
-    "Tag", Uncommitted changes says how many files (`uncommitted_files`),
-    and Last commit shows its short id, as the design does; a base named
-    by a full commit id, as following a round names one, is shown by its
-    short id ("vs a1f3c9e", `baseLabel`; ADR 0017 §3). Refs and the
-    file count are read again each time the picker opens.
+12. **The base picker's notes** (since 2026-10-17: see Decision 32): a
+    base named by a full commit id, as following a round names one, is
+    shown by its short id ("vs a1f3c9e", `baseLabel`; ADR 0017 §3).
+    Until 2026-10-17 a branch the checkout was behind said "N behind", a
+    tag "Tag", and Uncommitted changes how many files.
 
 13. **Captions are read from names** (removed 2026-10-14, ADR 0013 §1;
     kept as history), in the front end
@@ -448,7 +450,9 @@ change, annotate, hand off to the agent, next round.
     reads the whole checkout again, even while a watch runs (`refresh`;
     ADR 0014). The base picker
     highlights the current base each time it opens, however it opens, so
-    Return keeps it. Its open state, the preview's and why Copy review
+    Return keeps it; → or Return opens the list under the highlight, and
+    ← (with the search empty) or Esc goes back to the first list, the
+    list just left highlighted (Decision 32). Its open state, the preview's and why Copy review
     failed (`copyProblem`, a `Problem` from `describe`) live in the store, so a key can reach them;
     closing or opening a folder closes them and forgets the failure, as
     the review screen's own state went with it.
@@ -557,6 +561,38 @@ change, annotate, hand off to the agent, next round.
       covers it and start over when it closes (HIG `undo-and-redo`;
       2026-10-16), so opening the preview never uses up an undo.
 
+32. **The base picker draws the design of 2026-10-17** (scenes 2b, 2e
+    and 2f; `app/src/components/BasePicker.tsx`):
+    - **The first list**, ordered by what matters while reviewing:
+      Uncommitted changes with its lines added and removed ("+42 −8",
+      `uncommitted_lines`; a zero left out, as in the sidebar's header), Last commit with its short id, the default
+      branch marked "Default" (diff-loop-core Decision 17), then, under
+      a divider, a row per list it opens, with its count and ›: Local
+      branches, each remote by name, and Tags. A base other than these,
+      such as `release/2026.10` or a round's commit, has a row under
+      Default, so it shows ✓ and Return keeps it (the developer's call,
+      2026-10-17).
+    - **A list opens in place**, with "‹ <list>" and its count above its
+      own search ("Search local branches", "Search origin"), most
+      recently updated first, each row ending with its age ("5m", "2h",
+      "1d", "2w", "3mo", "1y"; `age` in `format.ts`) and its date in
+      full on hover. Local branches lists the checked-out one first,
+      dimmed, "Current", not to be picked; a remote's rows show its
+      prefix faint ("origin/main"). Tags have a list of their own (the
+      developer's call, 2026-10-17); the design draws no row for them.
+    - **Typing in the first list's search** ("Search branches, tags or
+      commits", where the design says "SHAs": the developer's call,
+      2026-10-17) lists matching refs from every list, a tag saying
+      "Tag", and offers what was typed as "Compare with “…”", which git
+      resolves however it names a commit (the developer's call,
+      2026-10-17; until then the row said "Commit").
+    - **The design's faint text, short ages, trails and unheaded first
+      list stay as drawn**
+      (the developer's call, 2026-10-17; `ux` skill, "Where the developer
+      chose against the HIG"; open-tasks 16).
+    - Refs, the default branch and the line counts are read again each
+      time the picker opens.
+
 ## Pitfalls
 
 - A load answers for the comments it was sent. One changed while it ran
@@ -577,6 +613,11 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-17, the base picker as designed)
+
+Step 14 landed (Decision 32): the `base_choices` and
+`uncommitted_lines` commands replace `refs` and `uncommitted_files`.
 
 ## Progress (2026-10-17, a load with no watch)
 
