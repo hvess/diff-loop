@@ -196,7 +196,9 @@ pub(crate) mod tests {
         fs::write(dir.path().join("a.txt"), "a\n").unwrap();
         run(&["add", "."]);
         run(&["commit", "-qm", "init"]);
-        let repo = Repo::at(dir.path().to_path_buf());
+        // Resolved as `--show-toplevel` gives it: macOS's temporary
+        // directory lies behind the `/var` symlink, and git's paths do not.
+        let repo = Repo::at(dir.path().canonicalize().unwrap());
         (dir, repo)
     }
 
