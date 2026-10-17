@@ -43,14 +43,6 @@ contradicts) and the entry says so before it goes.
     developer decides against one. The list waits for a design of it (the
     developer's call, 2026-10-17).
 
-19. **The design's README is not the repository's.** The design project
-    holds a `README.md` for a public repository (an MIT licence, release
-    badges, a screenshot at `docs/review-screen.png`, build-from-source
-    steps); the repository's README is the private one. The developer
-    left it for later, 2026-10-15. Closes when the README is brought in,
-    with its claims made true (a `LICENSE`, a public repository), or the
-    developer decides against it.
-
 22. **Off Unix, a rewrite that restores an old mtime goes unseen without a
     watch.** The fingerprint shows a file's content by its size, mtime
     and, on Unix, its inode's change time and number (diff-loop-git.md
@@ -68,5 +60,7 @@ contradicts) and the entry says so before it goes.
     and notarizes with a Developer ID, or the developer decides the step
     is fine.
 13. **Releases reach only people with access to this repository**
-    (ADR 0009 §5). Closes when releases are published somewhere public,
-    or the developer decides they stay private.
+    (ADR 0009 §5); the README says so under Install, and carries no
+    release badge, which would not load for anyone else. Closes when
+    releases are published somewhere public, or the developer decides
+    they stay private.
