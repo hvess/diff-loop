@@ -1,6 +1,6 @@
 # 0024 — CI checks macOS and Windows at a release, Linux on every push
 
-**Status:** accepted, 2026-10-17
+**Status:** superseded by ADR 0025, 2026-10-17
 **Amends:** ADR 0006, Consequences (the Rust jobs stay on three
 platforms: now on a version tag or a manual run; a push checks Linux)
 **Affects:** `.github/workflows/ci.yml`
