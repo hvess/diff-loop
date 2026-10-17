@@ -1,6 +1,9 @@
 //! The port to a version-controlled checkout, and the types that cross it.
 
-use std::collections::BTreeSet;
+use std::{
+    collections::{BTreeMap, BTreeSet, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
+};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -50,11 +53,21 @@ pub trait Repository {
     /// A value that changes when [`Repository::changes`] for `base` would, as
     /// far as an adapter can tell without reading every changed file; cheaper
     /// than `changes`, it is what the app polls when no watch runs (ADR 0005
-    /// §4).
+    /// §4). The hash of [`Repository::file_states`].
     ///
     /// # Errors
     /// As [`Repository::changes`].
-    fn fingerprint(&self, base: &Base) -> Result<String, RepoError>;
+    fn fingerprint(&self, base: &Base) -> Result<String, RepoError> {
+        Ok(self.file_states(base)?.fingerprint())
+    }
+
+    /// Each changed or untracked file's state against `base`, as far as an
+    /// adapter can tell a change without reading every changed file: what a
+    /// load with no watch compares to read only what changed (ADR 0023).
+    ///
+    /// # Errors
+    /// As [`Repository::changes`].
+    fn file_states(&self, base: &Base) -> Result<FileStates, RepoError>;
 
     /// The bytes of `path` on one side of `snapshot`.
     ///
@@ -89,14 +102,56 @@ pub trait Repository {
 /// What [`Repository::watch`] calls; from a background thread.
 pub type OnChange = Box<dyn Fn(Touched) + Send + Sync>;
 
-/// What a watch saw touched: in one report, or added up across reports.
+/// Each changed or untracked file's state under one snapshot
+/// ([`Repository::file_states`]).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FileStates {
+    /// What the states were taken against.
+    pub snapshot: Snapshot,
+    /// By path, relative to the root: a value that changes when the file's
+    /// change would, as far as the adapter can tell (as `file_states`).
+    pub files: BTreeMap<String, u64>,
+}
+
+impl FileStates {
+    /// [`Repository::fingerprint`]: changes whenever any state does. Compared
+    /// only within one run of the app: `DefaultHasher` is not stable across
+    /// Rust versions.
+    #[must_use]
+    pub fn fingerprint(&self) -> String {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        format!("{:016x}", hasher.finish())
+    }
+
+    /// What changed from `self` to `now`: everything when the snapshot
+    /// moved, else each path whose state differs or that only one holds.
+    /// O(p log p) for p paths in both.
+    #[must_use]
+    pub fn touched_since(&self, now: &Self) -> Touched {
+        if self.snapshot != now.snapshot {
+            return Touched::Everything;
+        }
+        let paths = self
+            .files
+            .keys()
+            .chain(now.files.keys())
+            .filter(|path| self.files.get(*path) != now.files.get(*path))
+            .cloned()
+            .collect();
+        Touched::Paths(paths)
+    }
+}
+
+/// What was touched: as a watch saw it, in one report or added up across
+/// reports, or as two file states differ ([`FileStates::touched_since`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Touched {
     /// Paths relative to the root, files or directories; empty when only git's
     /// own state changed. A fresh snapshot shows a moved `HEAD` or base; a
     /// change to the index is `Everything` (ADR 0018 §1).
     Paths(BTreeSet<String>),
-    /// More than the watch could name: read everything again.
+    /// More than could be named, or a moved snapshot: read everything again.
     Everything,
 }
 

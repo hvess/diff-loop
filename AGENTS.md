@@ -92,7 +92,9 @@ before reopening a decision they cover.
   never overwritten.
 - **0005 — Read only what the watch saw touched.** The watch names
   touched paths; `Repository::changes_in` and the core's `update` read
-  them again; the app keeps the last load only while watching.
+  them again; the app keeps the last load while watching, with what the
+  watch touched (and, since ADR 0023, without a watch, with its file
+  states).
 - **0006 — The front end's review stages.** ESLint, `tsc`, Vitest and
   the build in the review loop and CI; a `frontend` skill; a UI judge
   over captured windows.
@@ -160,6 +162,9 @@ before reopening a decision they cover.
   round, a later commit keeps it followed, counted from the round's
   commit, until another base, a switched or rewritten branch, or no open
   comment ends it.
+- **0023 — A load with no watch reads only what changed.** The port
+  tells each changed file's state; with no watch a load keeps them, and
+  the next reads again only the paths whose state changed.
 
 ## Key Constraints (non-negotiable)
 

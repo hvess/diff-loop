@@ -5,7 +5,7 @@ The `Repository` adapter over the `git` command line.
 **Status:** active — first version landed.
 **Scope:** `crates/git`. Excludes everything the core decides.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-16
+**Last Updated:** 2026-10-17
 
 ## Why
 
@@ -36,10 +36,11 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
    out, so each path appears once in `Changes::files`.
 3. **Forced config:** `core.quotePath=false`, prefixes `a/` and `b/`, no
    external diff or textconv, renames on. `parse` relies on these.
-4. **The fingerprint** (`fingerprint.rs`) hashes the snapshot and,
-   against the working tree, which files differ and how (`git diff
-   --raw`, names, modes and status, no contents; `raw::raw_paths`) with each
-   such file's and each untracked file's path, size and mtime, and on
+4. **The file states and fingerprint** (`states.rs`; ADR 0023): against
+   the working tree, by path, a hash of what git says of each file that
+   differs (its `git diff --raw` record: modes, ids and status, no
+   contents; `raw::raw_records`) or that it is untracked, with the
+   file's size and mtime, and on
    Unix its inode's change time and number (`identity`): a file's content
    shows as its stat, as git's own index tells a change, so a rewrite
    that restores an old mtime (`cp -p`, `tar`) is seen too; off Unix, where
@@ -55,13 +56,13 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
    its first MiB, and past it when the file leaves the three seconds: the
    next check then differs from the last and loads once more, as it does
    for any racy file; one dated in the future stays racy until its time
-   passes. Between two commits the snapshot alone fixes it.
-   It is compared only within one run (`DefaultHasher` is not stable
+   passes. The fingerprint is the hash of the states with the snapshot;
+   between two commits the snapshot alone fixes it. It is compared only within one run (`DefaultHasher` is not stable
    across Rust versions). Cost: no patch is read; git stats the tracked
    files and hashes those whose stat moved, and the app reads at most a
    MiB of each file written in the last three seconds, and 16 MiB in
-   all. It runs on focus or the 2 s poll only when nothing watches
-   (ADR 0005 §4).
+   all. It runs only when nothing watches: on focus, on the 2 s poll
+   (ADR 0005 §4), and at the start of each load (ADR 0023 §2).
 5. **Blobs refuse paths that leave the tree**, on either side: only
    normal components (`relative`), and a working-tree path must
    canonicalize inside the root. A failed file operation reports its path
@@ -107,6 +108,11 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 - `git diff --git` headers are ambiguous for paths with spaces; only an
   identical pair is split from the header, and renames take their paths
   from `rename from` / `rename to`.
+
+## Progress (2026-10-17, file states)
+
+ADR 0023: `file_states` gives each changed or untracked file its own
+hash, and the fingerprint is theirs (Decision 4).
 
 ## Progress (2026-10-16, a cheaper fingerprint)
 

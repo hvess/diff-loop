@@ -37,7 +37,8 @@ each time. The developer chose rebuilding per changed path, 2026-10-13.
    (`Review::fingerprint` is `None`), and a file not read again keeps its
    signature (`Loaded`), so no step costs the whole diff.
    (Amended by ADR 0018 §2: an addition or deletion is read with the
-   opposite kind already in the review.)
+   opposite kind already in the review. Amended by ADR 0023 §2: a load
+   with no watch carries its file states' fingerprint.)
 4. **The app keeps the last load only while a watch runs** (`Session`):
    a new watch, another repository or a failed load drops it, and the
    next load reads everything. Loads are numbered as they begin, and only
@@ -46,7 +47,9 @@ each time. The developer chose rebuilding per changed path, 2026-10-13.
    loads; without a watch, focus and the 2 s poll compare fingerprints as
    before. A load that changes nothing leaves the window's state alone.
    (Amended by ADR 0014 §1: a load asked to be `full` reads everything.
-   Amended by ADR 0015 §2: a load never removes a comment.)
+   Amended by ADR 0015 §2: a load never removes a comment. Amended by
+   ADR 0023: without a watch the last load is kept too, and the file
+   states it took say what changed.)
 
 ## Consequences
 

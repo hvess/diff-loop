@@ -1,9 +1,10 @@
-//! What the fingerprint hashes of the working tree's files without reading
-//! the patch (diff-loop-git.md Decision 4).
+//! Each working-tree file's state, told without reading the patch
+//! (diff-loop-git.md Decision 4, ADR 0023).
 
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::{
+    collections::{BTreeMap, hash_map::DefaultHasher},
     fs,
     hash::{Hash, Hasher},
     io::Read,
@@ -23,22 +24,28 @@ const RACY_BYTES: u64 = 1 << 20;
 /// How much of all racy files one check reads.
 const RACY_BUDGET: u64 = 16 << 20;
 
-/// Hashes into `hasher` each of `paths`, relative to `root`, with what shows
-/// a change to it (`hash_file`). O(paths) stats, and at most `RACY_BUDGET`
-/// bytes read. Owned paths: the untracked ones come as `String`s, and the
-/// borrowed raw ones join them in one stream.
-pub(crate) fn hash_files(
+/// Each of `entries`, a path relative to `root` and what git says of it (a
+/// raw record's header, or that it is untracked), by path, with a hash of
+/// that and of what shows a change to the file (`hash_file`). A path named
+/// twice, deleted and untracked, has both in its hash. O(paths log paths)
+/// and as many stats, and at most `RACY_BUDGET` bytes read.
+pub(crate) fn states<'a>(
     root: &Path,
-    paths: impl Iterator<Item = String>,
-    hasher: &mut impl Hasher,
-) {
+    entries: impl Iterator<Item = (&'a str, String)>,
+) -> BTreeMap<String, u64> {
     let now = SystemTime::now();
     let mut budget = RACY_BUDGET;
-    for path in paths {
-        let full = root.join(&path);
-        path.hash(hasher);
-        hash_file(&full, now, &mut budget, hasher);
-    }
+    entries.fold(BTreeMap::new(), |mut states, (said, path)| {
+        let mut hasher = DefaultHasher::new();
+        said.hash(&mut hasher);
+        hash_file(&root.join(&path), now, &mut budget, &mut hasher);
+        let state = hasher.finish();
+        states
+            .entry(path)
+            .and_modify(|held: &mut u64| *held = held.rotate_left(1) ^ state)
+            .or_insert(state);
+        states
+    })
 }
 
 /// Hashes into `hasher` what shows a change to the file at `path`: its size,

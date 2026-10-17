@@ -5,7 +5,7 @@ The domain: what changed on a checkout, review comments, and the instructions th
 **Status:** active — first version landed.
 **Scope:** `crates/core`. Excludes reading git (`diff-loop-git.md`) and the UI (`diff-loop-app.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-16
+**Last Updated:** 2026-10-17
 
 ## Why
 
@@ -93,7 +93,10 @@ Each is a pure function tested here.
     and past `MOST_PATHS` in all everything is read (ADR 0018 §2,
     `halves`). It then takes
     no fingerprint, and keeps the signatures of files it did not read
-    again. `Loaded` is opaque: only `load` makes one.
+    again. With no watch, `load_polled` takes the file states first and
+    names what changed by comparing them with those its last load kept
+    (`FileStates::touched_since`, ADR 0023), and gives the states'
+    fingerprint. `Loaded` is opaque: only `load` and `load_polled` make one.
 
 13. **"Behind" is `git status`'s sense:** `BaseRef::behind` counts the
     ref's commits the checkout lacks. The design shows only
@@ -164,6 +167,12 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-17, a load with no watch)
+
+ADR 0023: `Repository::file_states` and `FileStates`, the fingerprint
+their hash; `load_polled` reads only the paths whose state changed
+(Decision 12).
 
 ## Progress (2026-10-16, a follow outlives a later commit)
 

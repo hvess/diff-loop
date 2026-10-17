@@ -12,7 +12,7 @@ use crate::{
     anchor::{Comment, Place, reanchor},
     base::{Base, BaseRef, default_base},
     diff::FileDiff,
-    repository::{Changes, Checkout, RepoError, Repository, Snapshot, Touched},
+    repository::{Changes, Checkout, FileStates, RepoError, Repository, Snapshot, Touched},
     update::{Updated, covers, update},
 };
 
@@ -26,7 +26,8 @@ pub struct Review {
     /// What it is compared with.
     pub base: Base,
     /// [`Repository::fingerprint`] for `base`, taken before `files`; `None`
-    /// for a load since the last one against `base`, which takes none.
+    /// for a load since the last one against `base` under a watch, which
+    /// takes none.
     pub fingerprint: Option<String>,
     /// The two trees compared, for [`Repository::blob`].
     pub snapshot: Snapshot,
@@ -111,6 +112,9 @@ pub struct Loaded {
     /// Each file's signature, by path, kept for files the next load does
     /// not read again.
     signatures: HashMap<String, String>,
+    /// The file states taken before the load, by [`load_polled`]: what the
+    /// next one compares to know what changed.
+    states: Option<FileStates>,
 }
 
 /// The checkout's changes against `base`, with `comments` moved onto their
@@ -130,16 +134,54 @@ pub fn load(
     known: Vec<KnownFile>,
     since: Option<(Loaded, Touched)>,
 ) -> Result<(Review, Loaded), RepoError> {
+    load_with(repository, base, comments, known, since, None)
+}
+
+/// As [`load`] with no watch: the file states are taken first, and against
+/// `last`'s, when it was against `base` too, they name what changed, so
+/// only that is read again (ADR 0023). The review always has a fingerprint,
+/// the states', which the next poll compares.
+///
+/// # Errors
+/// As [`load`], and [`Repository::file_states`].
+pub fn load_polled(
+    repository: &(impl Repository + ?Sized),
+    base: Base,
+    comments: Vec<Comment>,
+    known: Vec<KnownFile>,
+    last: Option<Loaded>,
+) -> Result<(Review, Loaded), RepoError> {
+    let states = repository.file_states(&base)?;
+    let since = last.and_then(|loaded| {
+        let touched = loaded.states.as_ref()?.touched_since(&states);
+        Some((loaded, touched))
+    });
+    load_with(repository, base, comments, known, since, Some(states))
+}
+
+/// [`load`], with `states` taken first when there is no watch.
+fn load_with(
+    repository: &(impl Repository + ?Sized),
+    base: Base,
+    comments: Vec<Comment>,
+    known: Vec<KnownFile>,
+    since: Option<(Loaded, Touched)>,
+    states: Option<FileStates>,
+) -> Result<(Review, Loaded), RepoError> {
     let checkout = repository.checkout()?;
+    let polled = states.as_ref().map(FileStates::fingerprint);
     let (fingerprint, changes, reread, held) = match since {
         Some((loaded, touched)) if loaded.base == base => {
             let Updated { changes, reread } = update(repository, &base, loaded.changes, touched)?;
-            (None, changes, reread, loaded.signatures)
+            (polled, changes, reread, loaded.signatures)
         }
         // Taken first: a change landing between the two shows as a newer
         // fingerprint on the next poll, never as a missed one.
         _ => (
-            Some(repository.fingerprint(&base)?),
+            Some(match polled {
+                Some(fingerprint) => fingerprint,
+                None => repository.fingerprint(&base)?,
+            }),
             repository.changes(&base)?,
             None,
             HashMap::new(),
@@ -202,6 +244,7 @@ pub fn load(
         base,
         changes,
         signatures,
+        states,
     };
     Ok((review, loaded))
 }
@@ -274,6 +317,23 @@ pub(crate) mod tests {
         }
         fn fingerprint(&self, _: &Base) -> Result<String, RepoError> {
             Ok("f1".into())
+        }
+        /// States that see each file's path and status, not its lines, so a
+        /// test can tell a file read again from one kept.
+        fn file_states(&self, _: &Base) -> Result<FileStates, RepoError> {
+            let files = self
+                .0
+                .iter()
+                .map(|f| {
+                    let mut hasher = DefaultHasher::new();
+                    f.status.hash(&mut hasher);
+                    (f.path.clone(), hasher.finish())
+                })
+                .collect();
+            Ok(FileStates {
+                snapshot: self.changes(&Base::Uncommitted)?.snapshot,
+                files,
+            })
         }
         fn blob(&self, _: &Snapshot, _: Side, _: &str) -> Result<Vec<u8>, RepoError> {
             Ok(b"one\r\ntwo\nthree\nfour".to_vec())
@@ -363,6 +423,41 @@ pub(crate) mod tests {
             verdict(Base::Ref { name: "old".into() }),
             Some(Verdict::Untouched)
         );
+    }
+
+    #[test]
+    fn a_load_with_no_watch_reads_again_only_the_files_whose_state_changed() {
+        let first = Fixed(vec![
+            text_file("a.ts", vec![add(1, "x")]),
+            text_file("b.ts", vec![add(1, "y")]),
+        ]);
+        let (_, loaded) = load_polled(&first, Base::Uncommitted, vec![], vec![], None).unwrap();
+        // `a.ts` edited in a way its state does not show; `b.ts` gone, `c.ts` new.
+        let then = Fixed(vec![
+            text_file("a.ts", vec![add(1, "edited")]),
+            text_file("c.ts", vec![add(1, "z")]),
+        ]);
+        let (review, _) =
+            load_polled(&then, Base::Uncommitted, vec![], vec![], Some(loaded)).unwrap();
+        let paths: Vec<_> = review
+            .files
+            .iter()
+            .map(|f| match f {
+                ReviewFile::Changed { diff, .. } => diff.path.as_str(),
+                ReviewFile::Unchanged { path, .. } => path.as_str(),
+            })
+            .collect();
+        assert_eq!(paths, ["a.ts", "c.ts"]);
+        let ReviewFile::Changed { diff, .. } = &review.files[0] else {
+            panic!("a.ts is sent");
+        };
+        assert_eq!(
+            diff,
+            &text_file("a.ts", vec![add(1, "x")]),
+            "kept, not read again"
+        );
+        let states = then.file_states(&Base::Uncommitted).unwrap();
+        assert_eq!(review.fingerprint, Some(states.fingerprint()));
     }
 
     #[test]

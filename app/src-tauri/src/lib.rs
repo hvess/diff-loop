@@ -61,11 +61,21 @@ struct Session {
     open: Opener,
     current: Mutex<Option<Shared>>,
     watch: Mutex<Option<Watching>>,
-    /// Kept only while a watch runs: without one, nothing says what changed.
+    /// The last load: with a watch, what it saw touched since says what
+    /// changed; without one, the file states the load kept do (ADR 0023).
     loaded: Mutex<Option<Loaded>>,
     /// Counts loads begun; only the latest may keep what it loaded, so an
     /// older load finishing last cannot replace a newer one.
     loads: Mutex<u64>,
+}
+
+/// What a load starts from: the last load and what a watch saw touched
+/// since, or, with no watch, the last load alone, whose file states say
+/// what changed (ADR 0023).
+#[derive(Debug)]
+enum Since {
+    Watched(Option<(Loaded, Touched)>),
+    Polled(Option<Loaded>),
 }
 
 /// A running watch, and what it has seen touched since the last load took it.
@@ -229,36 +239,34 @@ impl Session {
         open
     }
 
-    /// Begins a load of `of`: its number, and the last load with what was
-    /// touched since, while a watch runs and the load is not `full`. Takes
-    /// both, so a load that fails leaves the next to read everything.
-    fn begin_load(&self, of: &Shared, full: bool) -> (u64, Option<(Loaded, Touched)>) {
+    /// Begins a load of `of`: its number, and what it starts from, the last
+    /// load unless the load is `full`. Takes both, so a load that fails
+    /// leaves the next to read everything.
+    fn begin_load(&self, of: &Shared, full: bool) -> (u64, Since) {
         let current = lock(&self.current);
         let watch = lock(&self.watch);
-        let loaded = lock(&self.loaded).take();
+        let loaded = lock(&self.loaded)
+            .take()
+            .filter(|_| !full && holds(&current, of));
         let mut loads = lock(&self.loads);
         *loads += 1;
-        let since = watch
-            .as_ref()
-            .filter(|_| holds(&current, of))
-            .and_then(|watching| {
+        let since = match watch.as_ref() {
+            Some(watching) => {
                 // Taken even for a full read, which covers it.
                 let touched = mem::take(&mut *lock(&watching.touched));
-                if full {
-                    return None;
-                }
-                Some((loaded?, touched))
-            });
+                Since::Watched(loaded.map(|loaded| (loaded, touched)))
+            }
+            None => Since::Polled(loaded),
+        };
         (*loads, since)
     }
 
-    /// Keeps `loaded` for the next load, while `of` is still open, a watch
-    /// runs, and load `number` is the latest begun.
+    /// Keeps `loaded` for the next load, while `of` is still open and load
+    /// `number` is the latest begun.
     fn keep_loaded(&self, of: &Shared, number: u64, loaded: Loaded) {
         let current = lock(&self.current);
-        let watch = lock(&self.watch);
         let mut kept = lock(&self.loaded);
-        if holds(&current, of) && watch.is_some() && *lock(&self.loads) == number {
+        if holds(&current, of) && *lock(&self.loads) == number {
             *kept = Some(loaded);
         }
     }
@@ -350,9 +358,10 @@ async fn refs(session: State<'_, Session>) -> Result<Vec<BaseRef>, CommandError>
 
 /// Sends the open checkout against `base` through `parts`, with `comments`
 /// moved onto their code; files the front end already holds (`known`) are
-/// named, not sent. While a watch runs, a load after the first reads again
-/// only what it saw touched, unless that needs everything (ADR 0005 §3) or
-/// it is `full`.
+/// named, not sent. A load after the first reads again only what changed:
+/// what the watch saw touched while one runs (ADR 0005 §3), else the paths
+/// whose file states changed (ADR 0023); unless that needs everything or it
+/// is `full`.
 #[tauri::command]
 async fn load_review(
     base: Base,
@@ -365,8 +374,11 @@ async fn load_review(
     let repository = session.current()?;
     let (number, since) = session.begin_load(&repository, full);
     let reading = Arc::clone(&repository);
-    let (mut review, loaded) =
-        blocking(move || diff_loop_core::load(&*reading, base, comments, known, since)).await?;
+    let (mut review, loaded) = blocking(move || match since {
+        Since::Watched(since) => diff_loop_core::load(&*reading, base, comments, known, since),
+        Since::Polled(last) => diff_loop_core::load_polled(&*reading, base, comments, known, last),
+    })
+    .await?;
     session.keep_loaded(&repository, number, loaded);
     for files in batches(mem::take(&mut review.files)) {
         parts.send(ReviewPart::Files { files })?;
@@ -760,14 +772,28 @@ mod tests {
         session.keep_loaded(repository, number, loaded(repository));
     }
 
+    /// Whether a load begins from nothing: it reads everything.
+    fn from_nothing(since: &Since) -> bool {
+        matches!(since, Since::Watched(None) | Since::Polled(None))
+    }
+
     #[test]
-    fn without_a_watch_no_load_is_kept() {
+    fn without_a_watch_the_last_load_is_kept_for_its_file_states() {
         let (_dir, repository) = git_repository();
         let session = Session::new(open_git);
         session.replace(Arc::clone(&repository));
         load_and_keep(&session, &repository);
-        assert!(lock(&session.loaded).is_none());
-        assert!(session.begin_load(&repository, false).1.is_none());
+        let (_, since) = session.begin_load(&repository, false);
+        assert!(matches!(since, Since::Polled(Some(_))));
+        assert!(
+            from_nothing(&session.begin_load(&repository, false).1),
+            "taken, not copied"
+        );
+        load_and_keep(&session, &repository);
+        assert!(
+            from_nothing(&session.begin_load(&repository, true).1),
+            "a full read starts from nothing"
+        );
     }
 
     #[test]
@@ -782,11 +808,13 @@ mod tests {
         load_and_keep(&session, &repository);
         lock(&touched).add(Touched::Paths(["a.ts".to_owned()].into()));
         let (_, since) = session.begin_load(&repository, false);
-        let (_, seen) = since.unwrap();
+        let Since::Watched(Some((_, seen))) = since else {
+            panic!("the last load and what was touched");
+        };
         assert_eq!(seen, Touched::Paths(["a.ts".to_owned()].into()));
         assert_eq!(*lock(&touched), Touched::default());
         assert!(
-            session.begin_load(&repository, false).1.is_none(),
+            from_nothing(&session.begin_load(&repository, false).1),
             "taken, not copied"
         );
     }
@@ -802,7 +830,7 @@ mod tests {
         assert!(session.keep_watch(&repository, watch));
         load_and_keep(&session, &repository);
         lock(&touched).add(Touched::Paths(["a.ts".to_owned()].into()));
-        assert!(session.begin_load(&repository, true).1.is_none());
+        assert!(from_nothing(&session.begin_load(&repository, true).1));
         assert_eq!(*lock(&touched), Touched::default());
         assert!(
             lock(&session.loaded).is_none(),
@@ -819,7 +847,7 @@ mod tests {
         assert!(session.keep_watch(&repository, watching(&stopped)));
         load_and_keep(&session, &repository);
         assert!(session.keep_watch(&repository, watching(&stopped)));
-        assert!(session.begin_load(&repository, false).1.is_none());
+        assert!(from_nothing(&session.begin_load(&repository, false).1));
     }
 
     /// Regression: a load begun before a watch started was kept after it.

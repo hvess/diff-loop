@@ -5,7 +5,7 @@ The desktop app: Tauri commands around `diff-loop-core`, and the React front end
 **Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-16
+**Last Updated:** 2026-10-17
 
 ## Why
 
@@ -108,10 +108,12 @@ change, annotate, hand off to the agent, next round.
    clears the watch and the last load), and drops a guard that arrives
    for a repository no longer open, answering `false`. The store trusts
    only answers for the repository still open; until one confirms a watch,
-   or if watching fails, `App` polls every 2 s. While a watch runs,
-   `Session` keeps the last load and what the watch touched, and
-   `load_review` reads only that (ADR 0005 §4), unless it is asked to
-   read everything (`full`, ⌘/Ctrl-R; ADR 0014).
+   or if watching fails, `App` polls every 2 s. `Session` keeps the last
+   load: while a watch runs, with what the watch touched, and
+   `load_review` reads only that (ADR 0005 §4); without one, with the
+   file states it took, and `load_review` reads only the paths whose
+   state changed (`Since`, ADR 0023); unless it is asked to read
+   everything (`full`, ⌘/Ctrl-R; ADR 0014).
 8. **Limits that keep the UI responsive**, chosen by the author for the
    first version (2026-10-13), not by the design: files showing over 5000 lines,
    expanded ones included, show without highlighting (`highlight.ts`, `MAX_LINES`,
@@ -575,6 +577,12 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-17, a load with no watch)
+
+ADR 0023: with no watch, `Session` keeps the last load and its file
+states, and `load_review` reads only what changed (Decision 7), closing
+open-tasks 23.
 
 ## Progress (2026-10-16, a second commit while following)
 

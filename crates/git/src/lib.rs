@@ -4,24 +4,22 @@
 //! never contends with an agent committing in the same repository.
 
 mod command;
-mod fingerprint;
 mod locate;
 mod parse;
 mod raw;
+mod states;
 mod untracked;
 mod watch;
 
 use std::{
-    collections::{BTreeSet, HashSet, hash_map::DefaultHasher},
-    fs,
-    hash::{Hash, Hasher},
-    io,
+    collections::{BTreeMap, BTreeSet, HashSet},
+    fs, io,
     path::{Component, Path, PathBuf},
 };
 
 use diff_loop_core::{
-    Base, BaseRef, Changes, Checkout, Content, FileDiff, Head, NewSide, OnChange, RefKind,
-    RepoError, Repository, Side, Snapshot, WatchGuard,
+    Base, BaseRef, Changes, Checkout, Content, FileDiff, FileStates, Head, NewSide, OnChange,
+    RefKind, RepoError, Repository, Side, Snapshot, WatchGuard,
 };
 
 use command::{Outcome, Runner};
@@ -377,23 +375,21 @@ impl Repository for Git {
         self.changes_under(base, Some(paths))
     }
 
-    fn fingerprint(&self, base: &Base) -> Result<String, RepoError> {
+    fn file_states(&self, base: &Base) -> Result<FileStates, RepoError> {
         let snapshot = self.snapshot(base)?;
-        let mut hasher = DefaultHasher::new();
-        snapshot.hash(&mut hasher);
         // Between two commits, their ids fix the diff.
-        if snapshot.new == NewSide::WorkingTree {
+        let files = if snapshot.new == NewSide::WorkingTree {
             // Which files differ, and how, without reading the patch (diff-loop-git.md Decision 4).
             let raw = self.diff_output(&snapshot, None, &["--raw", "-z", "--no-abbrev"])?;
-            raw.hash(&mut hasher);
-            let paths = raw::raw_paths(&raw)
-                .map(str::to_owned)
-                .chain(self.untracked(None)?);
-            fingerprint::hash_files(self.root(), paths, &mut hasher);
-        }
-        // Compared only within one run of the app: DefaultHasher is not stable
-        // across Rust versions.
-        Ok(format!("{:016x}", hasher.finish()))
+            let untracked = self.untracked(None)?;
+            let entries = raw::raw_records(&raw)
+                .map(|(header, path)| (header, path.to_owned()))
+                .chain(untracked.into_iter().map(|path| ("untracked", path)));
+            states::states(self.root(), entries)
+        } else {
+            BTreeMap::new()
+        };
+        Ok(FileStates { snapshot, files })
     }
 
     fn blob(&self, snapshot: &Snapshot, side: Side, path: &str) -> Result<Vec<u8>, RepoError> {

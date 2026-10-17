@@ -360,6 +360,29 @@ fn the_fingerprint_follows_no_racy_link_even_to_a_pipe() {
 }
 
 #[test]
+fn an_edit_changes_only_its_own_files_state() {
+    let dir = repo();
+    let git = Git::open(dir.path()).unwrap();
+    write(dir.path(), "src/handler.ts", "one\n");
+    write(dir.path(), "new.ts", "x\n");
+    let before = git.file_states(&Base::Uncommitted).unwrap();
+    assert_eq!(
+        before.files.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["new.ts", "src/handler.ts"]
+    );
+    write(dir.path(), "new.ts", "a longer line\n");
+    let now = git.file_states(&Base::Uncommitted).unwrap();
+    assert_eq!(
+        before.touched_since(&now),
+        Touched::Paths(["new.ts".to_owned()].into())
+    );
+    assert_eq!(
+        git.fingerprint(&Base::Uncommitted).unwrap(),
+        now.fingerprint()
+    );
+}
+
+#[test]
 fn the_fingerprint_of_the_last_commit_is_its_ids() {
     let dir = repo();
     let git = Git::open(dir.path()).unwrap();

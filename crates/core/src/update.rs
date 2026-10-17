@@ -164,7 +164,7 @@ mod tests {
             Content, Side,
             tests::{add, text_file},
         },
-        repository::{Checkout, NewSide, OnChange, Snapshot, WatchGuard},
+        repository::{Checkout, FileStates, NewSide, OnChange, Snapshot, WatchGuard},
     };
 
     /// A checkout whose every file is `files`; records which reads were made.
@@ -221,6 +221,9 @@ mod tests {
         }
         fn fingerprint(&self, _: &Base) -> Result<String, RepoError> {
             unreachable!("update takes no fingerprint")
+        }
+        fn file_states(&self, _: &Base) -> Result<FileStates, RepoError> {
+            unreachable!("update takes no file states")
         }
         fn blob(&self, _: &Snapshot, _: Side, _: &str) -> Result<Vec<u8>, RepoError> {
             unreachable!("update reads no blob")
