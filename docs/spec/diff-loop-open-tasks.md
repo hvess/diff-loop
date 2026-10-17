@@ -40,7 +40,8 @@ contradicts) and the entry says so before it goes.
     has no menu bar (Decision 18). The HIG `offering-help` page offers
     tips to help people "discover faster ways to accomplish a task". Closes when ? (and ⌘-? on macOS, with a Help menu
     item) opens a list of the shortcuts drawn from `BINDINGS`, or the
-    developer decides against one.
+    developer decides against one. The list waits for a design of it (the
+    developer's call, 2026-10-17).
 
 19. **The design's README is not the repository's.** The design project
     holds a `README.md` for a public repository (an MIT licence, release
