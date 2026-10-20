@@ -6,7 +6,7 @@ import type { Place } from "./Place";
  */
 export type Round = { 
 /**
- * Counted from 1 per working tree; never reused once a round is dropped.
+ * Counted from 1 per review; never reused once a round is dropped.
  */
 number: number, 
 /**

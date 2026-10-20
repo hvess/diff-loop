@@ -3,9 +3,10 @@
 ## Project Overview
 
 Diff Loop is a desktop app for reviewing what a coding agent changed:
-it shows the diff of whatever branch or worktree is checked out, takes
-comments on lines, ranges or with suggested code, and copies them as
-Markdown instructions to paste into the agent's session. Do not invent
+it keeps one review per branch, shows that branch's diff live from
+whichever worktree has it checked out (or from its commits when none
+does), takes comments on lines, ranges or with suggested code, and copies
+them as Markdown instructions to paste into the agent's session. Do not invent
 product behaviour; where a decision is not recorded here, in a spec or in
 an ADR, ask the developer.
 
@@ -13,8 +14,8 @@ Shape (quality-gate §2):
 
 | Crate | Path | Role | Spec |
 |---|---|---|---|
-| `diff-loop-core` | `crates/core` | Domain and its ports, `Repository` and `ReviewStore`; no I/O | `docs/spec/diff-loop-core.md` |
-| `diff-loop-git` | `crates/git` | `Repository` over the `git` command line | `docs/spec/diff-loop-git.md` |
+| `diff-loop-core` | `crates/core` | Domain and its ports, `Repository`, `Project` and `ReviewStore`; no I/O | `docs/spec/diff-loop-core.md` |
+| `diff-loop-git` | `crates/git` | `Repository` and `Project` over the `git` command line | `docs/spec/diff-loop-git.md` |
 | `diff-loop-app` | `app/src-tauri` | Composition root and Tauri commands | `docs/spec/diff-loop-app.md` |
 | `diff-loop-review` | `crates/review` | The review loop's commit gate; dev-only | `docs/spec/diff-loop-review.md` |
 
@@ -80,16 +81,17 @@ before reopening a decision they cover.
   Virtual and Shiki; Rust types reach TypeScript through `ts-rs`; git is
   read by running `git` with optional locks off; two `localStorage` keys
   (recent folders, instruction preferences; the second unused since
-  0013, and replaced by the sidebar's width in 0016).
+  0013, and replaced by the sidebar's width in 0016; the first unused
+  since 0026).
 - **0002 — Watch the checkout instead of polling it.** `Repository::watch`
   on the port; `diff-loop-git` watches with `notify`; the app emits
   `repository-changed`, and polls every 2 s only when a watch cannot start.
 - **0003 — Vitest for the front end's tests.** `npm test` in `app/`;
   tests sit beside their module as `<module>.test.ts`.
 - **0004 — Reviews kept between runs.** One per working tree (comments;
-  a note until 0013), through the core's `ReviewStore` port, in
-  `reviews.json` in the app-data directory; a file it cannot read is
-  never overwritten.
+  a note until 0013; per branch since 0026), through the core's
+  `ReviewStore` port, in `reviews.json` in the app-data directory; a file
+  it cannot read is never overwritten.
 - **0005 — Read only what the watch saw touched.** The watch names
   touched paths; `Repository::changes_in` and the core's `update` read
   them again; the app keeps the last load while watching, with what the
@@ -153,8 +155,9 @@ before reopening a decision they cover.
   WebKitGTK, which reads the name too, is light.
 - **0020 — Saved reviews are pruned when their tree is long gone, and
   saved in turn.** `reviews.json` version 3 records when each tree was
-  last seen; a save drops a review whose tree has been missing for 30
-  days, and holds a lock beside the file so two instances take turns.
+  last seen (each project since 0026); a save drops a review whose tree
+  has been missing for 30 days, and holds a lock beside the file so two
+  instances take turns.
 - **0021 — A commit made while the window was closed is followed.** On
   opening, the newest round's commit stands in for the load before, and a
   short id of seven or more hex digits names a round's commit.
@@ -171,6 +174,13 @@ before reopening a decision they cover.
   Linux, macOS and Windows; the local gate checks every commit between,
   as Actions bills macOS at 10x and Windows at 2x on a private
   repository.
+- **0026 — Reviews per branch.** A review is kept per branch of a
+  project (its common git directory), starts with its first comment,
+  keeps its base and where its branch was seen, and is shown live from
+  the worktree that has the branch checked out, or from its commits,
+  never checking anything out; a detached `HEAD` keeps none; a deleted
+  branch takes its reviews; a review switcher moves between them;
+  `reviews.json` is version 4, and earlier reviews are dropped.
 
 ## Key Constraints (non-negotiable)
 

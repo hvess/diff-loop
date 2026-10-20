@@ -2,6 +2,7 @@
 import type { Base } from "./Base";
 import type { BaseChoices } from "./BaseChoices";
 import type { Checkout } from "./Checkout";
+import type { ReviewKey } from "./ReviewKey";
 
 /**
  * A checkout just opened: what it is, what it can be compared with, and
@@ -12,6 +13,10 @@ export type Opening = {
  * What is checked out.
  */
 checkout: Checkout, 
+/**
+ * The review it shows ([`ReviewKey::of`]).
+ */
+key: ReviewKey | null, 
 /**
  * What it can be compared with.
  */

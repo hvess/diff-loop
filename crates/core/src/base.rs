@@ -97,12 +97,17 @@ pub(crate) fn default_branch(
 }
 
 /// The base a newly opened checkout is compared with: its [`default_branch`],
-/// or only the uncommitted changes when there is none.
+/// or with none, only the uncommitted changes, or the last commit on a
+/// branch with no working tree, which has none (ADR 0026 §3).
 #[must_use]
-pub(crate) fn default_base(default_branch: Option<&str>) -> Base {
-    default_branch.map_or(Base::Uncommitted, |name| Base::Ref {
-        name: name.to_owned(),
-    })
+pub(crate) fn default_base(default_branch: Option<&str>, has_worktree: bool) -> Base {
+    match default_branch {
+        Some(name) => Base::Ref {
+            name: name.to_owned(),
+        },
+        None if has_worktree => Base::Uncommitted,
+        None => Base::LastCommit,
+    }
 }
 
 #[cfg(test)]
@@ -193,5 +198,15 @@ mod tests {
             default_branch(&head, &refs(&["main"]), None),
             Some("main".to_owned())
         );
+    }
+
+    #[test]
+    fn with_no_default_branch_a_branch_without_a_worktree_starts_from_its_last_commit() {
+        assert_eq!(default_base(None, true), Base::Uncommitted);
+        assert_eq!(default_base(None, false), Base::LastCommit);
+        let main = Base::Ref {
+            name: "main".into(),
+        };
+        assert_eq!(default_base(Some("main"), false), main);
     }
 }

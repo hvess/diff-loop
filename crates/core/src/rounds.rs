@@ -17,7 +17,7 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Round {
-    /// Counted from 1 per working tree; never reused once a round is dropped.
+    /// Counted from 1 per review; never reused once a round is dropped.
     pub number: u32,
     /// When it was copied, in milliseconds since the Unix epoch.
     #[ts(type = "number")]
@@ -71,9 +71,16 @@ pub fn end_round(request: RoundRequest) -> SavedReview {
     let SavedReview {
         comments,
         mut rounds,
+        base,
+        seen,
     } = review;
     if comments.iter().all(|c| c.resolved.is_some()) {
-        return SavedReview { comments, rounds };
+        return SavedReview {
+            comments,
+            rounds,
+            base,
+            seen,
+        };
     }
     let number = rounds.last().map_or(1, |r| r.number + 1);
     let comments = comments
@@ -117,7 +124,12 @@ pub fn end_round(request: RoundRequest) -> SavedReview {
         commit,
         markdown,
     });
-    prune(SavedReview { comments, rounds })
+    prune(SavedReview {
+        comments,
+        rounds,
+        base,
+        seen,
+    })
 }
 
 /// Up to [`CONTEXT`] lines above and below `target` in `file`, as one run
@@ -157,7 +169,9 @@ fn context(target: &Target, file: Option<&FileDiff>) -> (Vec<String>, Vec<String
 /// A review read from the store merged into the window's, once saving can
 /// resume (ADR 0004 §5): saved comments the window lacks are added, and
 /// rounds copied while the saved ones could not be read count on from them,
-/// their comments following; at most [`KEPT_ROUNDS`] rounds are kept.
+/// their comments following; at most [`KEPT_ROUNDS`] rounds are kept. The
+/// window's base and where it saw the branch stand, the saved ones only
+/// where it has none.
 #[must_use]
 pub fn merge(window: SavedReview, saved: SavedReview) -> SavedReview {
     let after = saved.rounds.last().map_or(0, |r| r.number);
@@ -183,7 +197,12 @@ pub fn merge(window: SavedReview, saved: SavedReview) -> SavedReview {
             ..c
         }))
         .collect();
-    prune(SavedReview { comments, rounds })
+    prune(SavedReview {
+        comments,
+        rounds,
+        base: window.base.or(saved.base),
+        seen: window.seen.or(saved.seen),
+    })
 }
 
 /// `review` with at most [`KEPT_ROUNDS`] rounds: the oldest go, each with the
@@ -192,13 +211,20 @@ fn prune(review: SavedReview) -> SavedReview {
     let SavedReview {
         mut comments,
         mut rounds,
+        base,
+        seen,
     } = review;
     let excess = rounds.len().saturating_sub(KEPT_ROUNDS);
     let dropped: Vec<u32> = rounds.drain(..excess).map(|r| r.number).collect();
     comments.retain(|c| {
         c.resolved.is_none() || c.sent.as_ref().is_none_or(|s| !dropped.contains(&s.round))
     });
-    SavedReview { comments, rounds }
+    SavedReview {
+        comments,
+        rounds,
+        base,
+        seen,
+    }
 }
 
 /// The round a commit on top of `previous` is followed for, seen at `now`:
@@ -229,6 +255,7 @@ mod tests {
             tests::{add, text_file},
         },
         repository::Head,
+        saved::Seen,
     };
 
     fn place() -> Place {
@@ -267,7 +294,11 @@ mod tests {
 
     fn request(comments: Vec<Comment>, rounds: Vec<Round>) -> RoundRequest {
         RoundRequest {
-            review: SavedReview { comments, rounds },
+            review: SavedReview {
+                comments,
+                rounds,
+                ..SavedReview::default()
+            },
             files: vec![file()],
             place: place(),
             commit: Some("abc".into()),
@@ -482,6 +513,7 @@ mod tests {
         let saved = SavedReview {
             comments: vec![in_round("old", 2), draft("shared", 1, &["l1"])],
             rounds: vec![round_n(1), round_n(2)],
+            ..SavedReview::default()
         };
         let window = SavedReview {
             comments: vec![
@@ -492,6 +524,7 @@ mod tests {
                 },
             ],
             rounds: vec![round_n(1)],
+            ..SavedReview::default()
         };
         let merged = merge(window, saved);
         assert_eq!(
@@ -511,6 +544,32 @@ mod tests {
     }
 
     #[test]
+    fn a_review_merged_back_keeps_the_windows_base_and_seen_and_the_saved_ones_where_it_has_none() {
+        let seen = |commit: &str| {
+            Some(Seen {
+                commit: commit.into(),
+                at: 1,
+            })
+        };
+        let saved = SavedReview {
+            base: Some(Base::LastCommit),
+            seen: seen("old"),
+            ..SavedReview::default()
+        };
+        let window = SavedReview {
+            base: Some(Base::Uncommitted),
+            ..SavedReview::default()
+        };
+        let merged = merge(window, saved.clone());
+        assert_eq!(merged.base, Some(Base::Uncommitted));
+        assert_eq!(merged.seen, seen("old"));
+        assert_eq!(
+            merge(SavedReview::default(), saved).base,
+            Some(Base::LastCommit)
+        );
+    }
+
+    #[test]
     fn a_review_merged_back_keeps_the_bound() {
         let round_n = |number: u32| Round {
             number,
@@ -524,10 +583,12 @@ mod tests {
             rounds: (1..=KEPT_ROUNDS)
                 .map(|n| round_n(u32::try_from(n).unwrap()))
                 .collect(),
+            ..SavedReview::default()
         };
         let window = SavedReview {
             comments: vec![],
             rounds: vec![round_n(1), round_n(2)],
+            ..SavedReview::default()
         };
         let merged = merge(window, saved);
         assert_eq!(merged.rounds.len(), KEPT_ROUNDS);

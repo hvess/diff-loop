@@ -11,7 +11,13 @@ the core owns — anchoring, instructions, what changed, what a copy sends
 tree, highlighting, find, what a comment's fields mean on screen
 (`lifecycle.ts`, which reads them; its `reopened`, and the preview's
 count of new comments by it, `previewSubtitle`, repeat the core's one
-comparison, the seam the ADR 0015 build chose), what to send and when.
+comparison, the seam the ADR 0015 build chose; `holdsReview` repeats
+`SavedReview::is_empty`, the seam the ADR 0026 build chose, since the
+window asks it on every comment; the store's `seen`, which a load moves
+to the branch's new commit between the core's `resume` calls, Decision
+33), what to send and when (`canSend`
+says whether Copy is offered at all: not where no worktree has the
+branch, ADR 0026 §3; what a copy sends stays the core's).
 
 ## Data from Rust
 
@@ -39,7 +45,7 @@ comparison, the seam the ADR 0015 build chose), what to send and when.
   base or file that is no longer current is dropped (`stillOpen`,
   `sameBase`, a signature check).
 - **Persisted state** is only what ADR 0001 §5 (as ADR 0016 §2 amends
-  it), ADR 0004 and ADR 0015 §9 name.
+  it), ADR 0004, ADR 0015 §9 and ADR 0026 §2 and §4 name.
 
 ## Cost
 

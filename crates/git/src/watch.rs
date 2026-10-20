@@ -21,9 +21,10 @@ const SETTLE: Duration = Duration::from_millis(250);
 /// Watches `root` and each of `git_dirs` recursively and calls `on_change`
 /// once per burst of events, with the paths under `root` it touched, until
 /// the returned guard is dropped. A git directory inside `root` is watched
-/// with it; none of its paths are reported, but a change to `index` touches
-/// everything: a change to the index alone names no working-tree path
-/// (`git rm --cached`; ADR 0018 §1).
+/// with it; none of its paths are reported, but a change to `index`, the
+/// working tree's, touches everything: a change to the index alone names no
+/// working-tree path (`git rm --cached`; ADR 0018 §1). A branch with no
+/// working tree has no index.
 ///
 /// # Errors
 /// [`RepoError::Failed`] when the platform refuses a watch (on Linux, the
@@ -31,7 +32,7 @@ const SETTLE: Duration = Duration::from_millis(250);
 pub(crate) fn watch(
     root: &Path,
     git_dirs: &[PathBuf],
-    index: &Path,
+    index: Option<&Path>,
     on_change: OnChange,
 ) -> Result<WatchGuard, RepoError> {
     let failed = |e: NotifyError| RepoError::Failed {
@@ -40,7 +41,7 @@ pub(crate) fn watch(
     let watched = WatchedPaths {
         root: root.to_path_buf(),
         git_dirs: git_dirs.to_vec(),
-        index: index.to_path_buf(),
+        index: index.map(Path::to_path_buf),
     };
     let (events, bursts) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |event: Result<Event, NotifyError>| {
@@ -89,7 +90,7 @@ struct WatchedPaths {
     git_dirs: Vec<PathBuf>,
     /// The working tree's index; the app's own git calls never write it
     /// (`GIT_OPTIONAL_LOCKS`), so its changes are someone else's.
-    index: PathBuf,
+    index: Option<PathBuf>,
 }
 
 impl WatchedPaths {
@@ -127,7 +128,7 @@ impl WatchedPaths {
     }
 
     fn relative(&self, path: &Path) -> Touched {
-        if path == self.index {
+        if self.index.as_deref() == Some(path) {
             return Touched::Everything;
         }
         if self.git_dirs.iter().any(|dir| path.starts_with(dir)) {
@@ -164,7 +165,7 @@ mod tests {
         WatchedPaths {
             root: PathBuf::from("/repo"),
             git_dirs: vec![PathBuf::from("/repo/.git"), PathBuf::from("/elsewhere/wt")],
-            index: PathBuf::from("/elsewhere/wt/index"),
+            index: Some(PathBuf::from("/elsewhere/wt/index")),
         }
     }
 
@@ -233,7 +234,7 @@ mod tests {
         let watched = WatchedPaths {
             root: dir.path().to_path_buf(),
             git_dirs: vec![dir.path().join(".git")],
-            index: dir.path().join(".git/index"),
+            index: Some(dir.path().join(".git/index")),
         };
         let src = dir.path().join("src");
         let at = |kind| Event {

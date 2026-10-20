@@ -21,7 +21,9 @@ and is paid even when nothing changed.
 2. **`diff-loop-git` watches with the `notify` crate** (8.x), recursively,
    over the working tree and, for a worktree, its git directory and the
    repository's common directory, which lie outside it. A burst of events
-   is reported once, after 250 ms of quiet.
+   is reported once, after 250 ms of quiet. (Amended by ADR 0026 §3: a
+   branch no worktree has checked out is watched in the common directory
+   alone.)
 3. **The app emits `repository-changed`** for each report; the front end
    checks the fingerprint on that event and when the window gains focus.
    (Amended by ADR 0005 §4: while watching, it loads instead.)

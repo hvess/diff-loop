@@ -47,10 +47,13 @@ describe("menuState", () => {
     expect(menuState(store({ comments: [{ ...comment("current"), sent, resolved: "byReviewer" }], openComment: "current" })).resolve).toBe("unresolve");
   });
 
-  it("offers commenting only on selected lines, and not while writing a comment", () => {
+  it("offers commenting only on selected lines of a branch, and not while writing a comment", () => {
     const selection = { path: "a.ts", side: "new" as const, anchor: 1, head: 3, dragging: false };
-    expect(menuState(store({ selection })).canComment).toBe(true);
-    expect(menuState(store({ selection, composer: { path: "a.ts" } as Store["composer"] })).canComment).toBe(false);
+    const key = { project: "/p/.git", branch: "b" };
+    expect(menuState(store({ selection, key })).canComment).toBe(true);
+    expect(menuState(store({ selection, key, composer: { path: "a.ts" } as Store["composer"] })).canComment).toBe(false);
+    // A detached HEAD has no review to keep a comment in (ADR 0026 §5).
+    expect(menuState(store({ selection, key: null })).canComment).toBe(false);
   });
 });
 

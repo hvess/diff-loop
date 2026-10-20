@@ -5,7 +5,7 @@ The domain: what changed on a checkout, review comments, and the instructions th
 **Status:** active — first version landed.
 **Scope:** `crates/core`. Excludes reading git (`diff-loop-git.md`) and the UI (`diff-loop-app.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-17
+**Last Updated:** 2026-10-19
 
 ## Why
 
@@ -29,6 +29,7 @@ Each is a pure function tested here.
 11. Rounds (`rounds.rs`, ADR 0015): `end_round` sends every open comment with its code and context, and keeps the last 20 rounds — done 2026-10-15.
 12. Judging a sent comment (`anchor.rs`, ADR 0015 §3), and comparing code with whitespace aside (`code.rs`, §7) — done 2026-10-15.
 13. The base picker as designed 2026-10-17: `BaseRef::updated`, `Repository::uncommitted_lines` and `LineCounts`, and `choices` with the `default_branch` (Decisions 13 and 17) — done 2026-10-17.
+14. Reviews per branch (ADR 0026): `ReviewKey`, `SavedReview::base` and `seen`, `Checkout::project` and `worktree`, `resume` (Decision 18), and the `Project` port with `check_kept` (Decision 19) — done 2026-10-19.
 
 ## Decisions
 
@@ -37,7 +38,9 @@ Each is a pure function tested here.
 2. **The default base** is the first that exists of: the remote's
    default branch (local copy first), `main`, `master`, `origin/main`,
    `origin/master`. The checked-out branch counts as existing; when it is
-   the one found, or none exists, only uncommitted changes are compared.
+   the one found, or none exists, only uncommitted changes are compared,
+   or on a branch with no worktree, which has none, the last commit
+   (`default_base`, ADR 0026 §3).
 3. **A line comment's range is its code.** `Target::Lines` holds a start
    and the commented lines; its last line is `Target::end`, so a range
    cannot disagree with its code. The front end keeps a range inside one
@@ -81,10 +84,14 @@ Each is a pure function tested here.
     new method; it splits as `str::lines` does, like the diff (Pitfalls).
     A range past the file's end returns what exists.
 
-11. **A review is kept per working tree** (`ReviewStore`, ADR 0004 §1):
-    its comments and, since 2026-10-15, its rounds (ADR 0015 §9), whatever
-    the base; no note since ADR 0013 §3. An empty `SavedReview`, with
-    neither, removes the entry.
+11. **A review is kept per branch of a project** (`ReviewStore`,
+    `ReviewKey`, ADR 0026 §1; per working tree until 2026-10-19, ADR 0004
+    §1): its comments and, since 2026-10-15, its rounds (ADR 0015 §9),
+    whatever the base, with the base the reviewer chose and where its
+    branch was seen (since 2026-10-19); no note since ADR 0013 §3. An
+    empty `SavedReview`, with neither comments nor rounds, removes the
+    entry, whatever its base. A detached `HEAD` has no key
+    (`ReviewKey::of`).
 
 12. **`load` since the last load reads only what was touched**
     (`update`, ADR 0005 §3), by their top-level directories past
@@ -153,8 +160,9 @@ Each is a pure function tested here.
     line as the code on the next load. `merge` folds a saved review
     into the window's once a failed read is read again (ADR 0004 §5):
     saved comments the window lacks are added, rounds copied meanwhile
-    count on from the saved ones with their comments following, and the
-    bound holds. With nothing
+    count on from the saved ones with their comments following, the
+    window's base and seen commit stand, the saved ones only where it has
+    none (since 2026-10-19, ADR 0026), and the bound holds. With nothing
     unresolved, nothing changes. A lost comment sent is outdated. The
     last 20 rounds are kept
     (`KEPT_ROUNDS`): an older one drops with the resolved comments sent
@@ -167,6 +175,34 @@ Each is a pure function tested here.
     opens, so the row follows a switched branch, and names none while
     the checkout is that branch.
 
+18. **A review shown again is resumed** (`resume`, ADR 0026 §4): the
+    commit it was seen at against the checkout's says whether its
+    branch is where it was, moved on (by how many commits), or
+    rewritten (`SinceSeen`, `since_seen`); a rewrite deletes the rounds
+    sent on commits no longer under the branch, one `commits_between`
+    each, and leaves their comments to follow their code. The base is
+    the review's own, unless it is the uncommitted changes and the
+    checkout has no working tree, when it is the caller's default; the
+    kept base stays for when it can be shown. It is then seen at the
+    checkout's commit, at the time given.
+
+19. **The review switcher reads a project through the `Project` port**
+    (`project.rs`, ADR 0026 §7): its branches, one per name, each with
+    the worktree that has it checked out (`Branch`), `worktree_of`, which
+    a poll asks and which reads the worktrees alone, and `commits_between`.
+    A `Branch` says where it is as a `Location`: local, with its
+    upstream's remote and worktree, or a remote's alone, which no
+    worktree has; its commit is `None` before the first. `check_kept`
+    (`check.rs`) reads a project's kept reviews from the `ReviewStore`,
+    names which still have a branch and where each went since last seen,
+    and which do not (`GoneReview`), with how many comments go with each,
+    and deletes those (ADR 0026 §6); a project that cannot be read
+    deletes none (`CheckError`). `Opening::key` and `Review::key` name
+    the review a checkout shows (`ReviewKey::of`), so the front end never
+    decides which review a checkout is.
+    `SavedReview::summary` gives what a row shows: its comments, those
+    open, its latest round and where it was seen.
+
 ## Pitfalls
 
 - A suspended judgement (ADR 0015 §8) clears the verdict, so "applied
@@ -178,6 +214,14 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-19, reviews per branch)
+
+Step 14 landed (ADR 0026): a review is kept per branch of a project
+(Decision 11 as changed), resumed where its branch went (Decision 18),
+and a project is read through the `Project` port (Decision 19); the
+default base of a branch with no worktree is its last commit (Decision
+2).
 
 ## Progress (2026-10-17, the base picker as designed)
 

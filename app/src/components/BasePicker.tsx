@@ -5,7 +5,7 @@ import { api } from "../api";
 import type { Base } from "../bindings/Base";
 import type { BaseRef } from "../bindings/BaseRef";
 import type { LineCounts } from "../bindings/LineCounts";
-import { sameBase, useStore } from "../store";
+import { holdsReview, isLive, sameBase, useStore } from "../store";
 import { LineTotals } from "./LineTotals";
 
 /** A row that compares with `base`; one without a base is shown and cannot be picked. */
@@ -17,6 +17,8 @@ type Choice = {
   trail: ReactNode;
   /** The trail's full meaning, where it is abbreviated. */
   title?: string;
+  /** Under a row that cannot be picked, why not. */
+  why?: string;
 };
 
 /** A row that opens a list of refs in place (diff-loop-app.md Decision 32). */
@@ -185,6 +187,8 @@ export function listItems(at: {
   base: Base;
   uncommitted: LineCounts | null;
   commit: string | null | undefined;
+  /** The branch shown, when no worktree has it checked out: it has no uncommitted changes (ADR 0026 §3). */
+  committedOnly: string | null;
   now: number;
 }): Listing {
   const q = at.query.trim();
@@ -229,13 +233,24 @@ export function listItems(at: {
     return { items, more };
   }
   const items: Item[] = [
-    choiceItem({
-      key: "uncommitted",
-      base: { kind: "uncommitted" },
-      label: "Uncommitted changes",
-      mono: false,
-      trail: lineTrail(at.uncommitted),
-    }),
+    choiceItem(
+      at.committedOnly === null
+        ? {
+            key: "uncommitted",
+            base: { kind: "uncommitted" },
+            label: "Uncommitted changes",
+            mono: false,
+            trail: lineTrail(at.uncommitted),
+          }
+        : {
+            key: "uncommitted",
+            base: null,
+            label: "Uncommitted changes",
+            mono: false,
+            trail: null,
+            why: `${at.committedOnly} isn’t checked out in any worktree. Check it out in one to compare with its uncommitted changes.`,
+          },
+    ),
     choiceItem({
       key: "lastCommit",
       base: { kind: "lastCommit" },
@@ -303,9 +318,12 @@ const ROW = "grid h-8 flex-none grid-cols-[16px_minmax(0,1fr)_auto] items-center
 export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const base = useStore((s) => s.base);
   const choices = useStore((s) => s.choices);
-  const setBase = useStore((s) => s.setBase);
+  const chooseBase = useStore((s) => s.chooseBase);
   const commit = useStore((s) => s.review?.checkout.commit);
   const head = useStore((s) => (s.review?.checkout ?? s.opening?.checkout)?.head);
+  const live = useStore(isLive);
+  // Kept with a review once it has one: a branch only looked at keeps nothing (ADR 0026 §2).
+  const kept = useStore((s) => s.key !== null && holdsReview(s));
   const [query, setQuery] = useState("");
   const [groupKey, setGroupKey] = useState<string | null>(null);
   const [active, setActive] = useState(0);
@@ -319,25 +337,32 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
   useEffect(() => {
     if (!open) return;
     useStore.getState().refreshChoices();
-    let live = true;
+    // A branch with no worktree has no uncommitted changes to count.
+    let asked = live;
+    if (!asked) {
+      setUncommitted(null);
+      setNow(Date.now());
+      return;
+    }
     api.uncommittedLines().then(
       (counts) => {
-        if (!live) return;
+        if (!asked) return;
         setUncommitted(counts);
         setNow(Date.now());
       },
       () => {
-        if (!live) return;
+        if (!asked) return;
         setUncommitted(null);
         setNow(Date.now());
       },
     );
     return () => {
-      live = false;
+      asked = false;
     };
-  }, [open]);
+  }, [open, live]);
 
   const current = head?.kind === "branch" ? head.name : null;
+  const committedOnly = live ? null : current;
   // Per load of the refs: they can number in the thousands.
   const groups = useMemo(() => groupsOf(choices.refs, current), [choices.refs, current]);
   const group = groups.find((g) => g.key === groupKey) ?? null;
@@ -352,9 +377,10 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
         base,
         uncommitted,
         commit,
+        committedOnly,
         now,
       }),
-    [groups, choices, base, uncommitted, commit, now],
+    [groups, choices, base, uncommitted, commit, committedOnly, now],
   );
   // Not per render: a search reads every ref, and moving the highlight renders again.
   const { items, more } = useMemo(() => listing(group, query), [listing, group, query]);
@@ -391,7 +417,7 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
     if (next === null) return;
     onOpenChange(false);
     setQuery("");
-    if (!sameBase(next, base)) void setBase(next);
+    if (!sameBase(next, base)) void chooseBase(next);
   };
 
   const row = (item: Item, index: number) => {
@@ -419,6 +445,21 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
     }
     const { choice } = item;
     const disabled = choice.base === null;
+    if (choice.why !== undefined) {
+      return (
+        <div
+          role="option"
+          aria-selected={false}
+          aria-disabled
+          className="grid flex-none grid-cols-[16px_minmax(0,1fr)] gap-x-2 gap-y-px rounded-lg px-2.5 py-1.5"
+        >
+          <span />
+          <span className="text-faint">{choice.label}</span>
+          <span />
+          <span className="text-xs leading-[1.45] text-muted">{choice.why}</span>
+        </div>
+      );
+    }
     return (
       <button
         type="button"
@@ -515,6 +556,11 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
               <span className="px-2.5 py-2 text-muted">{group?.none ?? "No matching branch or tag"}</span>
             )}
           </div>
+          {kept && !group && !query.trim() && (
+            <p className="m-0 mt-1 border-t border-border px-2.5 pt-2 pb-1 text-xs leading-[1.45] text-muted">
+              Saved with this review. Switching back to it restores this base.
+            </p>
+          )}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

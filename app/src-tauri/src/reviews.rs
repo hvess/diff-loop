@@ -8,38 +8,38 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use diff_loop_core::{ReviewStore, SavedReview, StoreError};
+use diff_loop_core::{ReviewKey, ReviewStore, SavedReview, StoreError};
 use serde::{Deserialize, Serialize};
 
-/// The format [`JsonReviews`] writes (ADR 0020 §1). It also reads
-/// [`EARLIER`]; a file with any other version is refused, never overwritten
-/// (ADR 0004 §3).
-const VERSION: u32 = 3;
+/// The format [`JsonReviews`] writes (ADR 0026 §8): reviews by project, then
+/// by branch. It also reads [`EARLIER`]; a file with any other version is
+/// refused, never overwritten (ADR 0004 §3).
+const VERSION: u32 = 4;
 
-/// The formats before: 1 without rounds, whose comments read as drafts
-/// (ADR 0015 §9), and 2 without when each tree was last seen. The file is
-/// written back as [`VERSION`] at the next save.
-const EARLIER: [u32; 2] = [1, 2];
+/// The formats before, kept by working tree, which say nothing of a branch:
+/// read as holding no review, and written back as [`VERSION`] at the next
+/// save, so their reviews are dropped (ADR 0026 §8).
+const EARLIER: [u32; 3] = [1, 2, 3];
 
-/// How long a review is kept once its working tree is gone: long enough for
-/// a drive or share that is away for a while (ADR 0020 §2).
+/// How long a project's reviews are kept once its git directory is gone:
+/// long enough for a drive or share that is away for a while (ADR 0020 §2).
 const KEPT_MISSING: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 
 /// The file's contents.
 #[derive(Debug, Serialize, Deserialize)]
 struct Kept {
     version: u32,
-    /// By working-tree root; a `BTreeMap`, so rewriting the file reorders nothing.
-    reviews: BTreeMap<String, Entry>,
+    /// By project, as [`ReviewKey::project`]; `BTreeMap`s, so rewriting the
+    /// file reorders nothing.
+    projects: BTreeMap<String, Entry>,
 }
 
-/// One working tree's review, and when its tree was last seen.
-#[derive(Debug, Serialize, Deserialize)]
+/// One project's reviews, and when its git directory was last seen.
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct Entry {
-    #[serde(flatten)]
-    review: SavedReview,
-    /// Milliseconds since the Unix epoch; absent in an earlier format, when
-    /// the next save counts it as seen then.
+    /// By branch, as [`ReviewKey::branch`].
+    reviews: BTreeMap<String, SavedReview>,
+    /// Milliseconds since the Unix epoch; `None` until a save first finds it.
     #[serde(default)]
     seen: Option<u64>,
 }
@@ -82,12 +82,7 @@ impl JsonReviews {
     fn read(&self) -> Result<Kept, StoreError> {
         let bytes = match fs::read(&self.path) {
             Ok(bytes) => bytes,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                return Ok(Kept {
-                    version: VERSION,
-                    reviews: BTreeMap::new(),
-                });
-            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Kept::empty()),
             Err(e) => return Err(failed(&self.path, &e)),
         };
         let unreadable = |e: serde_json::Error| failed(&self.path, &e);
@@ -100,11 +95,10 @@ impl JsonReviews {
                 ),
             });
         }
-        let kept: Kept = serde_json::from_slice(&bytes).map_err(unreadable)?;
-        Ok(Kept {
-            version: VERSION,
-            ..kept
-        })
+        if EARLIER.contains(&version) {
+            return Ok(Kept::empty());
+        }
+        serde_json::from_slice(&bytes).map_err(unreadable)
     }
 
     /// Replaces the file whole: written beside it, then renamed over it, so
@@ -120,60 +114,84 @@ impl JsonReviews {
     }
 }
 
+impl Kept {
+    fn empty() -> Self {
+        Self {
+            version: VERSION,
+            projects: BTreeMap::new(),
+        }
+    }
+}
+
 impl ReviewStore for JsonReviews {
-    fn saved(&self, root: &str) -> Result<SavedReview, StoreError> {
+    fn saved(&self, key: &ReviewKey) -> Result<SavedReview, StoreError> {
         Ok(self
             .read()?
-            .reviews
-            .remove(root)
-            .map(|entry| entry.review)
+            .projects
+            .remove(&key.project)
+            .and_then(|mut entry| entry.reviews.remove(&key.branch))
             .unwrap_or_default())
     }
 
-    fn save(&self, root: &str, review: &SavedReview) -> Result<(), StoreError> {
-        // Which trees are there, found before the lock: a share that hangs
+    fn save(&self, key: &ReviewKey, review: &SavedReview) -> Result<(), StoreError> {
+        // Which projects are there, found before the lock: a share that hangs
         // must not hold up another instance's save.
         let mut present: HashSet<String> = self
             .read()?
-            .reviews
+            .projects
             .into_keys()
-            .filter(|root| Path::new(root).is_dir())
+            .filter(|project| Path::new(project).is_dir())
             .collect();
-        present.insert(root.to_owned());
+        present.insert(key.project.clone());
         // Every save, in this instance or another, takes its turn on the file
         // (ADR 0020 §3).
         let _file = self.lock_file()?;
         let mut kept = self.read()?;
+        let entry = kept.projects.entry(key.project.clone()).or_default();
         if review.is_empty() {
-            kept.reviews.remove(root);
+            entry.reviews.remove(&key.branch);
         } else {
-            kept.reviews.insert(
-                root.to_owned(),
-                Entry {
-                    review: review.clone(),
-                    seen: None,
-                },
-            );
+            entry.reviews.insert(key.branch.clone(), review.clone());
         }
-        prune(&mut kept, millis(SystemTime::now()), |root| {
-            present.contains(root)
+        prune(&mut kept, millis(SystemTime::now()), |project| {
+            present.contains(project)
         });
         self.write(&kept)
     }
+
+    fn kept(&self) -> Result<Vec<(ReviewKey, SavedReview)>, StoreError> {
+        Ok(self
+            .read()?
+            .projects
+            .into_iter()
+            .flat_map(|(project, entry)| {
+                entry.reviews.into_iter().map(move |(branch, review)| {
+                    (
+                        ReviewKey {
+                            project: project.clone(),
+                            branch,
+                        },
+                        review,
+                    )
+                })
+            })
+            .collect())
+    }
 }
 
-/// `kept` with each tree `exists` says is there, and each not seen yet,
-/// marked seen at `now`, and each one missing for longer than
-/// [`KEPT_MISSING`] dropped (ADR 0020 §2). O(reviews) checks.
+/// `kept` with each project `exists` says is there, and each not seen yet,
+/// marked seen at `now`; each one missing for longer than [`KEPT_MISSING`],
+/// and each with no review left, dropped (ADR 0020 §2). O(projects) checks.
 fn prune(kept: &mut Kept, now: u64, exists: impl Fn(&str) -> bool) {
     let limit = u64::try_from(KEPT_MISSING.as_millis()).unwrap_or(u64::MAX);
-    kept.reviews.retain(|root, entry| {
-        if exists(root) || entry.seen.is_none() {
+    kept.projects.retain(|project, entry| {
+        if exists(project) || entry.seen.is_none() {
             entry.seen = Some(now);
         }
-        entry
-            .seen
-            .is_some_and(|seen| now.saturating_sub(seen) <= limit)
+        !entry.reviews.is_empty()
+            && entry
+                .seen
+                .is_some_and(|seen| now.saturating_sub(seen) <= limit)
     });
 }
 
@@ -204,6 +222,13 @@ mod tests {
         JsonReviews::new(dir.path().join("data").join("reviews.json"))
     }
 
+    fn key(project: &str, branch: &str) -> ReviewKey {
+        ReviewKey {
+            project: project.into(),
+            branch: branch.into(),
+        }
+    }
+
     fn with_comment(text: &str) -> SavedReview {
         SavedReview {
             comments: vec![Comment {
@@ -217,148 +242,150 @@ mod tests {
                 sent: None,
                 resolved: None,
             }],
-            rounds: vec![],
+            ..SavedReview::default()
         }
     }
 
     #[test]
     fn nothing_saved_reads_as_an_empty_review() {
         let dir = TempDir::new().unwrap();
-        assert_eq!(reviews(&dir).saved("/r").unwrap(), SavedReview::default());
-    }
-
-    #[test]
-    fn a_saved_review_reads_back_per_root() {
-        let dir = TempDir::new().unwrap();
-        let store = reviews(&dir);
-        store.save("/a", &with_comment("one")).unwrap();
-        store.save("/b", &with_comment("two")).unwrap();
-        assert_eq!(store.saved("/a").unwrap(), with_comment("one"));
-        assert_eq!(reviews(&dir).saved("/b").unwrap(), with_comment("two"));
-    }
-
-    #[test]
-    fn a_note_kept_by_an_earlier_version_is_ignored() {
-        let dir = TempDir::new().unwrap();
-        let store = reviews(&dir);
-        fs::create_dir_all(store.path.parent().unwrap()).unwrap();
-        let earlier = r#"{"version":1,"reviews":{"/a":{"comments":[],"note":"Keep it small."}}}"#;
-        fs::write(&store.path, earlier).unwrap();
-        assert_eq!(store.saved("/a").unwrap(), SavedReview::default());
-    }
-
-    #[test]
-    fn an_earlier_format_reads_its_comments_as_drafts_and_is_written_back_as_the_current_one() {
-        let dir = TempDir::new().unwrap();
-        let store = reviews(&dir);
-        fs::create_dir_all(store.path.parent().unwrap()).unwrap();
-        let earlier = r#"{"version":1,"reviews":{"/a":{"comments":[{"id":"c","path":"a.ts","target":{"kind":"file"},"text":"one","suggestion":null,"state":"current"}]}}}"#;
-        fs::write(&store.path, earlier).unwrap();
-        assert_eq!(store.saved("/a").unwrap(), with_comment("one"));
-        store.save("/b", &with_comment("two")).unwrap();
-        let written: serde_json::Value =
-            serde_json::from_slice(&fs::read(&store.path).unwrap()).unwrap();
-        assert_eq!(written["version"], 3);
-        assert_eq!(store.saved("/a").unwrap(), with_comment("one"));
-    }
-
-    #[test]
-    fn a_version_2_file_is_read_and_written_back_as_the_current_one() {
-        let dir = TempDir::new().unwrap();
-        let store = reviews(&dir);
-        fs::create_dir_all(store.path.parent().unwrap()).unwrap();
-        let earlier = r#"{"version":2,"reviews":{"/a":{"comments":[{"id":"c","path":"a.ts","target":{"kind":"file"},"text":"one","suggestion":null,"state":"current","place":null,"sent":null,"resolved":null}],"rounds":[]}}}"#;
-        fs::write(&store.path, earlier).unwrap();
-        assert_eq!(store.saved("/a").unwrap(), with_comment("one"));
-        store.save("/b", &with_comment("two")).unwrap();
-        let kept = store.read().unwrap();
-        assert!(
-            kept.reviews["/a"].seen.is_some(),
-            "counted as seen at the save"
+        assert_eq!(
+            reviews(&dir).saved(&key("/p", "b")).unwrap(),
+            SavedReview::default()
         );
-        let written: serde_json::Value =
-            serde_json::from_slice(&fs::read(&store.path).unwrap()).unwrap();
-        assert_eq!(written["version"], 3);
+        assert!(reviews(&dir).kept().unwrap().is_empty());
     }
 
     #[test]
-    fn saving_an_empty_review_removes_it() {
+    fn a_saved_review_reads_back_per_project_and_branch() {
         let dir = TempDir::new().unwrap();
         let store = reviews(&dir);
-        store.save("/a", &with_comment("one")).unwrap();
-        store.save("/a", &SavedReview::default()).unwrap();
-        let kept = store.read().unwrap();
-        assert!(kept.reviews.is_empty());
+        store.save(&key("/p", "a"), &with_comment("one")).unwrap();
+        store.save(&key("/p", "b"), &with_comment("two")).unwrap();
+        store.save(&key("/q", "a"), &with_comment("three")).unwrap();
+        assert_eq!(store.saved(&key("/p", "a")).unwrap(), with_comment("one"));
+        assert_eq!(
+            reviews(&dir).saved(&key("/p", "b")).unwrap(),
+            with_comment("two")
+        );
+        assert_eq!(store.saved(&key("/q", "a")).unwrap(), with_comment("three"));
+        let kept: Vec<ReviewKey> = store.kept().unwrap().into_iter().map(|(k, _)| k).collect();
+        assert_eq!(kept, [key("/p", "a"), key("/p", "b"), key("/q", "a")]);
+    }
+
+    #[test]
+    fn an_earlier_format_kept_by_working_tree_is_dropped_at_the_next_save() {
+        for earlier in [
+            r#"{"version":1,"reviews":{"/a":{"comments":[],"note":"Keep it small."}}}"#,
+            r#"{"version":2,"reviews":{"/a":{"comments":[],"rounds":[]}}}"#,
+            r#"{"version":3,"reviews":{"/a":{"comments":[],"rounds":[],"seen":1}}}"#,
+        ] {
+            let dir = TempDir::new().unwrap();
+            let store = reviews(&dir);
+            fs::create_dir_all(store.path.parent().unwrap()).unwrap();
+            fs::write(&store.path, earlier).unwrap();
+            assert!(store.kept().unwrap().is_empty(), "{earlier}");
+            store.save(&key("/p", "b"), &with_comment("two")).unwrap();
+            let written: serde_json::Value =
+                serde_json::from_slice(&fs::read(&store.path).unwrap()).unwrap();
+            assert_eq!(written["version"], 4);
+            assert_eq!(store.kept().unwrap().len(), 1);
+        }
+    }
+
+    #[test]
+    fn saving_an_empty_review_removes_it_and_its_project_with_no_other() {
+        let dir = TempDir::new().unwrap();
+        let store = reviews(&dir);
+        store.save(&key("/p", "a"), &with_comment("one")).unwrap();
+        store.save(&key("/p", "b"), &with_comment("two")).unwrap();
+        store
+            .save(&key("/p", "a"), &SavedReview::default())
+            .unwrap();
+        assert_eq!(store.read().unwrap().projects["/p"].reviews.len(), 1);
+        store
+            .save(&key("/p", "b"), &SavedReview::default())
+            .unwrap();
+        assert!(store.read().unwrap().projects.is_empty());
     }
 
     const DAY: u64 = 24 * 60 * 60 * 1000;
 
     fn entry(seen: Option<u64>) -> Entry {
         Entry {
-            review: with_comment("one"),
+            reviews: BTreeMap::from([("b".to_owned(), with_comment("one"))]),
             seen,
         }
     }
 
     #[test]
-    fn a_tree_seen_is_marked_and_one_missing_past_thirty_days_is_dropped() {
+    fn a_project_seen_is_marked_and_one_missing_past_thirty_days_is_dropped() {
         let mut kept = Kept {
             version: VERSION,
-            reviews: BTreeMap::from([
+            projects: BTreeMap::from([
                 ("/here".into(), entry(Some(0))),
                 ("/away".into(), entry(Some(40 * DAY - 30 * DAY))),
                 ("/gone".into(), entry(Some(0))),
-                ("/earlier".into(), entry(None)),
+                ("/new".into(), entry(None)),
             ]),
         };
-        prune(&mut kept, 40 * DAY, |root| root == "/here");
+        prune(&mut kept, 40 * DAY, |project| project == "/here");
         let seen: Vec<_> = kept
-            .reviews
+            .projects
             .iter()
-            .map(|(root, e)| (root.as_str(), e.seen))
+            .map(|(project, e)| (project.as_str(), e.seen))
             .collect();
         assert_eq!(
             seen,
             [
                 ("/away", Some(10 * DAY)),
-                ("/earlier", Some(40 * DAY)),
                 ("/here", Some(40 * DAY)),
+                ("/new", Some(40 * DAY)),
             ]
         );
     }
 
     #[test]
-    fn a_saved_review_records_when_its_tree_was_seen() {
+    fn a_saved_review_records_when_its_project_was_seen() {
         let dir = TempDir::new().unwrap();
         let store = reviews(&dir);
-        let root = dir.path().to_str().unwrap();
-        store.save(root, &with_comment("one")).unwrap();
-        let kept = store.read().unwrap();
-        assert!(kept.reviews[root].seen.is_some());
-        assert_eq!(store.saved(root).unwrap(), with_comment("one"));
+        let project = dir.path().to_str().unwrap();
+        store
+            .save(&key(project, "b"), &with_comment("one"))
+            .unwrap();
+        assert!(store.read().unwrap().projects[project].seen.is_some());
+        assert_eq!(
+            store.saved(&key(project, "b")).unwrap(),
+            with_comment("one")
+        );
     }
 
     #[test]
     fn two_instances_saving_at_once_keep_each_others_reviews() {
         let dir = TempDir::new().unwrap();
-        let roots: Vec<String> = (0..2)
-            .map(|i| dir.path().join(format!("tree{i}")))
-            .inspect(|tree| fs::create_dir_all(tree).unwrap())
-            .map(|tree| tree.to_string_lossy().into_owned())
+        let projects: Vec<String> = (0..2)
+            .map(|i| dir.path().join(format!("project{i}")))
+            .inspect(|project| fs::create_dir_all(project).unwrap())
+            .map(|project| project.to_string_lossy().into_owned())
             .collect();
         thread::scope(|scope| {
-            for root in &roots {
+            for project in &projects {
                 // Each its own store, as each running app has.
                 let store = reviews(&dir);
                 scope.spawn(move || {
                     for i in 0..50 {
-                        store.save(root, &with_comment(&i.to_string())).unwrap();
+                        store
+                            .save(&key(project, "b"), &with_comment(&i.to_string()))
+                            .unwrap();
                     }
                 });
             }
         });
-        for root in &roots {
-            assert_eq!(reviews(&dir).saved(root).unwrap(), with_comment("49"));
+        for project in &projects {
+            assert_eq!(
+                reviews(&dir).saved(&key(project, "b")).unwrap(),
+                with_comment("49")
+            );
         }
     }
 
@@ -368,8 +395,11 @@ mod tests {
         let store = reviews(&dir);
         fs::create_dir_all(store.path.parent().unwrap()).unwrap();
         fs::write(&store.path, "not json").unwrap();
-        assert!(matches!(store.saved("/a"), Err(StoreError::Failed { .. })));
-        assert!(store.save("/a", &with_comment("one")).is_err());
+        assert!(matches!(
+            store.saved(&key("/p", "b")),
+            Err(StoreError::Failed { .. })
+        ));
+        assert!(store.save(&key("/p", "b"), &with_comment("one")).is_err());
         assert_eq!(fs::read_to_string(&store.path).unwrap(), "not json");
     }
 
@@ -378,13 +408,13 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = reviews(&dir);
         fs::create_dir_all(store.path.parent().unwrap()).unwrap();
-        let newer = r#"{"version":4,"reviews":"elsewhere"}"#;
+        let newer = r#"{"version":5,"projects":"elsewhere"}"#;
         fs::write(&store.path, newer).unwrap();
-        let Err(StoreError::Failed { message }) = store.saved("/a") else {
+        let Err(StoreError::Failed { message }) = store.saved(&key("/p", "b")) else {
             panic!("a newer format was read");
         };
         assert!(message.contains("another version"), "{message}");
-        assert!(store.save("/a", &with_comment("one")).is_err());
+        assert!(store.save(&key("/p", "b"), &with_comment("one")).is_err());
         assert_eq!(fs::read_to_string(&store.path).unwrap(), newer);
     }
 }

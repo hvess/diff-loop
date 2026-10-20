@@ -3,6 +3,7 @@ import type { Base } from "./Base";
 import type { Checkout } from "./Checkout";
 import type { Comment } from "./Comment";
 import type { ReviewFile } from "./ReviewFile";
+import type { ReviewKey } from "./ReviewKey";
 import type { Snapshot } from "./Snapshot";
 
 /**
@@ -13,6 +14,10 @@ export type Review = {
  * What is checked out.
  */
 checkout: Checkout, 
+/**
+ * The review it shows ([`ReviewKey::of`]).
+ */
+key: ReviewKey | null, 
 /**
  * What it is compared with.
  */

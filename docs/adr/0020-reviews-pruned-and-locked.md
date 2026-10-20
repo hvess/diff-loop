@@ -21,12 +21,15 @@ reviews.
    `SavedReview` as before with `seen`, milliseconds since the Unix
    epoch, beside it. Versions 1 and 2 are read, their entries counted as
    seen at the next save, and written back as 3. Any other version is
-   refused and left alone (ADR 0004 §3).
+   refused and left alone (ADR 0004 §3). (Amended by ADR 0026 §8:
+   version 4 keeps reviews by project, each project with when its git
+   directory was last seen.)
 2. **Each save marks every tree it finds as seen, and drops an entry
    whose tree has been missing for more than 30 days** (`KEPT_MISSING`,
    `prune`). A tree is found when its root is a directory, looked at
    before the save takes its lock, so a share that hangs holds up no
-   other instance.
+   other instance. (Amended by ADR 0026 §8: a project is found when its
+   common git directory is a directory, and its reviews go together.)
 3. **Saves take turns across processes:** each save holds an exclusive
    lock on `reviews.json.lock` beside the file across its read, change
    and write (`std::fs::File::lock`, per open handle, so it orders saves

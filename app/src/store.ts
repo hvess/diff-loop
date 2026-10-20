@@ -1,27 +1,34 @@
 // The window's state and everything that changes it.
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { create } from "zustand";
-import { api, describe } from "./api";
+import { api, describe, isOpenElsewhere } from "./api";
 import type { Base } from "./bindings/Base";
 import type { BaseChoices } from "./bindings/BaseChoices";
 import type { Comment } from "./bindings/Comment";
 import type { FileDiff } from "./bindings/FileDiff";
+import type { GoneReview } from "./bindings/GoneReview";
 import type { Head } from "./bindings/Head";
 import type { InstructionsRequest } from "./bindings/InstructionsRequest";
+import type { KeptReview } from "./bindings/KeptReview";
 import type { Opening } from "./bindings/Opening";
 import type { Place } from "./bindings/Place";
+import type { Resumed } from "./bindings/Resumed";
 import type { Review } from "./bindings/Review";
+import type { ReviewKey } from "./bindings/ReviewKey";
 import type { Round } from "./bindings/Round";
 import type { SavedReview } from "./bindings/SavedReview";
+import type { Seen } from "./bindings/Seen";
 import type { Snapshot } from "./bindings/Snapshot";
 import type { Side } from "./bindings/Side";
 import type { Target } from "./bindings/Target";
 import { changed, hasCard, open as isOpen, resolvable } from "./lifecycle";
-import { rememberRecent } from "./recent";
 import { dedent } from "./indent";
 import { shortId } from "./format";
+import { idOf, sameKey } from "./key";
+import { whereIs } from "./path";
 import { changedLines, type Expanded, type Gap, gapsOf, lastLine, linesOn, withinHunk } from "./rows";
 import { clampWidth, loadWidth, rememberWidth } from "./sidebar";
+import type { Check } from "./switcher";
 import { folderCounts, folderKeys, type TreeRow, treeRows } from "./tree";
 
 export type Problem = { title: string; detail: string };
@@ -78,10 +85,17 @@ export function commentText(c: Comment): string {
 export type Selection = { path: string; side: Side; anchor: number; head: number; dragging: boolean };
 
 /**
- * The checkout changed under the review; `action` is the base it offers to compare with
- * instead: the commit before `HEAD` moved, or the uncommitted changes after a follow.
+ * What a banner offers: a base to compare with instead (the commit before the branch
+ * moved, or the uncommitted changes after a follow), or another review to open.
  */
-export type Banner = { title: string; action: { label: string; base: Base } | null };
+export type BannerAction = { label: string } & ({ kind: "base"; base: Base } | { kind: "review"; key: ReviewKey });
+
+/**
+ * The context of the review changed, or says why it is limited: a moved, rewritten or
+ * switched branch, a branch moved while away, a detached `HEAD` (ADR 0015 §10, ADR 0026).
+ * `body` says more, where the title alone does not.
+ */
+export type Banner = { title: string; body: string | null; action: BannerAction | null };
 
 /** A round the base follows: its number, and the full id of the commit it was sent on. */
 export type Following = { round: number; since: string };
@@ -93,6 +107,27 @@ type Undo = { label: string; comments: Comment[] };
 
 type State = {
   opening: Opening | null;
+  /** The review shown: the branch's, kept under this key; null on a detached `HEAD`, where none is (ADR 0026 §5). */
+  key: ReviewKey | null;
+  /** The base the reviewer chose for this review, kept with it; null until they choose one (ADR 0026 §2). */
+  keptBase: Base | null;
+  /** Where the branch was when the review was last shown, kept with it (ADR 0026 §4). */
+  seen: Seen | null;
+  /** Whether the review switcher is open (ADR 0026 §7). */
+  switcher: boolean;
+  /**
+   * Every review kept, as last read (null before), and each project's last check, absent until
+   * its first answers: what the switcher and the welcome screen list.
+   */
+  reviews: { kept: KeptReview[] | null; checks: Map<string, Check> };
+  /** Reviews deleted with their branch since the switcher last said so (ADR 0026 §6). */
+  gone: GoneReview[];
+  /** The review just picked is open in another window, said at the top of the switcher (ADR 0026 §9). */
+  elsewhere: Problem | null;
+  /** The first comment just started this review: the title bar says where to find it again (the design's 6e). */
+  reviewSaved: boolean;
+  /** The user's home folder, which paths name as `~`; null until known. */
+  home: string | null;
   openProblem: (Problem & { path: string }) | null;
   busy: boolean;
   /** Whether the checkout is watched; when not, App polls instead. */
@@ -175,8 +210,21 @@ type State = {
 
 type Actions = {
   open: (path: string) => Promise<void>;
+  /** Shows the review kept under `key`, wherever its branch is (ADR 0026 §3); `switched` names the worktree it left, and what that has checked out now. */
+  openReview: (key: ReviewKey, switched?: { worktree: string; head: Head; now: ReviewKey | null }) => Promise<void>;
   closeRepository: () => void;
+  /** Shows the review picked in the switcher, or a branch to look at, and closes it unless another window has it. */
+  pickReview: (key: ReviewKey) => Promise<void>;
+  setSwitcher: (open: boolean) => void;
+  /** Reads every review kept, then checks each project, the shown one first; finds deleted branches (ADR 0026 §6, §7). */
+  refreshReviews: () => Promise<void>;
+  dismissGone: () => void;
+  dismissElsewhere: () => void;
+  dismissReviewSaved: () => void;
+  setHome: (home: string) => void;
   setBase: (base: Base) => Promise<void>;
+  /** The reviewer chose `base`: it is compared with, and kept with the review (ADR 0026 §2). */
+  chooseBase: (base: Base) => Promise<void>;
   /** Reads the branches, tags and default branch again. */
   refreshChoices: () => void;
   /** Loads the review again; `full` reads everything, even what a running watch saw untouched (ADR 0014 §1). */
@@ -272,13 +320,103 @@ function moved(count: number): string {
 function followBanner(count: number, following: Following): Banner {
   return {
     title: `${moved(count)} · showing changes since round ${following.round} (${shortId(following.since)})`,
-    action: { label: "Show uncommitted changes", base: { kind: "uncommitted" } },
+    body: null,
+    action: { kind: "base", label: "Show uncommitted changes", base: { kind: "uncommitted" } },
   };
 }
 
-/** The banner's offer to compare with the commit before `HEAD` moved. */
-function whatChanged(previous: string): Banner["action"] {
-  return { label: "Show what changed", base: { kind: "ref", name: previous } };
+/** The banner's offer to compare with the commit before the branch moved. */
+function whatChanged(previous: string): BannerAction {
+  return { kind: "base", label: "Show what changed", base: { kind: "ref", name: previous } };
+}
+
+/** "Round 1 was" / "Rounds 1 and 2 were" / "Rounds 1, 2 and 3 were". */
+function roundsWere(rounds: number[]): string {
+  if (rounds.length === 1) return `Round ${rounds[0]} was`;
+  return `Rounds ${rounds.slice(0, -1).join(", ")} and ${rounds.at(-1)} were`;
+}
+
+/**
+ * The banner on showing a review again: its branch moved, or was rewritten, while it was not
+ * shown (ADR 0026 §4; the design's flow 6f and 6g). Null when it is where it was.
+ */
+export function resumedBanner(branch: string, resumed: Resumed, now: string | null): Banner | null {
+  const { since, dropped, review } = resumed;
+  const anchored = review.comments.length > 0;
+  switch (since.kind) {
+    case "unchanged":
+      return null;
+    case "moved":
+      return {
+        title: `${branch} moved since you last looked`,
+        body: `${since.count} new ${since.count === 1 ? "commit" : "commits"}, ${shortId(since.from)} → ${shortId(now)}.${anchored ? " Comments follow their code." : ""}`,
+        action: whatChanged(since.from),
+      };
+    case "rewritten": {
+      const gone = dropped.length === 0 ? "" : ` ${roundsWere(dropped)} sent on commits that are gone and ${dropped.length === 1 ? "was" : "were"} deleted.`;
+      return {
+        title: `${branch} was rewritten while you were away`,
+        body: `A rebase or force-push replaced its history.${gone}${anchored ? " Comments follow their code where it still exists." : ""}`,
+        action: whatChanged(since.from),
+      };
+    }
+  }
+}
+
+/**
+ * The banner once the worktree a review was live in checks out another branch, and the review
+ * falls back to its branch's commits (ADR 0026 §3; the design's flow 6j). `head` is what the
+ * worktree has now, `now` the review that shows, as the core keys it, and `home` lets it name the
+ * worktree as the switcher's rows do.
+ */
+export function switchedBanner(key: ReviewKey, worktree: string, head: Head, now: ReviewKey | null, home: string | null): Banner {
+  const where = whereIs(worktree, key.project, home);
+  return {
+    title:
+      head.kind === "branch" ? `${where} now has ${head.name} checked out` : `${where} now has HEAD detached at ${head.commit}`,
+    body: `${key.branch} isn’t checked out in any worktree. This review shows its committed changes only. Check it out in one to send its comments.`,
+    action: head.kind === "branch" && now ? { kind: "review", label: `Open ${head.name}`, key: now } : null,
+  };
+}
+
+/** The banner on a detached `HEAD`: no branch to keep a review for, so no comments (ADR 0026 §5; the design's flow 6l). */
+function detachedBanner(commit: string): Banner {
+  return {
+    title: `HEAD is detached at ${commit}`,
+    body: "With no branch there is nowhere to keep comments, so none can be written here. Check out a branch to comment.",
+    action: null,
+  };
+}
+
+/**
+ * Whether there is a review to keep: comments or rounds. The core's `SavedReview::is_empty`
+ * again, the seam ADR 0026's build chose, since the window asks it on every comment (ADR 0026 §2).
+ */
+export const holdsReview = (r: Pick<SavedReview, "comments" | "rounds">) => r.comments.length > 0 || r.rounds.length > 0;
+
+/** The window's title: the project and branch shown, as another window's notice names them (ADR 0026 §9). */
+export function windowTitle(s: Pick<State, "opening">): string {
+  const checkout = s.opening?.checkout;
+  if (!checkout) return "Diff Loop";
+  const { head } = checkout;
+  return `${checkout.name} · ${head.kind === "branch" ? head.name : `HEAD at ${head.commit}`}`;
+}
+
+/** Whether comments can be written: only on a branch, which has a review to keep them (ADR 0026 §5). */
+export const canComment = (s: Pick<State, "key">) => s.key !== null;
+
+/** Whether the window reads its diff live from a worktree, a detached `HEAD`'s included: the dot is solid. */
+export const isLive = (s: Pick<State, "opening" | "review">) => ((s.review?.checkout ?? s.opening?.checkout)?.worktree ?? null) !== null;
+
+/** Whether a copy can send a round: only to a worktree that has the branch checked out (ADR 0026 §3). */
+export const canSend = (s: Pick<State, "key" | "opening" | "review">) => s.key !== null && isLive(s);
+
+/** Why a copy cannot send a round, said beside Copy (the design's flow 6i); null when it can. */
+export function whyNotSent(s: Pick<State, "key" | "opening" | "review">): string | null {
+  if (canSend(s)) return null;
+  return s.key
+    ? `${s.key.branch} isn’t checked out in any worktree. Check it out in one to send its comments.`
+    : "A detached HEAD has no review to send. Check out a branch to review it.";
 }
 
 /** The banner's detail: how many open comments the diff shown no longer holds (`ux` skill, "Settled wording"). */
@@ -384,6 +522,15 @@ function showsTheSame(before: LoadedReview, after: LoadedReview): boolean {
 
 export const useStore = create<State & Actions>()((set, get) => ({
   opening: null,
+  key: null,
+  keptBase: null,
+  seen: null,
+  switcher: false,
+  reviews: { kept: null, checks: new Map() },
+  gone: [],
+  elsewhere: null,
+  reviewSaved: false,
+  home: null,
   openProblem: null,
   busy: false,
   watching: false,
@@ -426,60 +573,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   async open(path) {
     set({ busy: true, openProblem: null });
     try {
-      const opening = await api.openRepository(path);
-      const head = opening.checkout.head;
-      rememberRecent({
-        path: opening.checkout.root,
-        name: opening.checkout.name,
-        branch: head.kind === "branch" ? head.name : `HEAD detached at ${head.commit}`,
-        openedAt: Date.now(),
-      });
-      // Read before the checkout shows, and set with it: loading is not a change
-      // to save. Before the first load, so it moves the comments onto their code.
-      const root = opening.checkout.root;
-      const saved = await readSaved(root);
-      set({
-        opening,
-        choices: opening.choices,
-        base: opening.base,
-        review: null,
-        comments: saved.review.comments,
-        rounds: saved.review.rounds,
-        autoResolved: 0,
-        viewed: new Map(),
-        viewedLines: 0,
-        expanded: new Map(),
-        watching: false,
-        selected: null,
-        composer: null,
-        selection: null,
-        openComment: null,
-        replacing: null,
-        lastResolved: null,
-        commentFilter: null,
-        commentList: false,
-        basePicker: false,
-        preview: false,
-        copyProblem: null,
-        banner: null,
-        copied: null,
-        unsend: null,
-        undo: null,
-        find: null,
-        previewEdit: null,
-        saveProblem: saved.problem,
-        closed: new Set(),
-        opensCheckout: true,
-        following: null,
-      });
-      await get().reload();
-      // Only the answer for the repository still open counts: a slow answer
-      // for one opened before must not stop the fallback polling.
-      const stillOpen = () => get().opening?.checkout.root === root;
-      api.watchRepository().then(
-        (kept) => kept && stillOpen() && set({ watching: true }),
-        () => stillOpen() && set({ watching: false }),
-      );
+      await show(await api.openRepository(path), null);
     } catch (error) {
       set({ openProblem: { ...describe(error), path } });
     } finally {
@@ -487,10 +581,95 @@ export const useStore = create<State & Actions>()((set, get) => ({
     }
   },
 
+  async openReview(key, switched) {
+    set({ busy: true, elsewhere: null });
+    // A failure is this one's to say only while nothing was shown since it began.
+    const began = shown;
+    try {
+      const opening = await api.openReview(key);
+      // Live in another worktree, the review just moved there: only a fall back to its commits is said.
+      const fellBack = switched && opening.checkout.worktree === null ? switchedBanner(key, switched.worktree, switched.head, switched.now, get().home) : null;
+      await show(opening, fellBack);
+    } catch (error) {
+      if (shown !== began) return;
+      // The review on screen stays: its context failed to change, or another window shows the one asked
+      // for, which the switcher says at its top when it was picked there (the design's 6m).
+      if (isOpenElsewhere(error) && get().switcher) set({ elsewhere: describe(error) });
+      else if (get().opening) set({ loadProblem: describe(error) });
+      else set({ openProblem: { ...describe(error), path: key.project } });
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  async pickReview(key) {
+    if (!sameKey(key, get().key)) await get().openReview(key);
+    if (!get().elsewhere) set({ switcher: false });
+  },
+
+  setSwitcher(open) {
+    // What the switcher said once is said: deletions and another window's review go when it closes.
+    set(open ? { switcher: true } : { switcher: false, gone: [], elsewhere: null });
+    if (open) void get().refreshReviews();
+  },
+
+  refreshReviews() {
+    // One at a time: a second would race the first, whose deletions it would then not see to say.
+    refreshing ??= readReviews().finally(() => {
+      refreshing = null;
+    });
+    return refreshing;
+
+    async function readReviews() {
+      const kept = await api.keptReviews().catch(() => null);
+      if (kept === null) return;
+      // The last checks stand until each project answers again, so a row keeps its place meanwhile.
+      set({ reviews: { kept, checks: get().reviews.checks } });
+      const here = get().opening?.checkout.project;
+      const projects = new Set([...(here === undefined ? [] : [here]), ...kept.map((r) => r.key.project)]);
+      await Promise.all(
+        [...projects].map(async (project) => {
+          const check: Check = await api.checkProject(project).catch(() => "failed" as const);
+          const { reviews, gone, key } = get();
+          const deleted = check === "failed" ? [] : check.gone;
+          // The window's own review, its branch gone, is not saved again under it.
+          if (key && deleted.some((g) => sameKey(g.key, key))) savings.delete(idOf(key));
+          set({
+            reviews: {
+              kept: (reviews.kept ?? []).filter((r) => !deleted.some((g) => sameKey(g.key, r.key))),
+              checks: new Map(reviews.checks).set(project, check),
+            },
+            gone: [...gone, ...deleted],
+          });
+        }),
+      );
+    }
+  },
+
+  dismissGone() {
+    set({ gone: [] });
+  },
+
+  dismissElsewhere() {
+    set({ elsewhere: null });
+  },
+
+  dismissReviewSaved() {
+    set({ reviewSaved: false });
+  },
+
+  setHome(home) {
+    set({ home });
+  },
+
   closeRepository() {
+    void api.closeRepository().catch(() => {});
     // The lists, dialogs and copy failure are the review screen's, which goes with the checkout.
     set({
       opening: null,
+      key: null,
+      keptBase: null,
+      seen: null,
       review: null,
       comments: [],
       rounds: [],
@@ -507,6 +686,11 @@ export const useStore = create<State & Actions>()((set, get) => ({
     });
   },
 
+  async chooseBase(base) {
+    set({ keptBase: base });
+    await get().setBase(base);
+  },
+
   async setBase(base) {
     const following = get().following;
     const stillFollowing = following !== null && sameBase(base, { kind: "ref", name: following.since });
@@ -517,21 +701,31 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   refreshChoices() {
-    const root = get().opening?.checkout.root;
+    const opening = get().opening;
     api.baseChoices().then(
-      (choices) => get().opening?.checkout.root === root && set({ choices }),
+      (choices) => get().opening === opening && set({ choices }),
       () => {},
     );
   },
 
   async reload(full = false) {
-    const { base, review: before, opensCheckout } = get();
+    const { base, review: before, opensCheckout, opening } = get();
     set({ loading: true, opensCheckout: false });
     try {
       const held = before && sameBase(before.base, base) ? before : null;
       const sent = get().comments;
       const review = await fetchReview(base, sent, held, full);
-      if (!sameBase(get().base, base)) return;
+      if (!sameBase(get().base, base) || get().opening !== opening) return;
+      const { worktree, head } = review.checkout;
+      const shows = review.key;
+      if (worktree !== null && !sameKey(shows, get().key)) {
+        // The worktree checked out something else, which is another review: this one goes
+        // where its branch is now, or to its commits (ADR 0026 §3).
+        const key = get().key;
+        if (key) void get().openReview(key, { worktree, head, now: shows });
+        else if (shows) void get().openReview(shows);
+        return;
+      }
       const moved = new Map(review.comments.map((c) => [c.id, c]));
       // Comments written or changed while loading are kept as they are: a comment is
       // replaced, never mutated, so one not among those sent changed since.
@@ -563,6 +757,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
       const copied = get().unsend ? null : get().copied;
       const closed = openedFor(review, selected, get().closed);
       set({ review, comments, autoResolved, viewed, viewedLines, expanded, selected, openComment, loadProblem: null, unsend: null, copied, closed });
+      // Where the branch was last seen goes with the review, so a return can say what moved (ADR 0026 §4).
+      const commit = review.checkout.commit;
+      const seen = get().seen;
+      if (get().key && commit !== null && commit !== seen?.commit) set({ seen: { commit, at: seen?.at ?? Date.now() } });
       await announceMove(before, review, held !== null);
     } catch (error) {
       set({ loadProblem: describe(error) });
@@ -578,7 +776,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
     // Only a change of context gets a banner (ADR 0015 §10): the agent's work shows in the round strip.
     async function announceMove(before: LoadedReview | null, after: LoadedReview, sameBaseBefore: boolean) {
-      const stillHere = () => sameBase(get().base, base) && get().review?.checkout.root === after.checkout.root;
+      const stillHere = () => sameBase(get().base, base) && get().opening === opening;
       const now = after.checkout.commit;
       if (!before) {
         if (opensCheckout) await followSinceOpened(now, after.checkout.head, stillHere);
@@ -586,18 +784,14 @@ export const useStore = create<State & Actions>()((set, get) => ({
       }
       const previous = before.checkout.commit;
       if (!previous || !now || previous === now) return;
-      const headBefore = before.checkout.head;
+      // A branch switched in the worktree is another review (`reload`), so here the branch is the same.
       const headNow = after.checkout.head;
-      // A switched or rewritten branch ends any follow (ADR 0022 §2).
-      if (headBefore.kind === "branch" && headNow.kind === "branch" && headBefore.name !== headNow.name) {
-        set({ banner: { title: `Switched to ${headNow.name}`, action: whatChanged(previous) }, following: null });
-        return;
-      }
       const count = await api.commitsBetween(previous, now).catch(() => null);
-      // The reviewer may have picked another base, or repository, meanwhile.
+      // The reviewer may have picked another base, or review, meanwhile.
       if (!stillHere()) return;
+      // A rewritten branch ends any follow (ADR 0022 §2).
       if (count === null) {
-        set({ banner: { title: "The branch was rewritten", action: whatChanged(previous) }, following: null });
+        set({ banner: { title: "The branch was rewritten", body: null, action: whatChanged(previous) }, following: null });
         return;
       }
       const title = moved(count);
@@ -610,7 +804,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
       // chosen: they stay on it (ADR 0017 §2, ADR 0022 §3).
       const fromUncommitted = sameBaseBefore && base.kind === "uncommitted";
       if (fromUncommitted && (await followCommit(count, previous, headNow, stillHere))) return;
-      if (stillHere()) set({ banner: { title, action: whatChanged(previous) } });
+      if (stillHere()) set({ banner: { title, body: null, action: whatChanged(previous) } });
     }
 
     /**
@@ -625,9 +819,9 @@ export const useStore = create<State & Actions>()((set, get) => ({
       if (!stillHere()) return;
       if (since === null) {
         // The round's commit no longer under `HEAD`: rewritten away.
-        set({ banner: { title: "The branch was rewritten", action: whatChanged(previous) }, following: null });
+        set({ banner: { title: "The branch was rewritten", body: null, action: whatChanged(previous) }, following: null });
       } else if (round === null) {
-        set({ banner: { title, action: whatChanged(previous) }, following: null });
+        set({ banner: { title, body: null, action: whatChanged(previous) }, following: null });
       } else {
         const kept = { round, since: following.since };
         set({ banner: followBanner(since, kept), following: kept });
@@ -665,8 +859,17 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   async poll() {
-    const { review, loading, base, opening, watching } = get();
+    const { review, loading, base, opening, watching, key } = get();
     if (!opening || !review) return;
+    // Shown from its commits, a branch checked out since is live there (ADR 0026 §3); a watch
+    // sees the worktree's `HEAD` change, as polling the fingerprint would not.
+    if (key && review.checkout.worktree === null) {
+      const worktree = await api.worktreeOf(key).catch(() => null);
+      if (worktree !== null && get().opening === opening) {
+        await get().openReview(key);
+        return;
+      }
+    }
     if (loading) {
       if (get().recheck === null) set({ recheck: "changes" });
       return;
@@ -836,7 +1039,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   composeOnLines(path, side, start, end) {
     const file = get().review?.byPath.get(path);
-    if (!file) return;
+    if (!file || !canComment(get())) return;
     end = withinHunk(file, side, start, end);
     const code = linesOn(file, side, start, end);
     set({
@@ -847,6 +1050,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   composeOnFile(path) {
+    if (!canComment(get())) return;
     set({ composer: { path, target: { kind: "file" }, text: "", suggestion: null, editing: null }, openComment: null });
   },
 
@@ -892,8 +1096,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
           ...get().comments,
           { id: crypto.randomUUID(), path: composer.path, ...written, state: "current" as const, place, sent: null, resolved: null },
         ];
+    // The first comment starts the review (ADR 0026 §2): the title bar says where it is kept.
+    const starts = !composer.editing && !holdsReview(get());
     // A comment written or edited moves the review on: the last copy's popover and its "Not sent" go with it.
-    set({ comments, composer: null, selection: null, copied: null, unsend: null });
+    set({ comments, composer: null, selection: null, copied: null, unsend: null, reviewSaved: starts || get().reviewSaved });
   },
 
   deleteComment(id) {
@@ -1030,7 +1236,9 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   async takeBannerAction() {
     const action = get().banner?.action;
-    if (action) await get().setBase(action.base);
+    if (!action) return;
+    if (action.kind === "base") await get().setBase(action.base);
+    else await get().openReview(action.key);
   },
 
   instructionsRequest() {
@@ -1039,7 +1247,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   async copyReview() {
     const request = get().instructionsRequest();
-    if (!request || !request.comments.some(isOpen)) return;
+    if (!request || !request.comments.some(isOpen) || !canSend(get())) return;
     const opening = get().opening;
     set({ copyProblem: null });
     try {
@@ -1053,10 +1261,11 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   async copyText(text) {
+    if (!canSend(get())) return;
     await writeText(text);
-    const { review, comments, rounds, opening } = get();
+    const { review, comments, opening } = get();
     const place = placeOf(get());
-    const before: SavedReview = { comments, rounds };
+    const before = keptOf(get());
     // Copied, the edit has done its job (diff-loop-app.md Decision 25).
     if (!review || !place || !comments.some(isOpen)) {
       set({ copied: { round: null }, previewEdit: null });
@@ -1126,76 +1335,179 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   async retrySave() {
-    const opening = get().opening;
-    if (!opening) return;
-    const root = opening.checkout.root;
-    if (savings.get(root)?.last !== null) {
-      await save(root, { comments: get().comments, rounds: get().rounds });
+    const { opening, key } = get();
+    if (!opening || !key) return;
+    if (savings.get(idOf(key))?.last !== null) {
+      await save(key, keptOf(get()));
       return;
     }
-    const saved = await readSaved(root);
+    const saved = await readSaved(key);
     if (get().opening !== opening || saved.problem) {
       if (get().opening === opening) set({ saveProblem: saved.problem });
       return;
     }
     // Rounds copied meanwhile counted from 1 again: the core counts them on from the saved ones.
-    const { comments, rounds } = await api.mergeReviews({ comments: get().comments, rounds: get().rounds }, saved.review);
+    const merged = await api.mergeReviews(keptOf(get()), saved.review);
     if (get().opening !== opening) return;
-    set({ comments, rounds, saveProblem: null });
+    set({ comments: merged.comments, rounds: merged.rounds, keptBase: merged.base, seen: merged.seen, saveProblem: null });
     await get().reload();
   },
 }));
 
-/** How saving stands for one working tree. */
+/** The review as kept: what the window holds of it. */
+function keptOf(s: Pick<State, "comments" | "rounds" | "keptBase" | "seen">): SavedReview {
+  return { comments: s.comments, rounds: s.rounds, base: s.keptBase, seen: s.seen };
+}
+
+const NOTHING_KEPT: SavedReview = { comments: [], rounds: [], base: null, seen: null };
+
+/** Counts calls to `show`, so only the latest sets what it read. */
+let shown = 0;
+
+/** The `refreshReviews` running, which another call joins. */
+let refreshing: Promise<void> | null = null;
+
+/**
+ * Shows `opening`'s review: read, resumed where its branch went meanwhile (ADR 0026 §4), and set
+ * with the checkout, so showing it is not a change to save; then loaded and watched. `banner`
+ * says what changed under it, when something did; else resuming may say where the branch went.
+ */
+async function show(opening: Opening, banner: Banner | null): Promise<void> {
+  const { getState: get, setState: set } = useStore;
+  const at = ++shown;
+  const { key } = opening;
+  const { head, commit } = opening.checkout;
+  let review = NOTHING_KEPT;
+  let problem: Problem | null = null;
+  let base = opening.base;
+  let said = banner ?? (head.kind === "detached" ? detachedBanner(head.commit) : null);
+  if (key) {
+    // Read before the checkout shows, and set with it: loading is not a change
+    // to save. Before the first load, so it moves the comments onto their code.
+    const saved = await readSaved(key);
+    // Resuming reads git; if it cannot, the review shows as kept, and the load says what failed.
+    const resumed = await api.resumeReview(saved.review, opening.base, Date.now()).catch(() => null);
+    review = resumed?.review ?? saved.review;
+    problem = saved.problem;
+    base = resumed?.base ?? opening.base;
+    said ??= resumed && resumedBanner(key.branch, resumed, commit);
+  }
+  // Another checkout was opened meanwhile: the session holds it, and its show is the one to set.
+  if (at !== shown) return;
+  set({
+    opening,
+    key,
+    reviewSaved: false,
+    keptBase: review.base,
+    seen: review.seen,
+    // However it was opened, the switcher ⌘/Ctrl-K may have left on is not the new review's.
+    switcher: false,
+    choices: opening.choices,
+    base,
+    review: null,
+    comments: review.comments,
+    rounds: review.rounds,
+    autoResolved: 0,
+    viewed: new Map(),
+    viewedLines: 0,
+    expanded: new Map(),
+    watching: false,
+    selected: null,
+    composer: null,
+    selection: null,
+    openComment: null,
+    replacing: null,
+    lastResolved: null,
+    commentFilter: null,
+    commentList: false,
+    basePicker: false,
+    preview: false,
+    copyProblem: null,
+    banner: said,
+    copied: null,
+    unsend: null,
+    undo: null,
+    find: null,
+    previewEdit: null,
+    saveProblem: problem,
+    closed: new Set(),
+    opensCheckout: true,
+    following: null,
+  });
+  // What resuming changed is kept: where the branch is now, and the rounds a rewrite took with it.
+  if (key) void save(key, keptOf(get()));
+  await get().reload();
+  // Only the answer for the checkout still open counts: a slow answer
+  // for one opened before must not stop the fallback polling.
+  const stillOpen = () => get().opening === opening;
+  api.watchRepository().then(
+    (kept) => kept && stillOpen() && set({ watching: true }),
+    () => stillOpen() && set({ watching: false }),
+  );
+}
+
+/** How saving stands for one review. */
 type Saving = {
   /** JSON of the review last saved or read; null while it could not be read, which stops saving. */
   last: string | null;
+  /** Whether the store holds the review: a review never kept, and still empty, is not written (ADR 0026 §2). */
+  held: boolean;
   /** Saves run one after another, so an older one never lands after a newer. */
   queue: Promise<void>;
 };
 
-/** By working-tree root, for each checkout opened in this window. */
+/** By review (`idOf`), for each one shown in this window. */
 const savings = new Map<string, Saving>();
 
-/** The review saved for `root`, recorded as its last; empty with the problem when it cannot be read. */
-async function readSaved(root: string): Promise<{ review: SavedReview; problem: Problem | null }> {
-  const saving = savings.get(root) ?? { last: null, queue: Promise.resolve() };
-  savings.set(root, saving);
+
+/** The review saved under `key`, recorded as its last; empty with the problem when it cannot be read. */
+async function readSaved(key: ReviewKey): Promise<{ review: SavedReview; problem: Problem | null }> {
+  const saving = savings.get(idOf(key)) ?? { last: null, held: false, queue: Promise.resolve() };
+  savings.set(idOf(key), saving);
   try {
-    const review = await api.savedReview(root);
+    const review = await api.savedReview(key);
     saving.last = JSON.stringify(review);
+    saving.held = holdsReview(review);
     return { review, problem: null };
   } catch (error) {
     // Saving stays stopped: writing now would replace a review never read.
     saving.last = null;
-    return { review: { comments: [], rounds: [] }, problem: describe(error) };
+    return { review: NOTHING_KEPT, problem: describe(error) };
   }
 }
 
-/** Keeps `review` for `root` unless it is what was last kept, reporting failure while `root` is open. */
-function save(root: string, review: SavedReview): Promise<void> {
-  const saving = savings.get(root);
+/** Keeps `review` under `key` unless it is what was last kept, reporting failure while it is shown. */
+function save(key: ReviewKey, review: SavedReview): Promise<void> {
+  const saving = savings.get(idOf(key));
   if (!saving || saving.last === null) return Promise.resolve();
   saving.queue = saving.queue.then(async () => {
     const json = JSON.stringify(review);
     if (json === saving.last) return;
-    const stillOpen = () => useStore.getState().opening?.checkout.root === root;
-    try {
-      await api.saveReview(root, review);
+    // A branch looked at and never commented on leaves nothing behind.
+    if (!saving.held && !holdsReview(review)) {
       saving.last = json;
-      if (stillOpen()) useStore.setState({ saveProblem: null });
+      return;
+    }
+    const stillShown = () => sameKey(useStore.getState().key, key);
+    try {
+      await api.saveReview(key, review);
+      saving.last = json;
+      saving.held = holdsReview(review);
+      if (stillShown()) useStore.setState({ saveProblem: null });
     } catch (error) {
-      if (stillOpen()) useStore.setState({ saveProblem: describe(error) });
+      if (stillShown()) useStore.setState({ saveProblem: describe(error) });
     }
   });
   return saving.queue;
 }
 
-// Saves the open checkout's review when its comments or rounds change (ADR 0004 §4);
-// `open` sets the checkout and its saved review together, so opening is
-// never seen as a change.
+// Saves the review shown when its comments, rounds, base or seen commit change (ADR 0004 §4,
+// ADR 0026 §2); `show` sets the checkout and its saved review together, so showing
+// one is never seen as a change.
 useStore.subscribe((now, before) => {
-  const opening = now.opening;
-  if (!opening || opening !== before.opening || (now.comments === before.comments && now.rounds === before.rounds)) return;
-  void save(opening.checkout.root, { comments: now.comments, rounds: now.rounds });
+  const { key, opening } = now;
+  if (!key || !opening || opening !== before.opening) return;
+  const same =
+    now.comments === before.comments && now.rounds === before.rounds && now.keptBase === before.keptBase && now.seen === before.seen;
+  if (!same) void save(key, keptOf(now));
 });

@@ -5,7 +5,7 @@ Work that is known, understood and not done. Each entry says what was seen, wher
 **Status:** active — a ledger, not a spec. Nothing here blocks anything else.
 **Scope:** everything outstanding.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-17
+**Last Updated:** 2026-10-19
 
 An entry leaves this file by being done, or by being decided against — in
 which case the decision goes where it belongs (an ADR, or the spec it
@@ -28,7 +28,13 @@ contradicts) and the entry says so before it goes.
     2026-10-14); since 2026-10-17 also the base picker's search
     placeholders, a remote's faint prefix ("origin/") and the dimmed
     checked-out branch, at about 1.6–2.4:1 (diff-loop-app.md Decision
-    32). The developer kept the design's palette for now
+    32); since 2026-10-19 also the title bar chip's state ("Committed
+    only"), the review switcher's place lines, hints, "Open without
+    saving", search placeholder and group trails, the welcome screen's
+    place lines, "Reviews" heading and "Show all reviews", and the base
+    picker's note and reason, at about 2.0–3.3:1 in light (the
+    UI judge's captures, 2026-10-19; diff-loop-app.md Decision 33; the
+    developer's call for these too, 2026-10-19). The developer kept the design's palette for now
     (`ux` skill, "Where the developer chose against the HIG"). Closes when
     those tokens, or the text drawn in them, reach 4.5:1, or the developer
     decides the palette stays.
@@ -38,7 +44,10 @@ contradicts) and the entry says so before it goes.
     (2026-10-15): only the Viewed checkbox's tooltip (V), the composer's
     Comment button (⌘/Ctrl-Return), the welcome screen's Open folder
     (⌘/Ctrl-O), the comments list's hint (N / P), the range pill (C), a
-    sent card's Resolve button (R), the preview's Copy (⌘/Ctrl-↵) and
+    sent card's Resolve button (R), the preview's Copy (⌘/Ctrl-↵), the
+    review switcher's field, rows and hints (⌘/Ctrl-K, ⌘/Ctrl-O, ↑ ↓,
+    Return, Esc; since 2026-10-19) and the welcome screen's
+    Show all reviews (⌘/Ctrl-K), and
     the macOS menu bar's Open Folder and Find items name a key, and Linux
     has no menu bar (Decision 18). The HIG `offering-help` page offers
     tips to help people "discover faster ways to accomplish a task". Closes when ? (and ⌘-? on macOS, with a Help menu
@@ -60,9 +69,34 @@ contradicts) and the entry says so before it goes.
     their first `/` (`remoteOf`, `app/src/components/BasePicker.tsx`), as
     `default_branch` splits `origin/main` (`crates/core/src/base.rs`); a
     remote named `team/fork` lists as `team`, its branches as `fork/…`.
-    git's short name cannot tell the two apart. Closes when `BaseRef`
-    names a remote branch's remote (read with `git remote`), or the
-    developer decides it is fine.
+    git's short name cannot tell the two apart. Since 2026-10-19 the review
+    switcher names such a branch the same way (`fold`,
+    `crates/git/src/project.rs`), so both read one rule. Closes when
+    `BaseRef` and `Branch` name a remote branch's remote (read with `git
+    remote`), or the developer decides it is fine.
+
+25. **A review open in another window is not brought forward.** The
+    design's flow 6m brings the other window forward and says where it
+    is only when the system refuses; each window is its own process, so
+    asking the other to show itself needs a channel between instances,
+    which Wayland's focus rules refuse anyway (ADR 0026 §9). The
+    developer chose the notice alone for now (2026-10-19). Closes when a
+    single-instance channel asks the other window to focus where the
+    desktop allows it, or the developer decides the notice is enough.
+
+26. **Git is looked for on every open, a project's included.** `locate`
+    (`crates/git/src/locate.rs`) runs for each `Git::open` and
+    `GitProject::open`, and the review switcher opens one per project
+    each time it opens (`check_project`, diff-loop-app.md Decision 33),
+    `open_review` opens one and then the worktree (`Git::for_branch`), and
+    a review shown from its commits opens one on each poll
+    (`worktree_of`).
+    Where git is not on `PATH` (an app opened from the macOS Finder),
+    each asks the login shell, which can take seconds. A cache would be
+    process-wide state, which quality-gate §5 rules out. The developer
+    chose to leave it for now (2026-10-19). Closes when the located git is
+    found once in the composition root and passed to the adapters, or the
+    developer decides the cost is fine.
 
 ## Distribution
 

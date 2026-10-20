@@ -14,7 +14,9 @@ use crate::{
     diff::{FileDiff, LineCounts, Side},
 };
 
-/// A checkout the app reviews: one working tree of one repository.
+/// A checkout the app reviews: one working tree of one repository, or, when
+/// no working tree has a branch checked out, that branch read from its
+/// commits (ADR 0026 §3).
 pub trait Repository {
     /// The repository and what is checked out.
     ///
@@ -22,8 +24,8 @@ pub trait Repository {
     /// [`RepoError::Failed`] when the repository cannot be read.
     fn checkout(&self) -> Result<Checkout, RepoError>;
 
-    /// Branches and tags the checkout can be compared with, the checked-out
-    /// branch excluded, most recently updated first.
+    /// Branches and tags the checkout can be compared with, the branch it
+    /// shows excluded, most recently updated first.
     ///
     /// # Errors
     /// [`RepoError::Failed`] when the refs cannot be read.
@@ -39,7 +41,9 @@ pub trait Repository {
     ///
     /// # Errors
     /// [`RepoError::UnknownBase`] when `base` names nothing; [`RepoError::NoCommits`]
-    /// when `base` needs a commit the checkout lacks; [`RepoError::Failed`] otherwise.
+    /// when `base` needs a commit the checkout lacks; [`RepoError::NotCheckedOut`]
+    /// for [`Base::Uncommitted`] on a checkout with no working tree;
+    /// [`RepoError::Failed`] otherwise.
     fn changes(&self, base: &Base) -> Result<Changes, RepoError>;
 
     /// As [`Repository::changes`], with only the files at or under `paths`
@@ -87,7 +91,8 @@ pub trait Repository {
     /// binary files left out: what [`Base::Uncommitted`] would show.
     ///
     /// # Errors
-    /// [`RepoError::Failed`] when the checkout cannot be read.
+    /// [`RepoError::NotCheckedOut`] when the checkout has no working tree;
+    /// [`RepoError::Failed`] when it cannot be read.
     fn uncommitted_lines(&self) -> Result<LineCounts, RepoError>;
 
     /// Calls `on_change` soon after anything in the checkout or its git state
@@ -190,11 +195,16 @@ pub type WatchGuard = Box<dyn Send>;
 pub struct Checkout {
     /// The repository's name; a worktree carries its main repository's name.
     pub name: String,
-    /// Absolute path of the working tree's root.
-    pub root: String,
-    /// What is checked out.
+    /// Absolute path of the repository's common git directory, which all its
+    /// worktrees share: the project its reviews are kept under (ADR 0026 §1).
+    pub project: String,
+    /// Absolute path of the working tree's root; `None` for a branch no
+    /// working tree has checked out, which shows only its commits.
+    pub worktree: Option<String>,
+    /// What is checked out, or the branch shown.
     pub head: Head,
-    /// Full id of the commit at `HEAD`; `None` before the first commit.
+    /// Full id of the commit at `HEAD`, or at the branch shown; `None` before
+    /// the first commit.
     pub commit: Option<String>,
 }
 
@@ -269,6 +279,18 @@ pub enum RepoError {
     /// The base needs a commit the checkout does not have.
     #[error("the checkout has no commits yet")]
     NoCommits,
+    /// Uncommitted changes asked of a branch no working tree has checked out.
+    #[error("{branch} is not checked out in any worktree")]
+    NotCheckedOut {
+        /// The branch shown.
+        branch: String,
+    },
+    /// No branch, local or remote-tracking, has this name.
+    #[error("there is no branch called {name}")]
+    NoBranch {
+        /// As given.
+        name: String,
+    },
     /// A path leaves the working tree.
     #[error("{path} is outside the repository")]
     OutsideRepository {

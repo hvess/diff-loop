@@ -102,7 +102,11 @@ each as **pass** or the specific failure.
    deliberate step; reversible ones can be undone. Nothing removes a
    comment but the reviewer (ADR 0015): a load marks one lost or
    outdated, a copy sends it, and R resolves it, each undone by its
-   own control.
+   own control. Two removals are git's, not the window's, and are said
+   once with no undo (ADR 0026 §4 and §6, the developer's calls,
+   2026-10-19): a branch deleted takes its review and comments with it,
+   and a rewrite takes the rounds sent on the commits it replaced; each
+   follows a deletion already made outside the app.
 7. **Consistent.** The same thing looks, reads and behaves the same
    everywhere in the app.
 8. **Accessible.** Readable in light and dark, and meaning never carried
@@ -134,7 +138,28 @@ own decisions to depart from it, each recorded with both halves.
   4.5:1 contrast for text; `--ui-faint` and `--ui-muted` draw line
   labels, the suggestion box's header and viewed files' names below it,
   and since 2026-10-17 the base picker's search placeholders, a
-  remote's prefix and the dimmed checked-out branch.
+  remote's prefix and the dimmed checked-out branch; since 2026-10-19
+  the title bar chip's state, the review switcher's place lines, hints,
+  "Open without saving" and search placeholder, the welcome screen's
+  place lines, drop hint, "Reviews" heading and "Show all reviews", the
+  switcher's group trails (a project's path, "No matches", "2 local"),
+  and the base picker's note and reason (the developer's call for these
+  too, 2026-10-19).
+- **Two notes in popovers, as the design draws them** (diff-loop-app
+  Decision 33; the developer's call, 2026-10-19). The HIG `popovers`
+  page advises against a warning in a popover and against one covering
+  content: a deleted branch's notice (6k) is said at the review
+  switcher's top, which Esc closes, and "Review saved" (6e) hangs from
+  the title bar's chip over the sidebar's head for 6 s or until
+  Dismiss. The deletion is git's, already made. Neither draws the arrow
+  the same page asks to point at what revealed it, as no popover in the
+  design or the app does; each hangs straight below its control.
+- **A review open in another window is not brought forward** (ADR 0026
+  §9; the developer's call, 2026-10-19; open-tasks 25). Desktop apps
+  bring forward a document already open; each Diff Loop window is its
+  own process, and Wayland refuses one app focusing another's window,
+  so the switcher says where it is instead: "Look for “drive-web ·
+  agent/share-retry” in your window list."
 - **The base picker's lists look as the design draws them**
   (diff-loop-app Decision 32; the developer's call, 2026-10-17). The
   HIG `writing` page warns against abbreviations people may not know,
@@ -150,7 +175,8 @@ own decisions to depart from it, each recorded with both halves.
   title case HIG `menus` asks of menu items. Its search field, which
   holds focus while the picker is open, is drawn flat, with no focus
   ring (HIG `focus-and-selection`); the highlighted row shows where
-  Return goes.
+  Return goes. The review switcher's field is drawn the same way, so
+  the two read alike (the developer's call, 2026-10-20).
 - **The range handles look as the design draws them** (diff-loop-app
   Decision 28; the developer's call, 2026-10-14): a 4 px bar on the
   row's edge, in a 28 × 20 px target. The HIG `accessibility` page asks
@@ -232,9 +258,15 @@ against other wording that would also do.
   between comments in this diff"), and the banner.
 - **The banner's detail** (diff-loop-app Decision 16; the developer's
   call, 2026-10-15). One sentence, only when it holds: "2 comments are
-  not in this diff." A banner names only a context change ("Switched to
-  agent/share-retry", "The branch moved: 2 new commits", "The branch was
-  rewritten"); nothing says the agent updated the code, and nothing is
+  not in this diff." (The banners of a review's own context in ADR 0026,
+  below, carry the design's two or three sentences instead.) A banner
+  names only a context change ("The branch
+  moved: 2 new commits", "The branch was rewritten"; "Switched to
+  agent/share-retry" until ADR 0026, when a switched worktree became
+  ".wt/share-rate-limit now has agent/share-retry checked out", with
+  "agent/share-retry moved since you last looked" and "… was rewritten
+  while you were away" on returning to a review, the design's words for
+  flow 6); nothing says the agent updated the code, and nothing is
   removed (ADR 0015 §10). Following a commit on top of a round, the
   title adds "· showing changes since round 3 (a1f3c9e)", the commit
   the base picker names, and its action is "Show
@@ -271,3 +303,26 @@ against other wording that would also do.
 - **The base picker's search** (diff-loop-app Decision 32; the
   developer's call, 2026-10-17): "Search branches, tags or commits",
   where the design says "SHAs", and the typed row "Compare with “…”".
+- **Projects and folders** (ADR 0026; the design's words, the
+  developer's call, 2026-10-19): the welcome screen's "Open a project"
+  over "Choose a git folder…" and "Open folder…". A project is what is
+  reviewed, its branches' reviews together; a folder is what is picked
+  to open one.
+- **Reviews per branch** (diff-loop-app Decision 33; the developer's
+  call, 2026-10-19, over the design's flow 6 words): "Comments follow
+  their code." where the design said "re-anchored"; one phrasing for a
+  branch no worktree has, "feature/old-export isn’t checked out in any
+  worktree.", in Copy's note ("… Check it out in one to send its
+  comments."), the base picker's reason ("… Check it out in one to
+  compare with its uncommitted changes.") and the switched banner, and the
+  detached banner's "… Check out a branch to comment.", each with its
+  next step; "Open without saving" on a branch row, to match "↩ Open";
+  "Review saved" with "… is with your reviews now, under ⌘K." (Ctrl+K
+  off macOS), as no window names a switcher; notices
+  closed by "Dismiss", as banners are.
+- **What git removed** (ADR 0026 §4 and §6; the design's words, the
+  developer's calls, 2026-10-19): "agent/pdf-preview was deleted" with
+  "Its review and 2 comments were deleted with it. There is no copy to
+  restore.", and on returning to a rewritten branch "Round 1 was sent on
+  commits that are gone and was deleted."; the banner's "nothing is
+  removed" (above) is the window's own loads.

@@ -33,7 +33,7 @@ const refs = [
 
 const keys = (items: Item[]) => items.map((item) => (item.kind === "group" ? item.group.key : item.choice.key));
 
-const top = (base: Base, defaultBranch: string | null = "main") =>
+const top = (base: Base, defaultBranch: string | null = "main", committedOnly: string | null = null) =>
   listItems({
     group: null,
     query: "",
@@ -43,10 +43,21 @@ const top = (base: Base, defaultBranch: string | null = "main") =>
     base,
     uncommitted: { added: 42, removed: 8 },
     commit: "a1f3c9e5b2",
+    committedOnly,
     now: NOW,
   }).items;
 
 describe("the base picker's first list", () => {
+  it("offers no uncommitted changes, and says why, for a branch no worktree has checked out", () => {
+    const [first] = top({ kind: "ref", name: "main" }, "main", "feature/old-export");
+    expect(first?.kind === "choice" && first.choice).toMatchObject({
+      key: "uncommitted",
+      base: null,
+      why: "feature/old-export isn’t checked out in any worktree. Check it out in one to compare with its uncommitted changes.",
+    });
+    expect(picks(first)).toBe(false);
+  });
+
   it("orders uncommitted changes, the last commit, the default branch, then the lists", () => {
     expect(keys(top({ kind: "ref", name: "main" }))).toEqual([
       "uncommitted",
@@ -110,6 +121,7 @@ describe("the lists it opens in place", () => {
       base: { kind: "ref", name: "main" },
       uncommitted: null,
       commit: null,
+      committedOnly: null,
       now: NOW,
     });
     expect(keys(listed.items)).toEqual(["current", "ref:agent/fix-upload-retry", "ref:main"]);
@@ -134,6 +146,7 @@ describe("the lists it opens in place", () => {
       base: { kind: "uncommitted" },
       uncommitted: null,
       commit: null,
+      committedOnly: null,
       now: NOW,
     });
     expect(keys(listed.items)).toEqual(["ref:origin/agent/x"]);
@@ -152,6 +165,7 @@ describe("searching every ref", () => {
       base: { kind: "uncommitted" },
       uncommitted: null,
       commit: null,
+      committedOnly: null,
       now: NOW,
     });
     expect(keys(typed.items)).toEqual(["typed"]);

@@ -92,6 +92,7 @@ describe("commandOf", () => {
       [press("2", { metaKey: true, code: "Digit2" }), press("2", { ctrlKey: true, code: "Digit2" }), "split"],
       [press("r", { metaKey: true }), press("r", { ctrlKey: true }), "checkForChanges"],
       [press("W", { metaKey: true, shiftKey: true }), press("W", { ctrlKey: true, shiftKey: true }), "closeFolder"],
+      [press("k", { metaKey: true }), press("k", { ctrlKey: true }), "switcher"],
     ];
     for (const [mac, other, name] of both) {
       expect(command(mac, true)).toBe(name);

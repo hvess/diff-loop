@@ -13,6 +13,7 @@ use crate::{
     base::{Base, BaseChoices, default_base, default_branch},
     diff::FileDiff,
     repository::{Changes, Checkout, FileStates, Head, RepoError, Repository, Snapshot, Touched},
+    saved::ReviewKey,
     update::{Updated, covers, update},
 };
 
@@ -23,6 +24,8 @@ use crate::{
 pub struct Review {
     /// What is checked out.
     pub checkout: Checkout,
+    /// The review it shows ([`ReviewKey::of`]).
+    pub key: Option<ReviewKey>,
     /// What it is compared with.
     pub base: Base,
     /// [`Repository::fingerprint`] for `base`, taken before `files`; `None`
@@ -78,6 +81,8 @@ pub struct KnownFile {
 pub struct Opening {
     /// What is checked out.
     pub checkout: Checkout,
+    /// The review it shows ([`ReviewKey::of`]).
+    pub key: Option<ReviewKey>,
     /// What it can be compared with.
     pub choices: BaseChoices,
     /// The [`default_base`].
@@ -91,8 +96,12 @@ pub struct Opening {
 pub fn open(repository: &(impl Repository + ?Sized)) -> Result<Opening, RepoError> {
     let checkout = repository.checkout()?;
     let choices = choices_at(repository, &checkout.head)?;
-    let base = default_base(choices.default_branch.as_deref());
+    let base = default_base(
+        choices.default_branch.as_deref(),
+        checkout.worktree.is_some(),
+    );
     Ok(Opening {
+        key: ReviewKey::of(&checkout),
         checkout,
         choices,
         base,
@@ -249,6 +258,7 @@ fn load_with(
         })
         .collect();
     let review = Review {
+        key: ReviewKey::of(&checkout),
         checkout,
         base: base.clone(),
         fingerprint,
@@ -295,7 +305,8 @@ pub(crate) mod tests {
         fn checkout(&self) -> Result<Checkout, RepoError> {
             Ok(Checkout {
                 name: "drive-web".into(),
-                root: "/code/drive-web".into(),
+                project: "/code/drive-web/.git".into(),
+                worktree: Some("/code/drive-web".into()),
                 head: Head::Branch {
                     name: "agent/x".into(),
                 },

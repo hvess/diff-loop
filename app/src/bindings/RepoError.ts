@@ -11,7 +11,15 @@ path: string, } | { "kind": "unknownBase",
 /**
  * As given.
  */
-name: string, } | { "kind": "noCommits" } | { "kind": "outsideRepository", 
+name: string, } | { "kind": "noCommits" } | { "kind": "notCheckedOut", 
+/**
+ * The branch shown.
+ */
+branch: string, } | { "kind": "noBranch", 
+/**
+ * As given.
+ */
+name: string, } | { "kind": "outsideRepository", 
 /**
  * As given.
  */

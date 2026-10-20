@@ -127,11 +127,15 @@ say where).
    the core (`merge`): rounds copied meanwhile count on from the saved
    ones, their comments following, and the bound holds.
    (Amended by ADR 0020 §1: version 3, with when each tree was last
-   seen.)
+   seen. Amended by ADR 0026 §1 and §8: per branch of a project, in
+   version 4.)
 10. **The Undo banner goes.** A banner announces only a context change:
     a switched branch, a moved or rewritten branch, and how many open
     comments are not in this diff. "The agent updated the code" and
-    "addressed and removed" are no longer said.
+    "addressed and removed" are no longer said. (Amended by ADR 0026 §3
+    and §4: a branch switched in the worktree is another review, so this
+    one falls back to its branch's commits and the banner says that; and
+    a review shown again says where its branch went while away.)
 
 ## Consequences
 

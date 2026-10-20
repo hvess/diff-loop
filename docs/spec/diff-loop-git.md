@@ -1,11 +1,11 @@
 # diff-loop-git
 
-The `Repository` adapter over the `git` command line.
+The `Repository` and `Project` adapters over the `git` command line.
 
 **Status:** active — first version landed.
 **Scope:** `crates/git`. Excludes everything the core decides.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-17
+**Last Updated:** 2026-10-19
 
 ## Why
 
@@ -22,6 +22,7 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 7. `changes_in`: the changes under given paths (ADR 0005 §2) — done 2026-10-13.
 8. Behind counts on refs, and the uncommitted file count — done 2026-10-13; replaced 2026-10-17 by step 9.
 9. Ref dates, newest first, and the uncommitted line counts (Decision 11) — done 2026-10-17.
+10. Reviews per branch (ADR 0026): a branch no worktree has checked out, read from its commits (`Git::for_branch`, Decision 12), and a project's branches with where each is checked out (`GitProject`, Decision 13) — done 2026-10-19.
 
 ## Decisions
 
@@ -29,7 +30,8 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
    working tree; `Uncommitted` diffs `HEAD` (or the empty tree) against
    the working tree; `LastCommit` diffs `HEAD^` (or the empty tree)
    against `HEAD`. Untracked, unignored files are added for working-tree
-   bases.
+   bases. A branch with no working tree (Decision 12) puts its commit for
+   `HEAD` and for the working tree, and refuses `Uncommitted`.
 2. **Untracked files are read from disk**, not one `git diff --no-index`
    each; a NUL in the first 8000 bytes makes one binary, as git does, and
    a binary is read no further than that. An untracked path git also
@@ -73,11 +75,13 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
    and reports a burst of events once after 250 ms of quiet
    (`watch.rs`, `SETTLE`), with the working-tree paths it touched
    (ADR 0005 §1), or everything when the working tree's index changed
-   (ADR 0018 §1). Dropping the guard stops it and its thread.
+   (ADR 0018 §1). Dropping the guard stops it and its thread. A branch
+   no worktree has checked out watches its common directory alone
+   (Decision 12).
 7. **Stdin is written on its own thread** (`command.rs`): git can fill
    its stdout pipe before it has read all its input.
 8. **Git is found as a terminal finds it** (`locate.rs`), once per
-   `Git::open`: the first `git` on `PATH`; else, on Unix, the file
+   `Git::open` and `GitProject::open` (open-tasks 26): the first `git` on `PATH`; else, on Unix, the file
    `$SHELL -lc 'command -v git'` names, since an app opened from the
    macOS Finder gets a minimal `PATH`; else plain `git`, which fails with
    a message naming where it looked (`MISSING`). The developer's call,
@@ -108,6 +112,34 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
     counts (`%(ahead-behind:HEAD)`, git 2.41 or later) and the
     uncommitted changes were counted in files.
 
+12. **A branch no worktree has checked out is read from its commits**
+    (`Git::for_branch`, `shows::Branch`; ADR 0026 §3): `git` runs in the
+    common git directory, the branch's ref (the local one, else the
+    remote one) stands for `HEAD`, the new side is its commit, the
+    uncommitted changes and their line counts are refused
+    (`RepoError::NotCheckedOut`), its own ref is not offered as a base,
+    and the watch covers the common directory alone, with no index. A
+    branch a worktree has checked out opens that worktree, as
+    `Git::open` does; one with no such name is `RepoError::NoBranch`.
+    What differs between the two is the one place it is decided, the
+    private `Shows` trait (`shows.rs`) with its `WorkingTree` and `Branch`.
+
+13. **A project's branches come from one `for-each-ref` and
+    `worktree list --porcelain`** (`GitProject`, `project.rs`), run
+    in its common git directory: local branches first, each with its
+    upstream folded in when that ref exists, then each remote's branch
+    that is no local branch's upstream, named without its remote unless
+    the name is taken (as `origin/fix`), a remote's name ending at the
+    first `/` as the base picker's does (open-tasks 24); `HEAD` refs are left out, and so is a
+    worktree whose folder is gone (`prunable`), while a branch a worktree
+    has checked out before its first commit, which has no ref, is listed
+    with no commit. Each says where it is
+    (`Location`: local, with its upstream's remote and the worktree that
+    has it checked out, or a remote's alone). O(refs), once each time the
+    review switcher checks the project or a review is opened. While a
+    review is shown from its commits, each poll asks only which worktree
+    has its branch (`Project::worktree_of`, `worktree list` alone).
+
 ## Pitfalls
 
 - A hunk is read by its line counts, never by looking for the next
@@ -115,6 +147,10 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 - `git diff --git` headers are ambiguous for paths with spaces; only an
   identical pair is split from the header, and renames take their paths
   from `rename from` / `rename to`.
+
+## Progress (2026-10-19, reviews per branch)
+
+Step 10 landed (ADR 0026; Decisions 1, 12 and 13).
 
 ## Progress (2026-10-17, the base picker as designed)
 

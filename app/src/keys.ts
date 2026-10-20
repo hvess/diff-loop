@@ -36,6 +36,7 @@ export type WindowCommand =
   | "showAllLines"
   | "checkForChanges"
   | "closeFolder"
+  | "switcher"
   | "escape";
 
 /** What a key press asks for; where it may run is its `Scope` in `BINDINGS`. */
@@ -80,6 +81,7 @@ const BINDINGS = new Map<string, { command: Command; scope: Scope; repeats: bool
   ["shift+x", { command: "showAllLines", scope: "page", repeats: false }],
   ["mod+r", { command: "checkForChanges", scope: "window", repeats: false }],
   ["mod+shift+w", { command: "closeFolder", scope: "page", repeats: false }],
+  ["mod+k", { command: "switcher", scope: "window", repeats: false }],
   ["escape", { command: "escape", scope: "page", repeats: false }],
   ["arrowdown", { command: "lineDown", scope: "page", repeats: true }],
   ["arrowup", { command: "lineUp", scope: "page", repeats: true }],

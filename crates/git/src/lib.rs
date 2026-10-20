@@ -1,12 +1,16 @@
-//! [`Repository`] over the `git` command line.
+//! [`Repository`] and [`Project`](diff_loop_core::Project) over the `git`
+//! command line.
 //!
-//! Every call runs `git` in the checkout with optional locks off, so polling
-//! never contends with an agent committing in the same repository.
+//! Every call runs `git` with optional locks off, in the checkout, or for a
+//! project or a branch no worktree has, in the common git directory, so
+//! polling never contends with an agent committing in the same repository.
 
 mod command;
 mod locate;
 mod parse;
+mod project;
 mod raw;
+mod shows;
 mod states;
 mod untracked;
 mod watch;
@@ -15,19 +19,23 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fs, io,
     path::{Component, Path, PathBuf},
+    sync::Arc,
 };
 
 use diff_loop_core::{
-    Base, BaseRef, Changes, Checkout, Content, FileDiff, FileStates, Head, LineCounts, NewSide,
-    OnChange, RefKind, RepoError, Repository, Side, Snapshot, WatchGuard,
+    Base, BaseRef, Changes, Checkout, Content, FileDiff, FileStates, LineCounts, NewSide, OnChange,
+    RefKind, RepoError, Repository, Side, Snapshot, WatchGuard, project_name,
 };
 
 use command::{Outcome, Runner};
+pub use project::GitProject;
+use shows::{Shows, WorkingTree};
 
-/// A git working tree.
+/// A git working tree, or a branch no working tree has checked out.
 #[derive(Debug, Clone)]
 pub struct Git {
     run: Runner,
+    shows: Arc<dyn Shows>,
 }
 
 impl Git {
@@ -51,16 +59,47 @@ impl Git {
         let root = probe.stdout(&["rev-parse", "--show-toplevel"])?;
         Ok(Self {
             run: probe.in_dir(PathBuf::from(root.trim_end_matches('\n'))),
+            shows: Arc::new(WorkingTree),
         })
+    }
+
+    /// Branch `name` of the repository whose common git directory is
+    /// `project`: the working tree that has it checked out, or with none, the
+    /// branch read from its commits (ADR 0026 §3).
+    ///
+    /// # Errors
+    /// [`RepoError::NoBranch`] when no branch has that name;
+    /// [`RepoError::NotARepository`] when `project` is no git directory;
+    /// [`RepoError::Failed`] when `git` cannot run.
+    pub fn for_branch(project: &Path, name: &str) -> Result<Self, RepoError> {
+        let project = GitProject::open(project)?;
+        let (branch, refname) = project
+            .listed()?
+            .into_iter()
+            .find(|(branch, _)| branch.name == name)
+            .ok_or_else(|| RepoError::NoBranch {
+                name: name.to_owned(),
+            })?;
+        match branch.worktree() {
+            Some(root) => Self::open(Path::new(root)),
+            None => Ok(Self {
+                run: project.into_runner(),
+                shows: Arc::new(shows::Branch {
+                    name: branch.name,
+                    refname,
+                }),
+            }),
+        }
     }
 
     fn root(&self) -> &Path {
         self.run.dir()
     }
 
-    /// Full id of `HEAD`, or `None` before the first commit.
-    fn head_commit(&self) -> Result<Option<String>, RepoError> {
-        self.verify("HEAD")
+    /// Full id of the commit shown: at `HEAD`, or the branch's; `None`
+    /// before the first commit.
+    fn tip(&self) -> Result<Option<String>, RepoError> {
+        self.verify(self.shows.tip_ref())
     }
 
     /// Full id of the commit `name` resolves to, or `None` when it names none.
@@ -82,32 +121,35 @@ impl Git {
 
     /// The two trees `base` compares.
     fn snapshot(&self, base: &Base) -> Result<Snapshot, RepoError> {
-        let head = self.head_commit()?;
+        let tip = self.tip()?;
         Ok(match base {
             Base::Ref { name } => {
                 let base_commit = self
                     .verify(name)?
                     .ok_or_else(|| RepoError::UnknownBase { name: name.clone() })?;
-                let head = head.ok_or(RepoError::NoCommits)?;
-                let fork = match self.run.outcome(&["merge-base", &base_commit, &head])? {
+                let tip = tip.ok_or(RepoError::NoCommits)?;
+                let fork = match self.run.outcome(&["merge-base", &base_commit, &tip])? {
                     Outcome::Success(out) => out.trim().to_owned(),
                     // Unrelated histories: compare with the base itself.
                     Outcome::Failure => base_commit,
                 };
                 Snapshot {
                     old: Some(fork),
+                    new: self.shows.new_side(tip),
+                }
+            }
+            Base::Uncommitted => {
+                self.shows.working_tree()?;
+                Snapshot {
+                    old: tip,
                     new: NewSide::WorkingTree,
                 }
             }
-            Base::Uncommitted => Snapshot {
-                old: head,
-                new: NewSide::WorkingTree,
-            },
             Base::LastCommit => {
-                let head = head.ok_or(RepoError::NoCommits)?;
+                let tip = tip.ok_or(RepoError::NoCommits)?;
                 Snapshot {
-                    old: self.verify("HEAD^")?,
-                    new: NewSide::Commit { id: head },
+                    old: self.verify(&format!("{tip}^"))?,
+                    new: NewSide::Commit { id: tip },
                 }
             }
         })
@@ -262,47 +304,19 @@ impl Git {
 
 impl Repository for Git {
     fn checkout(&self) -> Result<Checkout, RepoError> {
-        let common =
-            self.run
-                .stdout(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
-        let common = Path::new(common.trim_end_matches('\n'));
-        let named = if common.file_name().is_some_and(|n| n == ".git") {
-            common.parent()
-        } else {
-            Some(common)
-        };
-        let name = named
-            .and_then(Path::file_name)
-            .map(|n| n.to_string_lossy().trim_end_matches(".git").to_owned())
-            .unwrap_or_default();
-        let head = match self
-            .run
-            .outcome(&["symbolic-ref", "--quiet", "--short", "HEAD"])?
-        {
-            Outcome::Success(out) => Head::Branch {
-                name: out.trim().to_owned(),
-            },
-            Outcome::Failure => Head::Detached {
-                commit: self
-                    .run
-                    .stdout(&["rev-parse", "--short", "HEAD"])?
-                    .trim()
-                    .to_owned(),
-            },
-        };
+        let project = project::common_dir(&self.run)?.display().to_string();
+        let (head, worktree) = self.shows.head(&self.run)?;
         Ok(Checkout {
-            name,
-            root: self.root().display().to_string(),
+            name: project_name(&project),
+            project,
+            worktree,
             head,
-            commit: self.head_commit()?,
+            commit: self.tip()?,
         })
     }
 
     fn refs(&self) -> Result<Vec<BaseRef>, RepoError> {
-        let current = match self.run.outcome(&["symbolic-ref", "--quiet", "HEAD"])? {
-            Outcome::Success(out) => Some(out.trim().to_owned()),
-            Outcome::Failure => None,
-        };
+        let current = self.shows.shown_ref(&self.run)?;
         // `creatordate` is a commit's committer date, or an annotated tag's
         // tagger date.
         let out = self.run.stdout(&[
@@ -327,14 +341,10 @@ impl Repository for Git {
                 ]
                 .into_iter()
                 .find_map(|(prefix, kind)| full.strip_prefix(prefix).map(|n| (kind, n)))?;
-                let updated = date
-                    .parse::<i64>()
-                    .ok()
-                    .and_then(|seconds| seconds.checked_mul(1000));
                 Some(BaseRef {
                     name: name.to_owned(),
                     kind,
-                    updated,
+                    updated: millis(date),
                 })
             })
             .collect())
@@ -404,25 +414,11 @@ impl Repository for Git {
     }
 
     fn watch(&self, on_change: OnChange) -> Result<WatchGuard, RepoError> {
-        // A worktree's git directories live outside it: HEAD, the index and
-        // refs change there.
-        let git_dirs = ["--git-common-dir", "--absolute-git-dir"]
-            .into_iter()
-            .map(|flag| {
-                let out = self
-                    .run
-                    .stdout(&["rev-parse", "--path-format=absolute", flag])?;
-                Ok(PathBuf::from(out.trim_end_matches('\n')))
-            })
-            .collect::<Result<Vec<_>, RepoError>>()?;
-        let index =
-            self.run
-                .stdout(&["rev-parse", "--path-format=absolute", "--git-path", "index"])?;
-        let index = PathBuf::from(index.trim_end_matches('\n'));
-        watch::watch(self.root(), &git_dirs, &index, on_change)
+        self.shows.watch(&self.run, on_change)
     }
 
     fn uncommitted_lines(&self) -> Result<LineCounts, RepoError> {
+        self.shows.working_tree()?;
         // The lines `changes(Uncommitted)` shows: tracked files counted by
         // git, untracked ones read as `untracked::added` reads them.
         let snapshot = self.snapshot(&Base::Uncommitted)?;
@@ -449,20 +445,30 @@ impl Repository for Git {
     }
 
     fn commits_between(&self, from: &str, to: &str) -> Result<Option<u32>, RepoError> {
-        if let Outcome::Failure =
-            self.run
-                .outcome(&["merge-base", "--is-ancestor", "--end-of-options", from, to])?
-        {
-            return Ok(None);
-        }
-        let count = self.run.stdout(&[
-            "rev-list",
-            "--count",
-            "--end-of-options",
-            &format!("{from}..{to}"),
-        ])?;
-        Ok(count.trim().parse().ok())
+        commits_between(&self.run, from, to)
     }
+}
+
+/// A ref's date as `%(creatordate:unix)` gives it, in milliseconds; `None`
+/// for one git left empty.
+fn millis(seconds: &str) -> Option<i64> {
+    seconds.parse::<i64>().ok()?.checked_mul(1000)
+}
+
+/// [`Repository::commits_between`], for a checkout and a project alike.
+fn commits_between(run: &Runner, from: &str, to: &str) -> Result<Option<u32>, RepoError> {
+    if let Outcome::Failure =
+        run.outcome(&["merge-base", "--is-ancestor", "--end-of-options", from, to])?
+    {
+        return Ok(None);
+    }
+    let count = run.stdout(&[
+        "rev-list",
+        "--count",
+        "--end-of-options",
+        &format!("{from}..{to}"),
+    ])?;
+    Ok(count.trim().parse().ok())
 }
 
 /// The one way this crate reports a failed file operation: with its path.

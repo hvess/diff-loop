@@ -1,11 +1,11 @@
 # diff-loop-app
 
-The desktop app: Tauri commands around `diff-loop-core`, and the React front end built from the "Agent Review" design, at "Agent Review v2" since 2026-10-14.
+The desktop app: Tauri commands around `diff-loop-core`, and the React front end built from the "Agent Review" design, at "Agent Review v2" since 2026-10-14 and "Agent Review v3" since 2026-10-19.
 
-**Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15.
+**Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15, and flow 6, reviews per branch, since 2026-10-19 (step 15).
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-17
+**Last Updated:** 2026-10-20
 
 ## Why
 
@@ -15,7 +15,7 @@ change, annotate, hand off to the agent, next round.
 ## Steps
 
 1. Open a project: welcome, open folder (⌘/Ctrl-O, drop, or a path on the
-   command line), recent folders, "Not a git repository", "Nothing to
+   command line), recent folders (reviews since 2026-10-19, step 15), "Not a git repository", "Nothing to
    review" — done 2026-10-13.
 2. Read the change: files grouped by role with viewed progress (V),
    unified and split views, highlighting, base picker, cards for renamed,
@@ -33,7 +33,8 @@ change, annotate, hand off to the agent, next round.
    window gains focus (ADR 0002, ADR 0005 §4); when `HEAD` moves, a banner: "The
    branch moved: N new commits", "The branch was rewritten" when the old
    commit is no longer an ancestor, or "Switched to <branch>" when another
-   branch is checked out, each saying how many open comments are not in
+   branch is checked out (until 2026-10-19: since then another branch is
+   another review, step 15), each saying how many open comments are not in
    this diff, and "Show what changed" compares with the
    previous `HEAD` when it moved — done 2026-10-13; from 2026-10-14 to
    2026-10-15 a load also removed comments whose code changed, with Undo
@@ -49,7 +50,8 @@ change, annotate, hand off to the agent, next round.
    9 and 10) — done 2026-10-13.
 7. Keep a review between runs (ADR 0004): comments and note are read
    before a checkout's first load and saved as they change — done
-   2026-10-13; comments only since 2026-10-14 (ADR 0013 §3).
+   2026-10-13; comments only since 2026-10-14 (ADR 0013 §3); per branch
+   since 2026-10-19 (step 15).
 8. The base picker's notes: behind counts, the uncommitted file count
    and the last commit's id (Decision 12) — done 2026-10-13; replaced
    2026-10-17 by step 14.
@@ -77,13 +79,25 @@ change, annotate, hand off to the agent, next round.
 14. The base picker as designed 2026-10-17 (scenes 2b, 2e and 2f):
     the first list, the lists it opens in place, ages and line counts
     (Decision 32) — done 2026-10-17.
+15. Reviews per branch (the design's flow 6, ADR 0026; Decision 33): a
+    review per branch, shown where its branch is, live or from its
+    commits; resumed with the banners of 6f and 6g; a worktree that
+    switches branch (6j); the base and Copy of a branch with no worktree
+    (6h, 6i); a detached `HEAD` (6l); the review switcher and the title
+    bar's chip (6a–6e, 6k, 6m); the Welcome screen (1a); one window per
+    review; ⌘/Ctrl-K — done 2026-10-19. The design's ⌃/Ctrl-Tab for the
+    review shown before is not built: the HIG `keyboards` page gives
+    Control-Tab to moving focus between groups of controls (the
+    developer's call, 2026-10-19).
 
 ## Decisions
 
 1. **Commands only convert and delegate** (quality-gate §2). `run`
-   chooses the adapter (`open_git`); `Session` managed state holds it and
-   the open repository as `dyn Repository`. The `Opener` indirection has
-   one implementation on purpose: the folder is picked at run time, and
+   chooses the adapters (`open_git`, and since ADR 0026 `open_git_branch`
+   and `open_git_project`); `Session` managed state holds them and the
+   open repository as `dyn Repository`, and setup manages `Claims` (ADR
+   0026 §9). The `Opener`, `BranchOpener` and `ProjectOpener` indirections
+   have one implementation each on purpose: the folder is picked at run time, and
    §2 keeps choosing the adapter in `run`; every repository call runs in
    `spawn_blocking`. `run` returns the runtime's error and `main` reports
    it.
@@ -123,8 +137,10 @@ change, annotate, hand off to the agent, next round.
    expanded ones included, show without highlighting (`highlight.ts`, `MAX_LINES`,
    which bounds the highlighting worker since ADR 0011); the base
    picker lists 50 matches, an exactly named ref first, and asks to type
-   to narrow (`SHOWN`), in a search and in each list it opens; 8 recent
-   folders are kept (`recent.ts`, `LIMIT`). The preview's 150 ms wait
+   to narrow (`SHOWN`), in a search and in each list it opens, and the
+   review switcher 50 rows a group (`SHOWN`, `switcher.ts`); 8 recent
+   folders were kept (`recent.ts`, `LIMIT`) until 2026-10-19, when the
+   welcome screen's 8 reviews took their place (`LISTED`). The preview's 150 ms wait
    after the last change (`PREVIEW_DELAY_MS`) went with the note it
    waited for, 2026-10-14.
 
@@ -185,7 +201,8 @@ change, annotate, hand off to the agent, next round.
     while current and unresolved (`hasCard`); a lost or outdated one is
     muted in the list, opens nothing, and is still copied; a lost one
     keeps its quoted code and offers Re-place and Delete. The banner names
-    only a context change: a switched, moved or rewritten branch, with
+    only a context change: a switched (until 2026-10-19; see Decision 33),
+    moved or rewritten branch, with
     "N comments are not in this diff." and Show comments, which opens the
     list below it, and Show what changed when `HEAD` moved, or Show
     uncommitted changes when it follows a commit on top of a round,
@@ -411,6 +428,7 @@ change, annotate, hand off to the agent, next round.
     | ⌘/Ctrl-Shift-C | Copy review, with comments |
     | ⌘/Ctrl-R | Check for changes now |
     | ⌘/Ctrl-Shift-W | Close the folder |
+    | ⌘/Ctrl-K | Open or close the review switcher, on the welcome screen too (ADR 0026 §7) |
     | ⌘/Ctrl-O, ⌘/Ctrl-F, ⌘/Ctrl-G, Esc | As before (Decisions 18 and 27), except that ⌘/Ctrl-G, and the macOS menu's Find Next and Find Previous, no longer step find under a dialog |
 
     The line cursor is the selection. ↓ and ↑ move it a row at a time,
@@ -497,7 +515,7 @@ change, annotate, hand off to the agent, next round.
       the comment's index).
     - **Cards:** a draft keeps Edit and Delete; a sent one shows its chip
       (Sent, Changed, Reopened), "Sent in round N · 18 min ago" (`when`,
-      as the welcome screen's recent folders; in `muted3`, as "You sent in
+      as the welcome screen's reviews; in `muted3`, as "You sent in
       round N"), a reopened
       one "You sent in round N" with the old text and "Copies as “Still:
       …”" (the composer shows the same while editing a sent comment), a
@@ -593,6 +611,143 @@ change, annotate, hand off to the agent, next round.
     - Refs, the default branch and the line counts are read again each
       time the picker opens.
 
+33. **Reviews per branch** (ADR 0026; the design's flow 6,
+    `app/src/store.ts`). Where what follows departs from the design's
+    drawing or words, to meet the HIG and draw one thing one way (the
+    review judges' findings), each departure is the developer's call,
+    2026-10-19: "Checking…" in a row's place line, "Open without saving"
+    where the design says "Look", to match the switcher's "↩ Open", tooltips for the hover
+    notes and Copy's reason also written out, "Open without saving" and
+    "Branches without a review" on every branch row, the other-window
+    notice at the switcher's top and every notice closed by Dismiss, the
+    welcome rows drawn as the switcher's, the reworded notes and banners,
+    and no copy at all from a branch no worktree has.
+    - **One review on screen**, kept under its `key` (the core's
+      `Opening::key`; null on a detached `HEAD`). Opening a
+      folder shows its branch's review; `openReview` shows one by key,
+      wherever its branch is. Both go through `show`, which reads the
+      saved review, has the core resume it (`resume_review`) and sets it
+      with the checkout, so showing is not a change to save, then saves
+      what resuming changed; a later `show` supersedes an earlier one
+      still reading.
+    - **Saves go per review** (`Saving`, by `idOf`), its base and where
+      its branch was seen with its comments and rounds; a review never
+      kept and still empty writes nothing, so looking at a branch leaves
+      nothing (ADR 0026 §2). Only the base picker's choice is kept with
+      it (`chooseBase`); a follow or Show what changed is not, and the
+      base picker says so under its first list once there is a review
+      ("Saved with this review. Switching back to it restores this
+      base."). Each load that finds the branch at another commit records
+      it (`seen`).
+    - **Where it is shown follows its branch** (ADR 0026 §3): a load that
+      finds its worktree on another branch, or a detached one on a
+      branch, shows that review's own place instead (`openReview`), the
+      load itself dropped; fallen back to its commits, the banner says
+      "… now has agent/share-retry checked out" with Open agent/share-retry
+      (`switchedBanner`). From its commits, each poll asks whether a
+      worktree has the branch now (`worktree_of`), and shows it live
+      there, unannounced.
+    - **What a branch with no worktree, or a detached `HEAD`, cannot do**
+      (`canSend`, `canComment`, `whyNotSent`): no round is sent, so Copy
+      review and the preview's Copy are disabled, their reason written
+      beside Copy review while comments are open, unless the switched
+      banner, which says it, is up,
+      and as the tooltip of what holds each ("feature/old-export isn’t
+      checked out in any worktree. Check it out in
+      one to send its comments.", one phrasing with the base picker's and
+      the switched banner's, where the design says "Nothing to send to: …", which
+      gave no next step; HIG `writing`), and ⌘/Ctrl-Shift-C is left to the
+      page; the base picker's Uncommitted changes cannot be picked and
+      says why under it, with its next step ("… Check it out in one to
+      compare with its uncommitted changes."); on a detached `HEAD` no line or file takes a
+      comment, its line numbers are not buttons, the macOS Review menu's
+      comment item is off, and its banner says so.
+    - **The review switcher** (`Switcher.tsx`, its rows `listing` in
+      `app/src/switcher.ts`; the design's 6a–6c, 6k and 6m), from the title
+      bar's chip or ⌘/Ctrl-K: the project's reviews, the one shown first
+      and marked ✓ as the base picker marks its base (a branch shown with
+      no review is marked so among the branches, with no "Open without
+      saving"),
+      then each other project's, most recently shown first (`seen`), with
+      the dot, where its branch is ("Live in .wt/share-retry", relative to
+      the project's folder, or "Committed only · not checked out", "… · on
+      origin"), its moved pill ("+3 commits", "Rewritten" outlined), its
+      open comments ("All resolved" once none is) and its last round. Its
+      reviews are read and each project checked every time it opens
+      (`refreshReviews`, the project shown first, a second call joining one
+      under way; and as the welcome screen shows; the core deletes the
+      reviews of deleted branches, `check_kept`), a row keeping the place
+      its project's last check gave while a new one runs; a project never
+      checked yet says "Checking…" in the place line once its check has
+      taken 200 ms (ADR 0010 §6), where the design puts it in the pill; and
+      "Couldn’t be checked" when it cannot be; a review another window
+      shows says "Open in another window" (`KeptReview::elsewhere`, from
+      `Claims::held_elsewhere`). A review row's trail names its last
+      round ("Round 2 sent · 10 min ago"), or says "Nothing sent yet", as
+      its round strip does, and its open comments as the title bar counts
+      them ("3 comments"), where the design says "3 open". Every branch row ends in
+      "Open without saving", in the empty state as in a search, so the same
+      row reads the same (the design draws it only in a search). A project with no review
+      says how one starts and lists its branches ("6 local · 24 on
+      origin"), live ones first, under "Branches without a review in
+      mail-ios" as in a search, where the design heads them "Branches";
+      typing lists the reviews whose branch or project holds it, every
+      project's, then the project's branches under the same heading, named
+      for the project since the reviews above are every project's (HIG
+      `searching`),
+      "Open without saving". Its last row, "Open folder… ⌘O", opens a folder (ADR 0026
+      §7). ↑ ↓ move, Return opens, Esc closes; the search field, which
+      takes the typing whenever the switcher is open, is drawn flat, as
+      the base picker's is (`ux` skill; the developer's call, 2026-10-20), and a group's trail is in mono
+      only when it is a path. Deleted branches are said
+      at its top until it closes, with how many comments went (6k); a
+      review another window shows says at the top, with the deletions,
+      where to find it (the design puts it under the list); the window's
+      own review, found deleted, is saved no more, so its next change
+      does not keep it again; a failed `openReview` says nothing once
+      another review has been shown since it began; each notice
+      closed by Dismiss, as banners are, where the design says OK:
+      "Look for “drive-web · agent/share-retry” in your window list.",
+      the design's second sentence alone, since nothing asks the desktop
+      to bring that window forward (6m; open-tasks 25). The window's
+      title names the project and branch for that (`windowTitle`). A lock
+      file that cannot be opened is `CommandError::Claim`, "Can’t tell
+      whether another window shows this review"; its lock work runs off the
+      async runtime, and a claim is tried three times 20 ms apart, since
+      another window's check holds the lock for that moment.
+    - **The title bar's chip** (6a, 6d, 6i, 6l): the dot, the project, the
+      branch ("HEAD at 4e1b2a0" detached), and "No review yet", "Committed
+      only" or "Detached"; its hover note on "Committed only" is a tooltip
+      where the design draws a popover, as the base picker's dates are. Copy's reason is written beside it while there
+      are open comments, not only on hover, so it is seen without a pointer
+      (HIG `feedback`). The first comment shows "Review saved" under it for
+      6 s, or until Dismiss (6e, `reviewSaved`), 240 px wide so it stays over
+      the sidebar's head at its default width: "… is with your reviews now, under ⌘K.",
+      where the design says "in the switcher", a word no window shows. Its hints are
+      ↑ ↓, Return and Esc, without the design's ⌃Tab (step 15).
+    - **The welcome screen** (1a): "Open a project", and the 8 reviews
+      most recently shown, with "Show all reviews ⌘K", in place of recent
+      folders (`diff-loop.recent` is no longer read or written). Each row
+      reads as the switcher's does, its moved pill and its place line
+      ("Live in .wt/share-retry"), where the design writes the moved
+      state after the count and the place as a whole path in mono. Each
+      row's dot is centred on its two lines, as the switcher's is.
+      Closing the folder lets the session go (`close_repository`), so
+      another window may show its review.
+    - **The banners** (`resumedBanner`, `switchedBanner`): the design's
+      words for 6f, 6g and 6j, their detail wrapping rather than cut
+      short, with the dot, title and actions on its first line; a detached `HEAD`'s, "With no branch
+      there is nowhere to keep comments, so none can be written here. Check
+      out a branch to comment.", is the
+      author's under ADR 0026 §5, the design's having said comments
+      vanish on leaving; and the moved banner's "Comments follow their
+      code.", where the design says "re-anchored", a word of the code's
+      (HIG `writing`). A banner's dot is the title bar's, and means
+      what a switcher row's does: solid while the diff is read live from a
+      worktree, a detached `HEAD`'s included, hollow from commits alone
+      (`isLive`); whether Copy sends a round is said in words beside it. Show what changed compares
+      with the commit the branch was at, as the design's Show commits.
+
 ## Pitfalls
 
 - A load answers for the comments it was sent. One changed while it ran
@@ -613,6 +768,16 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-19, reviews per branch)
+
+Step 15 landed (ADR 0026, Decision 33): reviews are kept and shown per
+branch, live or from its commits, with the design's flow 6 (the review
+switcher, its chip, its banners) and its welcome screen; the commands
+`open_review`, `resume_review`, `worktree_of`, `kept_reviews` and
+`check_project`, and `saved_review` and `save_review` by `ReviewKey`;
+`reviews.json` is version 4 (`reviews.rs`); one window per review
+(`claims.rs`); ⌘/Ctrl-K (Decision 29).
 
 ## Progress (2026-10-17, the base picker as designed)
 

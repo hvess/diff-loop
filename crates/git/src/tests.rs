@@ -3,7 +3,7 @@
 use std::{
     collections::BTreeSet,
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
     sync::mpsc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -12,12 +12,12 @@ use std::{
 use std::{os::unix::fs::symlink, thread};
 
 use diff_loop_core::{
-    Base, Content, FileDiff, Head, Line, LineCounts, NewSide, RefKind, RepoError, Repository, Side,
-    Status, Touched,
+    Base, Content, FileDiff, Head, Line, LineCounts, Location, NewSide, Project, RefKind,
+    RepoError, Repository, Side, Status, Touched,
 };
 use tempfile::TempDir;
 
-use super::Git;
+use super::{Git, GitProject};
 
 fn git(dir: &Path, args: &[&str]) {
     git_with(dir, args, &[]);
@@ -111,8 +111,14 @@ fn open_finds_the_root_from_a_subfolder() {
     let git = Git::open(&dir.path().join("src")).unwrap();
     let checkout = git.checkout().unwrap();
     assert_eq!(
-        Path::new(&checkout.root).canonicalize().unwrap(),
+        Path::new(checkout.worktree.as_deref().unwrap())
+            .canonicalize()
+            .unwrap(),
         dir.path().canonicalize().unwrap()
+    );
+    assert_eq!(
+        Path::new(&checkout.project).canonicalize().unwrap(),
+        dir.path().join(".git").canonicalize().unwrap()
     );
     assert_eq!(
         checkout.head,
@@ -815,4 +821,225 @@ fn uncommitted_lines_count_long_files_and_links_as_shown() {
     assert_eq!(counts, shown_lines(&git_));
     let link = if cfg!(unix) { 1 } else { 0 };
     assert_eq!(counts.added, 5000 + 9001 + link);
+}
+
+/// `repo()` with `agent/x` committed on and left, so no worktree has it
+/// checked out, `main` back in the main checkout with an edit not committed;
+/// and a worktree at `wt` on `agent/y`.
+fn branches_apart() -> (TempDir, TempDir) {
+    let dir = repo();
+    write(dir.path(), "src/handler.ts", "a\nB\nc\n");
+    git(dir.path(), &["commit", "-qam", "on x"]);
+    git(dir.path(), &["switch", "-q", "main"]);
+    write(dir.path(), "old.txt", "edited on main, not committed\n");
+    let worktrees = TempDir::new().unwrap();
+    let at = worktrees.path().join("wt");
+    git(
+        dir.path(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            at.to_str().unwrap(),
+            "-b",
+            "agent/y",
+        ],
+    );
+    (dir, worktrees)
+}
+
+fn project_of(dir: &TempDir) -> PathBuf {
+    dir.path().join(".git")
+}
+
+#[test]
+fn a_branch_checked_out_in_a_worktree_opens_there() {
+    let (dir, worktrees) = branches_apart();
+    let git = Git::for_branch(&project_of(&dir), "agent/y").unwrap();
+    let checkout = git.checkout().unwrap();
+    assert_eq!(
+        Path::new(checkout.worktree.as_deref().unwrap())
+            .canonicalize()
+            .unwrap(),
+        worktrees.path().join("wt").canonicalize().unwrap()
+    );
+    assert_eq!(
+        Path::new(&checkout.project).canonicalize().unwrap(),
+        project_of(&dir).canonicalize().unwrap(),
+        "a worktree shares its repository's project"
+    );
+}
+
+#[test]
+fn a_branch_no_worktree_has_shows_only_its_commits() {
+    let (dir, _worktrees) = branches_apart();
+    let git = Git::for_branch(&project_of(&dir), "agent/x").unwrap();
+    let checkout = git.checkout().unwrap();
+    assert_eq!(checkout.worktree, None);
+    assert_eq!(
+        checkout.head,
+        Head::Branch {
+            name: "agent/x".into()
+        }
+    );
+    let main = Base::Ref {
+        name: "main".into(),
+    };
+    let changes = git.changes(&main).unwrap();
+    // Its commit, not main's uncommitted edit to old.txt.
+    assert_eq!(names(&changes.files), ["src/handler.ts"]);
+    assert_eq!(
+        changes.snapshot.new,
+        NewSide::Commit {
+            id: checkout.commit.clone().unwrap()
+        }
+    );
+    let last = git.changes(&Base::LastCommit).unwrap();
+    assert_eq!(names(&last.files), ["src/handler.ts"]);
+    let blob = git
+        .blob(&changes.snapshot, Side::New, "src/handler.ts")
+        .unwrap();
+    assert_eq!(blob, b"a\nB\nc\n");
+    let refused = RepoError::NotCheckedOut {
+        branch: "agent/x".into(),
+    };
+    assert_eq!(git.changes(&Base::Uncommitted).unwrap_err(), refused);
+    assert_eq!(git.uncommitted_lines().unwrap_err(), refused);
+    assert!(git.file_states(&main).unwrap().files.is_empty());
+    let refs: Vec<String> = git.refs().unwrap().into_iter().map(|r| r.name).collect();
+    assert!(refs.contains(&"main".to_owned()));
+    assert!(!refs.contains(&"agent/x".to_owned()), "the branch shown");
+}
+
+#[test]
+fn a_branch_that_does_not_exist_is_named_as_such() {
+    let (dir, _worktrees) = branches_apart();
+    assert_eq!(
+        Git::for_branch(&project_of(&dir), "agent/gone").unwrap_err(),
+        RepoError::NoBranch {
+            name: "agent/gone".into()
+        }
+    );
+}
+
+#[test]
+fn a_project_lists_its_branches_with_where_each_is_checked_out() {
+    let (dir, worktrees) = branches_apart();
+    let project = GitProject::open(&project_of(&dir)).unwrap();
+    let branches = project.branches().unwrap();
+    let at = |name: &str| {
+        let branch = branches.iter().find(|b| b.name == name).unwrap();
+        branch
+            .worktree()
+            .map(|w| Path::new(w).canonicalize().unwrap())
+    };
+    assert_eq!(at("main"), Some(dir.path().canonicalize().unwrap()));
+    assert_eq!(
+        at("agent/y"),
+        Some(worktrees.path().join("wt").canonicalize().unwrap())
+    );
+    assert_eq!(at("agent/x"), None);
+    let worktree = project.worktree_of("agent/y").unwrap();
+    assert_eq!(
+        worktree.map(|w| Path::new(&w).canonicalize().unwrap()),
+        at("agent/y")
+    );
+    assert_eq!(project.worktree_of("agent/x").unwrap(), None);
+    assert!(
+        branches
+            .iter()
+            .all(|b| matches!(b.location, Location::Local { remote: None, .. }))
+    );
+}
+
+#[test]
+fn a_clone_lists_a_remote_branch_without_its_remote_and_opens_it_from_its_commits() {
+    let (origin, _worktrees) = branches_apart();
+    let clones = TempDir::new().unwrap();
+    let clone = clones.path().join("clone");
+    git(
+        clones.path(),
+        &[
+            "clone",
+            "-q",
+            origin.path().to_str().unwrap(),
+            clone.to_str().unwrap(),
+        ],
+    );
+    let project = GitProject::open(&clone.join(".git")).unwrap();
+    let branches = project.branches().unwrap();
+    let main = branches.iter().find(|b| b.name == "main").unwrap();
+    assert!(
+        matches!(&main.location, Location::Local { remote: Some(r), .. } if r == "origin"),
+        "its upstream folded in"
+    );
+    let x = branches.iter().find(|b| b.name == "agent/x").unwrap();
+    assert!(matches!(&x.location, Location::Remote { remote } if remote == "origin"));
+    assert!(!branches.iter().any(|b| b.name.ends_with("HEAD")));
+    let git = Git::for_branch(&clone.join(".git"), "agent/x").unwrap();
+    let checkout = git.checkout().unwrap();
+    assert_eq!(checkout.worktree, None);
+    assert_eq!(checkout.commit, x.commit);
+}
+
+/// Regression: a branch with no commit yet had no ref, so the switcher took it for deleted.
+#[test]
+fn a_branch_with_no_commit_yet_is_listed_where_it_is_checked_out() {
+    let dir = TempDir::new().unwrap();
+    git(dir.path(), &["init", "-q", "-b", "main"]);
+    write(dir.path(), "a.txt", "a\n");
+    let project = GitProject::open(&project_of(&dir)).unwrap();
+    let branches = project.branches().unwrap();
+    assert_eq!(branches.len(), 1);
+    assert_eq!(branches[0].name, "main");
+    assert_eq!(branches[0].commit, None);
+    assert_eq!(
+        branches[0]
+            .worktree()
+            .map(|w| Path::new(w).canonicalize().unwrap()),
+        Some(dir.path().canonicalize().unwrap())
+    );
+}
+
+/// Regression: a tag of the branch's name made its review `heads/fix`, a branch no project lists.
+#[test]
+fn a_branch_is_named_as_the_project_lists_it_when_a_tag_has_its_name() {
+    let dir = repo();
+    git(dir.path(), &["tag", "agent/x"]);
+    let git = Git::open(dir.path()).unwrap();
+    assert!(matches!(
+        git.checkout().unwrap().head,
+        Head::Branch { name } if name == "agent/x"
+    ));
+    let project = GitProject::open(&project_of(&dir)).unwrap();
+    assert!(
+        project
+            .branches()
+            .unwrap()
+            .iter()
+            .any(|b| b.name == "agent/x")
+    );
+}
+
+#[test]
+fn a_project_is_refused_for_a_folder_that_is_no_git_directory() {
+    let dir = repo();
+    assert!(matches!(
+        GitProject::open(dir.path()),
+        Err(RepoError::NotARepository { .. })
+    ));
+}
+
+#[test]
+fn a_watch_on_a_branch_no_worktree_has_sees_it_move() {
+    let (dir, _worktrees) = branches_apart();
+    let git_x = Git::for_branch(&project_of(&dir), "agent/x").unwrap();
+    let (changed, seen) = mpsc::channel();
+    let _guard = git_x
+        .watch(Box::new(move |touched| {
+            let _ = changed.send(touched);
+        }))
+        .unwrap();
+    git(dir.path(), &["branch", "-qf", "agent/x", "main"]);
+    assert!(seen.recv_timeout(Duration::from_secs(5)).is_ok());
 }

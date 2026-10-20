@@ -1,5 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
+import { homeDir } from "@tauri-apps/api/path";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { chooseFolder } from "./choose";
@@ -10,7 +12,7 @@ import { ReviewScreen } from "./components/ReviewScreen";
 import { Welcome } from "./components/Welcome";
 import { isLineCommand, type WindowCommand } from "./keys";
 import { bindingFor, findShown, isMac, onPage, wouldBeep } from "./platform";
-import { useStore } from "./store";
+import { canSend, useStore, windowTitle } from "./store";
 
 /** How often the checkout is polled while focused, only when it cannot be watched. */
 const POLL_MS = 2000;
@@ -22,6 +24,11 @@ function run(command: WindowCommand, e: KeyboardEvent): boolean {
     return true;
   }
   const s = useStore.getState();
+  // The switcher lists every project's reviews, so it opens on the welcome screen too (ADR 0026 §7).
+  if (command === "switcher") {
+    s.setSwitcher(!s.switcher);
+    return true;
+  }
   // The rest act on an open checkout.
   if (!s.opening) return false;
   switch (command) {
@@ -82,7 +89,7 @@ function run(command: WindowCommand, e: KeyboardEvent): boolean {
       s.undoLast();
       return true;
     case "copyReview":
-      if (s.comments.length === 0) return false;
+      if (s.comments.length === 0 || !canSend(s)) return false;
       void s.copyReview();
       return true;
     case "preview":
@@ -121,7 +128,20 @@ function run(command: WindowCommand, e: KeyboardEvent): boolean {
 
 export function App() {
   const hasRepository = useStore((s) => s.opening !== null);
+  const title = useStore(windowTitle);
   const [dropping, setDropping] = useState(false);
+
+  // The window list names the review, so another window's notice can say where it is (ADR 0026 §9).
+  useEffect(() => {
+    getCurrentWindow().setTitle(title).catch(() => {});
+  }, [title]);
+
+  useEffect(() => {
+    homeDir().then(
+      (home) => useStore.getState().setHome(home),
+      () => {},
+    );
+  }, []);
 
   useEffect(() => {
     showWhenPainted();

@@ -5,7 +5,7 @@ import type { Side } from "../bindings/Side";
 import type { Snapshot } from "../bindings/Snapshot";
 import { useDelayed } from "../delay";
 import { counts, hunksOf } from "../rows";
-import { commentText, useStore } from "../store";
+import { canComment, commentText, useStore } from "../store";
 import { baseLabel } from "./BasePicker";
 import { CommentCard } from "./CommentCard";
 import { Composer } from "./Composer";
@@ -168,6 +168,7 @@ function FileBody({ file, snapshot }: { file: FileDiff; snapshot: Snapshot }) {
 
 function Card({ file, badge, children, body }: { file: FileDiff; badge: string; children?: React.ReactNode; body?: React.ReactNode }) {
   const composeOnFile = useStore((s) => s.composeOnFile);
+  const commentable = useStore(canComment);
   const composer = useStore((s) => s.composer);
   const all = useStore((s) => s.comments);
   const comments = all.filter((c) => c.path === file.path && c.target.kind === "file");
@@ -179,13 +180,15 @@ function Card({ file, badge, children, body }: { file: FileDiff; badge: string; 
           <span className="code truncate font-mono text-[13px] font-medium">{file.path}</span>
           <span className="flex-none rounded-full bg-chip px-2.5 py-0.5 text-xs text-muted2">{badge}</span>
           <span className="ml-auto truncate text-[12.5px] text-muted3">{children}</span>
-          <button
-            type="button"
-            className="flex-none text-[12.5px] whitespace-nowrap text-muted3"
-            onClick={() => composeOnFile(file.path)}
-          >
-            Comment on file
-          </button>
+          {commentable && (
+            <button
+              type="button"
+              className="flex-none text-[12.5px] whitespace-nowrap text-muted3"
+              onClick={() => composeOnFile(file.path)}
+            >
+              Comment on file
+            </button>
+          )}
         </div>
         {body}
       </div>

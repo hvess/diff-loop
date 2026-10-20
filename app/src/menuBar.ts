@@ -3,7 +3,7 @@ import { CheckMenuItem, Menu, MenuItem, Submenu } from "@tauri-apps/api/menu";
 import { chooseFolder } from "./choose";
 import { hasCard, resolvable } from "./lifecycle";
 import { dialogOpen } from "./platform";
-import { useStore } from "./store";
+import { canComment, useStore } from "./store";
 
 type Store = ReturnType<typeof useStore.getState>;
 
@@ -29,7 +29,8 @@ export function menuState(s: Store): MenuState {
     unified: s.mode === "unified",
     viewed: selected === null ? null : s.viewed.has(selected),
     hasComments: s.comments.some(hasCard),
-    canComment: s.selection !== null && s.composer === null,
+    // On a detached `HEAD` nothing takes a comment (ADR 0026 §5).
+    canComment: s.selection !== null && s.composer === null && canComment(s),
     finding: s.find !== null,
     resolve: resolveOf(s.comments.find((c) => c.id === (s.openComment ?? s.lastResolved))),
   };

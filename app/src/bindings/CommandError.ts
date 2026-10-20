@@ -13,7 +13,19 @@ error: RepoError, } | { "kind": "store",
 /**
  * Why.
  */
-error: StoreError, } | { "kind": "internal", 
+error: StoreError, } | { "kind": "openElsewhere", 
+/**
+ * The project's name, as the other window's title gives it.
+ */
+name: string, 
+/**
+ * The review's branch.
+ */
+branch: string, } | { "kind": "claim", 
+/**
+ * Why, in the filesystem's words.
+ */
+message: string, } | { "kind": "internal", 
 /**
  * The runtime's description.
  */

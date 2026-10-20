@@ -3,6 +3,6 @@ import { useStore } from "./store";
 
 /** Asks for a folder and opens it. */
 export async function chooseFolder() {
-  const path = await open({ directory: true, multiple: false, title: "Open a repository" });
+  const path = await open({ directory: true, multiple: false, title: "Open a project" });
   if (typeof path === "string") await useStore.getState().open(path);
 }

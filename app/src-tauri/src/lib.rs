@@ -15,16 +15,19 @@ use std::{
 
 #[cfg(target_os = "linux")]
 mod appearance;
+mod claims;
 #[cfg(target_os = "linux")]
 mod renderer;
 mod reviews;
 
+use claims::{Claim, Claims, Refused};
 use diff_loop_core::{
-    Base, BaseChoices, Comment, Content, InstructionsRequest, KnownFile, LineCounts, Loaded,
-    Opening, Place, RepoError, Repository, Review, ReviewFile, ReviewStore, RoundRequest,
-    SavedReview, Side, Snapshot, StoreError, Touched, WatchGuard,
+    Base, BaseChoices, CheckError, Comment, Content, InstructionsRequest, KnownFile, LineCounts,
+    Loaded, Opening, Place, Project, ProjectCheck, RepoError, Repository, Resumed, Review,
+    ReviewFile, ReviewKey, ReviewStore, ReviewSummary, RoundRequest, SavedReview, Side, Snapshot,
+    StoreError, Touched, WatchGuard, project_name,
 };
-use diff_loop_git::Git;
+use diff_loop_git::{Git, GitProject};
 use serde::Serialize;
 use tauri::{
     AppHandle, Emitter, Error as TauriError, Manager, Result as TauriResult, State, WebviewWindow,
@@ -40,6 +43,14 @@ type Shared = Arc<dyn Repository + Send + Sync>;
 
 /// Opens the repository containing a folder.
 type Opener = fn(&Path) -> Result<Shared, RepoError>;
+
+/// Opens a branch of the project whose common git directory is given: the
+/// working tree that has it checked out, or with none, its commits
+/// (ADR 0026 §3).
+type BranchOpener = fn(&Path, &str) -> Result<Shared, RepoError>;
+
+/// Opens a repository as a whole, by its common git directory.
+type ProjectOpener = fn(&Path) -> Result<Arc<dyn Project + Send + Sync>, RepoError>;
 
 /// The event the front end hears when the open checkout may have changed.
 const CHANGED: &str = "repository-changed";
@@ -59,6 +70,8 @@ const SHOW_ANYWAY: Duration = Duration::from_secs(3);
 /// Locks are taken in field order, `current` first, wherever two are held.
 struct Session {
     open: Opener,
+    open_branch: BranchOpener,
+    open_project: ProjectOpener,
     current: Mutex<Option<Shared>>,
     watch: Mutex<Option<Watching>>,
     /// The last load: with a watch, what it saw touched since says what
@@ -67,6 +80,9 @@ struct Session {
     /// Counts loads begun; only the latest may keep what it loaded, so an
     /// older load finishing last cannot replace a newer one.
     loads: Mutex<u64>,
+    /// The review the open checkout shows, held for this window (ADR 0026
+    /// §9); none on a detached `HEAD`.
+    claim: Mutex<Option<Claim>>,
 }
 
 /// What a load starts from: the last load and what a watch saw touched
@@ -117,6 +133,21 @@ pub(crate) enum CommandError {
     Store {
         /// Why.
         error: StoreError,
+    },
+    /// Another window shows the review (ADR 0026 §9).
+    #[error("{branch} is open in another window")]
+    OpenElsewhere {
+        /// The project's name, as the other window's title gives it.
+        name: String,
+        /// The review's branch.
+        branch: String,
+    },
+    /// Whether another window shows the review could not be told: its lock
+    /// file could not be opened or locked.
+    #[error("{message}")]
+    Claim {
+        /// Why, in the filesystem's words.
+        message: String,
     },
     /// The work panicked, or its answer could not be sent back: a defect in
     /// the app or a window closing, not the repository.
@@ -197,14 +228,26 @@ impl From<StoreError> for CommandError {
     }
 }
 
+impl From<CheckError> for CommandError {
+    fn from(error: CheckError) -> Self {
+        match error {
+            CheckError::Repository(error) => Self::Repository { error },
+            CheckError::Store(error) => Self::Store { error },
+        }
+    }
+}
+
 impl Session {
-    fn new(open: Opener) -> Self {
+    fn new(open: Opener, open_branch: BranchOpener, open_project: ProjectOpener) -> Self {
         Self {
             open,
+            open_branch,
+            open_project,
             current: Mutex::new(None),
             watch: Mutex::new(None),
             loaded: Mutex::new(None),
             loads: Mutex::new(0),
+            claim: Mutex::new(None),
         }
     }
 
@@ -214,14 +257,35 @@ impl Session {
             .ok_or(CommandError::NoRepository)
     }
 
-    /// Makes `repository` the open one; the old one's watch stops.
-    fn replace(&self, repository: Shared) {
+    /// Makes `repository` the open one, showing the review `claim` holds;
+    /// the old one's watch stops, and its review is let go.
+    fn replace(&self, repository: Shared, claim: Option<Claim>) {
         // Holding `current` throughout makes the swap atomic, so no guard or
         // load for the old repository lands after it.
         let mut current = lock(&self.current);
         *lock(&self.watch) = None;
         *lock(&self.loaded) = None;
+        *lock(&self.claim) = claim;
         *current = Some(repository);
+    }
+
+    /// Closes the open repository: its watch stops, and its review is let
+    /// go for another window.
+    fn close(&self) {
+        let mut current = lock(&self.current);
+        *lock(&self.watch) = None;
+        *lock(&self.loaded) = None;
+        *lock(&self.claim) = None;
+        *current = None;
+    }
+
+    /// The claim this window holds for `key`, taken from it to show the
+    /// review again; none when it holds another.
+    fn take_claim(&self, key: &ReviewKey) -> Option<Claim> {
+        let mut held = lock(&self.claim);
+        held.as_ref()
+            .is_some_and(|c| c.key() == key)
+            .then(|| held.take())?
     }
 
     /// Keeps `watching` running while `watched` is still the open repository,
@@ -305,11 +369,43 @@ where
         })??)
 }
 
-/// Opens the checkout containing `path` and makes it the session's.
+/// The claim to show `opening`'s review with: the one this window holds
+/// already, or a new one, refused while another window holds it; none on a
+/// detached `HEAD`.
+async fn claim(
+    session: &Session,
+    claims: &Claims,
+    opening: &Opening,
+) -> Result<Option<Claim>, CommandError> {
+    let Some(key) = opening.key.clone() else {
+        return Ok(None);
+    };
+    if let Some(held) = session.take_claim(&key) {
+        return Ok(Some(held));
+    }
+    let claims = claims.clone();
+    let name = opening.checkout.name.clone();
+    // The lock file is opened and locked off the runtime.
+    blocking(move || match claims.take(&key) {
+        Ok(claim) => Ok(Some(claim)),
+        Err(Refused::Elsewhere) => Err(CommandError::OpenElsewhere {
+            name,
+            branch: key.branch,
+        }),
+        Err(Refused::Failed(e)) => Err(CommandError::Claim {
+            message: e.to_string(),
+        }),
+    })
+    .await
+}
+
+/// Opens the checkout containing `path` and makes it the session's, unless
+/// another window shows its review.
 #[tauri::command]
 async fn open_repository(
     path: PathBuf,
     session: State<'_, Session>,
+    claims: State<'_, Claims>,
 ) -> Result<Opening, CommandError> {
     let open = session.open;
     let (repository, opening) = blocking(move || {
@@ -318,8 +414,117 @@ async fn open_repository(
         Ok::<_, RepoError>((repository, opening))
     })
     .await?;
-    session.replace(repository);
+    let claim = claim(&session, &claims, &opening).await?;
+    session.replace(repository, claim);
     Ok(opening)
+}
+
+/// Opens the review kept under `key` and makes its checkout the session's:
+/// the working tree that has the branch checked out, or with none, the
+/// branch's commits (ADR 0026 §3).
+#[tauri::command]
+async fn open_review(
+    key: ReviewKey,
+    session: State<'_, Session>,
+    claims: State<'_, Claims>,
+) -> Result<Opening, CommandError> {
+    let open = session.open_branch;
+    let (repository, opening) = blocking(move || {
+        let repository = open(Path::new(&key.project), &key.branch)?;
+        let opening = diff_loop_core::open(&*repository)?;
+        Ok::<_, RepoError>((repository, opening))
+    })
+    .await?;
+    let claim = claim(&session, &claims, &opening).await?;
+    session.replace(repository, claim);
+    Ok(opening)
+}
+
+/// Closes the open checkout: its watch stops, and another window may show
+/// its review (ADR 0026 §9).
+#[tauri::command]
+fn close_repository(session: State<'_, Session>) {
+    session.close();
+}
+
+/// A kept review as the review switcher lists it (ADR 0026 §7).
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub(crate) struct KeptReview {
+    key: ReviewKey,
+    /// The project's name.
+    name: String,
+    summary: ReviewSummary,
+    /// Whether another window shows it.
+    elsewhere: bool,
+}
+
+/// Every review kept, in key order, with whether another window shows it.
+#[tauri::command]
+async fn kept_reviews(
+    reviews: State<'_, Reviews>,
+    session: State<'_, Session>,
+    claims: State<'_, Claims>,
+) -> Result<Vec<KeptReview>, CommandError> {
+    let store = Arc::clone(&reviews.0);
+    let claims = claims.inner().clone();
+    // This window's own review would read as held: its lock is this window's.
+    let own = lock(&session.claim).as_ref().map(|c| c.key().clone());
+    blocking(move || {
+        Ok::<_, StoreError>(
+            store
+                .kept()?
+                .into_iter()
+                .map(|(key, review)| KeptReview {
+                    name: project_name(&key.project),
+                    summary: review.summary(),
+                    elsewhere: own.as_ref() != Some(&key) && claims.held_elsewhere(&key),
+                    key,
+                })
+                .collect(),
+        )
+    })
+    .await
+}
+
+/// `project`'s branches and where each of its kept reviews' went; a review
+/// whose branch is gone is deleted with it (ADR 0026 §6), and named.
+#[tauri::command]
+async fn check_project(
+    project: String,
+    reviews: State<'_, Reviews>,
+    session: State<'_, Session>,
+) -> Result<ProjectCheck, CommandError> {
+    let store = Arc::clone(&reviews.0);
+    let open = session.open_project;
+    blocking(move || -> Result<ProjectCheck, CheckError> {
+        let port = open(Path::new(&project))?;
+        diff_loop_core::check_kept(&*port, &*store, &project)
+    })
+    .await
+}
+
+/// `review` as the open checkout shows it now, at `at` (ADR 0026 §4).
+#[tauri::command]
+async fn resume_review(
+    review: SavedReview,
+    default: Base,
+    at: i64,
+    session: State<'_, Session>,
+) -> Result<Resumed, CommandError> {
+    let repository = session.current()?;
+    blocking(move || diff_loop_core::resume(&*repository, review, default, at)).await
+}
+
+/// The root of the working tree that has `key`'s branch checked out, if one does.
+#[tauri::command]
+async fn worktree_of(
+    key: ReviewKey,
+    session: State<'_, Session>,
+) -> Result<Option<String>, CommandError> {
+    let open = session.open_project;
+    blocking(move || open(Path::new(&key.project))?.worktree_of(&key.branch)).await
 }
 
 /// Emits [`CHANGED`] whenever the open checkout may have changed, until
@@ -448,25 +653,25 @@ fn launch_path(launch: State<'_, LaunchPath>) -> Option<PathBuf> {
     lock(&launch.0).take()
 }
 
-/// The review saved for the working tree at `root`; empty when none is.
+/// The review saved under `key`; empty when none is.
 #[tauri::command]
 async fn saved_review(
-    root: String,
+    key: ReviewKey,
     reviews: State<'_, Reviews>,
 ) -> Result<SavedReview, CommandError> {
     let store = Arc::clone(&reviews.0);
-    blocking(move || store.saved(&root)).await
+    blocking(move || store.saved(&key)).await
 }
 
-/// Keeps `review` for the working tree at `root`; an empty one removes it.
+/// Keeps `review` under `key`; an empty one removes it.
 #[tauri::command]
 async fn save_review(
-    root: String,
+    key: ReviewKey,
     review: SavedReview,
     reviews: State<'_, Reviews>,
 ) -> Result<(), CommandError> {
     let store = Arc::clone(&reviews.0);
-    blocking(move || store.save(&root, &review)).await
+    blocking(move || store.save(&key, &review)).await
 }
 
 /// The review as instructions for a coding agent.
@@ -498,6 +703,16 @@ fn merge_reviews(window: SavedReview, saved: SavedReview) -> SavedReview {
 /// The adapter this app reads repositories with (ADR 0001 §4).
 fn open_git(path: &Path) -> Result<Shared, RepoError> {
     Ok(Arc::new(Git::open(path)?))
+}
+
+/// [`open_git`] for a branch of a project ([`BranchOpener`]).
+fn open_git_branch(project: &Path, branch: &str) -> Result<Shared, RepoError> {
+    Ok(Arc::new(Git::for_branch(project, branch)?))
+}
+
+/// [`open_git`] for a project as a whole ([`ProjectOpener`]).
+fn open_git_project(project: &Path) -> Result<Arc<dyn Project + Send + Sync>, RepoError> {
+    Ok(Arc::new(GitProject::open(project)?))
 }
 
 /// Shows `window` after [`SHOW_ANYWAY`] if the front end has not, so a front
@@ -534,9 +749,12 @@ pub fn run() -> TauriResult<()> {
                 .build(),
         )
         .setup(|app| {
-            // The review store's adapter (ADR 0004 §2).
-            let file = app.path().app_data_dir()?.join("reviews.json");
-            app.manage(Reviews(Arc::new(reviews::JsonReviews::new(file))));
+            // The review store's adapter (ADR 0004 §2), and the reviews each window holds (ADR 0026 §9).
+            let app_data = app.path().app_data_dir()?;
+            app.manage(Reviews(Arc::new(reviews::JsonReviews::new(
+                app_data.join("reviews.json"),
+            ))));
+            app.manage(Claims::new(app_data.join("open")));
             if let Some(window) = app.get_webview_window("main") {
                 show_anyway(window);
             }
@@ -546,12 +764,18 @@ pub fn run() -> TauriResult<()> {
             }
             Ok(())
         })
-        .manage(Session::new(open_git))
+        .manage(Session::new(open_git, open_git_branch, open_git_project))
         .manage(LaunchPath(Mutex::new(
             std::env::args_os().nth(1).map(PathBuf::from),
         )))
         .invoke_handler(tauri::generate_handler![
             open_repository,
+            open_review,
+            close_repository,
+            resume_review,
+            worktree_of,
+            kept_reviews,
+            check_project,
             base_choices,
             load_review,
             fingerprint,
@@ -578,7 +802,7 @@ mod tests {
         sync::atomic::{AtomicBool, Ordering},
     };
 
-    use diff_loop_core::{FileDiff, Hunk, Line, Status};
+    use diff_loop_core::{Checkout, FileDiff, Head, Hunk, Line, Status};
     use tauri::async_runtime::block_on;
     use tempfile::TempDir;
 
@@ -657,7 +881,7 @@ mod tests {
 
     #[test]
     fn a_session_without_a_repository_says_so() {
-        let session = Session::new(open_git);
+        let session = Session::new(open_git, open_git_branch, open_git_project);
         assert!(matches!(session.current(), Err(CommandError::NoRepository)));
     }
 
@@ -679,11 +903,13 @@ mod tests {
             .args(["init", "-q"])
             .status();
         assert!(init.unwrap().success());
-        let session = Session::new(open_git);
-        session.replace((session.open)(dir.path()).unwrap());
+        let session = Session::new(open_git, open_git_branch, open_git_project);
+        session.replace((session.open)(dir.path()).unwrap(), None);
         let checkout = session.current().unwrap().checkout().unwrap();
         assert_eq!(
-            Path::new(&checkout.root).canonicalize().unwrap(),
+            Path::new(checkout.worktree.as_deref().unwrap())
+                .canonicalize()
+                .unwrap(),
             dir.path().canonicalize().unwrap()
         );
     }
@@ -746,12 +972,12 @@ mod tests {
     fn opening_another_repository_stops_the_old_watch() {
         let (_dir, first) = git_repository();
         let (_other, second) = git_repository();
-        let session = Session::new(open_git);
-        session.replace(Arc::clone(&first));
+        let session = Session::new(open_git, open_git_branch, open_git_project);
+        session.replace(Arc::clone(&first), None);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&first, watching(&stopped)));
         assert!(!stopped.load(Ordering::SeqCst));
-        session.replace(second);
+        session.replace(second, None);
         assert!(stopped.load(Ordering::SeqCst));
     }
 
@@ -759,8 +985,8 @@ mod tests {
     fn a_watch_on_a_repository_no_longer_open_is_dropped() {
         let (_dir, first) = git_repository();
         let (_other, second) = git_repository();
-        let session = Session::new(open_git);
-        session.replace(second);
+        let session = Session::new(open_git, open_git_branch, open_git_project);
+        session.replace(second, None);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(!session.keep_watch(&first, watching(&stopped)));
         assert!(stopped.load(Ordering::SeqCst));
@@ -780,8 +1006,8 @@ mod tests {
     #[test]
     fn without_a_watch_the_last_load_is_kept_for_its_file_states() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git);
-        session.replace(Arc::clone(&repository));
+        let session = Session::new(open_git, open_git_branch, open_git_project);
+        session.replace(Arc::clone(&repository), None);
         load_and_keep(&session, &repository);
         let (_, since) = session.begin_load(&repository, false);
         assert!(matches!(since, Since::Polled(Some(_))));
@@ -799,8 +1025,8 @@ mod tests {
     #[test]
     fn while_watching_a_load_takes_the_last_and_what_was_touched() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git);
-        session.replace(Arc::clone(&repository));
+        let session = Session::new(open_git, open_git_branch, open_git_project);
+        session.replace(Arc::clone(&repository), None);
         let stopped = Arc::new(AtomicBool::new(false));
         let watch = watching(&stopped);
         let touched = Arc::clone(&watch.touched);
@@ -822,8 +1048,8 @@ mod tests {
     #[test]
     fn a_full_load_reads_everything_and_takes_what_was_touched() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git);
-        session.replace(Arc::clone(&repository));
+        let session = Session::new(open_git, open_git_branch, open_git_project);
+        session.replace(Arc::clone(&repository), None);
         let stopped = Arc::new(AtomicBool::new(false));
         let watch = watching(&stopped);
         let touched = Arc::clone(&watch.touched);
@@ -841,8 +1067,8 @@ mod tests {
     #[test]
     fn a_new_watch_forgets_the_last_load() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git);
-        session.replace(Arc::clone(&repository));
+        let session = Session::new(open_git, open_git_branch, open_git_project);
+        session.replace(Arc::clone(&repository), None);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&repository, watching(&stopped)));
         load_and_keep(&session, &repository);
@@ -854,8 +1080,8 @@ mod tests {
     #[test]
     fn a_load_begun_before_the_watch_is_not_kept() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git);
-        session.replace(Arc::clone(&repository));
+        let session = Session::new(open_git, open_git_branch, open_git_project);
+        session.replace(Arc::clone(&repository), None);
         let (before, _) = session.begin_load(&repository, false);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&repository, watching(&stopped)));
@@ -867,8 +1093,8 @@ mod tests {
     fn a_load_of_a_repository_no_longer_open_is_not_kept() {
         let (_dir, first) = git_repository();
         let (_other, second) = git_repository();
-        let session = Session::new(open_git);
-        session.replace(Arc::clone(&second));
+        let session = Session::new(open_git, open_git_branch, open_git_project);
+        session.replace(Arc::clone(&second), None);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&second, watching(&stopped)));
         load_and_keep(&session, &first);
@@ -879,8 +1105,8 @@ mod tests {
     #[test]
     fn only_the_latest_load_begun_is_kept() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git);
-        session.replace(Arc::clone(&repository));
+        let session = Session::new(open_git, open_git_branch, open_git_project);
+        session.replace(Arc::clone(&repository), None);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&repository, watching(&stopped)));
         let (older, _) = session.begin_load(&repository, false);
@@ -889,5 +1115,74 @@ mod tests {
         assert!(lock(&session.loaded).is_none());
         session.keep_loaded(&repository, newer, loaded(&repository));
         assert!(lock(&session.loaded).is_some());
+    }
+
+    fn opening_on(head: Head) -> Opening {
+        let checkout = Checkout {
+            name: "drive-web".into(),
+            project: "/code/drive-web/.git".into(),
+            worktree: Some("/code/drive-web".into()),
+            head,
+            commit: None,
+        };
+        Opening {
+            key: ReviewKey::of(&checkout),
+            checkout,
+            choices: BaseChoices {
+                refs: vec![],
+                default_branch: None,
+            },
+            base: Base::Uncommitted,
+        }
+    }
+
+    fn branch(name: &str) -> Head {
+        Head::Branch { name: name.into() }
+    }
+
+    #[test]
+    fn a_review_another_window_shows_is_refused_and_one_this_window_shows_is_kept() {
+        let (_dir, repository) = git_repository();
+        let app_data = TempDir::new().unwrap();
+        // Two windows: each its own session and claims, as each instance has.
+        let (one, other) = (
+            Session::new(open_git, open_git_branch, open_git_project),
+            Session::new(open_git, open_git_branch, open_git_project),
+        );
+        let (claims, others) = (
+            Claims::new(app_data.path().to_path_buf()),
+            Claims::new(app_data.path().to_path_buf()),
+        );
+        let on_x = opening_on(branch("agent/x"));
+        let claim_on = |session: &Session, claims: &Claims, opening: &Opening| {
+            block_on(claim(session, claims, opening))
+        };
+        let held = claim_on(&one, &claims, &on_x).unwrap();
+        one.replace(Arc::clone(&repository), held);
+        assert!(matches!(
+            claim_on(&other, &others, &on_x),
+            Err(CommandError::OpenElsewhere { branch, .. }) if branch == "agent/x"
+        ));
+        // Shown again in its own window, as a worktree switch does: kept, not refused by itself.
+        let again = claim_on(&one, &claims, &on_x).unwrap();
+        assert!(again.is_some());
+        one.replace(Arc::clone(&repository), again);
+        // Another review shown, this one is let go.
+        let on_y = opening_on(branch("agent/y"));
+        let held = claim_on(&one, &claims, &on_y).unwrap();
+        one.replace(Arc::clone(&repository), held);
+        let theirs = claim_on(&other, &others, &on_x).unwrap();
+        assert!(theirs.is_some());
+        // Closed, the window lets go of the review it showed.
+        let on_z = opening_on(branch("agent/z"));
+        let held = claim_on(&one, &claims, &on_z).unwrap();
+        one.replace(Arc::clone(&repository), held);
+        one.close();
+        assert!(one.current().is_err());
+        assert!(claim_on(&other, &others, &on_z).unwrap().is_some());
+        let detached = opening_on(Head::Detached {
+            commit: "4e1b2a0".into(),
+        });
+        assert!(claim_on(&one, &claims, &detached).unwrap().is_none());
     }
 }

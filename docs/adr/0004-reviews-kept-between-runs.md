@@ -18,7 +18,9 @@ review in progress.
    comments and the general note (no note since ADR 0013 §3). Not per base: comments already follow
    their code across base and branch changes (`reanchor`), and keying by
    base would hide them on every switch, "Show what changed" included.
-   (Amended by ADR 0015 §9: and its rounds.)
+   (Amended by ADR 0015 §9: and its rounds. Amended by ADR 0026 §1: one
+   per branch of a project instead, with its base and where its branch
+   was seen.)
    Viewed marks are not kept: their signatures are valid within one run
    only. The developer's call, 2026-10-13.
 2. **The core owns the port** (`ReviewStore`, `SavedReview`,
@@ -36,7 +38,9 @@ review in progress.
    read and written back as 2.) Each
    save writes `reviews.json.next` and renames it over the file.
    (Amended by ADR 0020: version 3, with when each tree was last seen;
-   saves take turns across processes on `reviews.json.lock`.)
+   saves take turns across processes on `reviews.json.lock`. Amended by
+   ADR 0026 §8: version 4, by project then branch; an earlier version's
+   reviews are dropped.)
 4. **When:** the front end reads the saved review before a checkout
    shows, and sets it with the checkout, so `load` moves its comments
    onto their code and opening is not a change. It saves on every change
@@ -45,7 +49,9 @@ review in progress.
    a save equal to what that checkout last saved or read is skipped, so
    a refresh that only moves comments onto the same code writes nothing.
    Saves for a checkout run one after another (`app/src/store.ts`,
-   `Saving`).
+   `Saving`). (Amended by ADR 0026 §2 and §4: per review, with its base
+   and where its branch was seen; a review never kept and still empty
+   writes nothing.)
 5. **A saved review that cannot be read stops saving** for that checkout:
    writing would replace a review never read. Try again reads it again
    and merges it into the window (comments by id, the window's note if it

@@ -4,7 +4,7 @@ import type { Comment } from "../bindings/Comment";
 import { hasCard, kindOf, markOf, notInDiff as isNotInDiff, open as isOpen } from "../lifecycle";
 import { nameOf } from "../path";
 import { lastLine } from "../rows";
-import { commentText, keptEdit, orderedComments, requestOf, reviewKey, useStore } from "../store";
+import { commentText, keptEdit, orderedComments, requestOf, reviewKey, useStore, whyNotSent } from "../store";
 import { Glyph } from "./Pin";
 import { PreviewDialog } from "./PreviewDialog";
 
@@ -37,10 +37,13 @@ export function ReviewActions() {
   const edited = keptEdit(previewEdit, key);
   const setPreviewEdit = useStore((s) => s.setPreviewEdit);
   const copyProblem = useStore((s) => s.copyProblem);
+  const unsendable = useStore(whyNotSent);
+  const switched = useStore((s) => s.banner?.action?.kind === "review");
   const open = list.filter(isOpen);
   const count = open.length;
   const notInDiff = open.filter(isNotInDiff).length;
   const sentCount = copied ? comments.filter((c) => c.sent?.round === copied.round).length : 0;
+  const branch = useStore((s) => s.key?.branch);
 
   // A copy that sent a round stays up, offering Not sent, until a load changes something or it is dismissed (ADR 0015 §1).
   useEffect(() => {
@@ -51,6 +54,9 @@ export function ReviewActions() {
 
   return (
     <div className="relative flex items-center gap-4">
+      {/* Said where it is seen, not only on hover: open comments, and nowhere to send them (the design's 6i). */}
+      {/* The switched banner, the one that opens another review, says it already. */}
+      {!copied && !switched && count > 0 && unsendable && <span className="max-w-[360px] text-[12.5px] text-muted3">{unsendable}</span>}
       {copied ? (
         <Popover.Root open onOpenChange={(open) => !open && dismissCopied()}>
           <Popover.Anchor asChild>
@@ -67,7 +73,7 @@ export function ReviewActions() {
               <span className="text-[13.5px] leading-[1.5]">
                 {copied.round === null
                   ? "Copied as instructions. Paste them into your agent session."
-                  : `${sentCount} ${sentCount === 1 ? "comment" : "comments"} copied as instructions and marked Sent. Paste them into your agent session.`}
+                  : `${sentCount} ${sentCount === 1 ? "comment" : "comments"}${branch ? ` for ${branch}` : ""} copied as instructions and marked Sent. Paste them into the agent working on that branch.`}
               </span>
               <div className="flex gap-4 text-[12.5px] text-muted3">
                 <button type="button" className="-mx-1 rounded-md px-1 font-medium text-fg" onClick={() => setPreviewOpen(true)}>
@@ -111,9 +117,17 @@ export function ReviewActions() {
               <CommentList list={list} />
             </Popover.Content>
           </Popover.Portal>
-          <button type="button" disabled={count === 0} onClick={() => void copyReview()} className="py-2 pr-4 pl-3 disabled:opacity-60">
-            Copy review
-          </button>
+          {/* A disabled button takes no pointer: its reason is on what holds it. */}
+          <span title={unsendable ?? undefined} className="flex">
+            <button
+              type="button"
+              disabled={count === 0 || unsendable !== null}
+              onClick={() => void copyReview()}
+              className="py-2 pr-4 pl-3 disabled:opacity-60"
+            >
+              Copy review
+            </button>
+          </span>
         </div>
       )}
       {copyProblem && (

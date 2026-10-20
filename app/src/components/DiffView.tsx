@@ -22,7 +22,7 @@ import {
   unifiedRows,
   withinHunk,
 } from "../rows";
-import { orderedComments, type Selection, useStore } from "../store";
+import { canComment, orderedComments, type Selection, useStore } from "../store";
 import { CommentCard } from "./CommentCard";
 import { Composer } from "./Composer";
 import { FindBar } from "./FindBar";
@@ -279,11 +279,13 @@ export function DiffView({ file }: { file: FileDiff }) {
     const [anchor, head] = edge === "top" ? [handles.bottom, handles.top] : [handles.top, handles.bottom];
     useStore.getState().setSelection({ path: file.path, side: handles.side, anchor, head, dragging: false });
   };
-  const gutter = { pressNumber, enterNumber, handles, pressHandle, found, currentMatch };
+  // On a detached `HEAD` no line takes a comment: there is no review to keep it (ADR 0026 §5).
+  const commentable = useStore(canComment);
+  const gutter = { pressNumber, enterNumber, handles, pressHandle, found, currentMatch, commentable };
   const replacing = useStore((s) => s.replacing !== null);
   // While a draft is being placed, the selection is where it would land, not a range to comment on.
   const pill =
-    selection && !selection.dragging && !composer && selection.path === file.path
+    commentable && selection && !selection.dragging && !composer && selection.path === file.path
       ? lineKey(selection.side, replacing ? selection.head : Math.min(selection.anchor, selection.head))
       : null;
 
@@ -416,6 +418,8 @@ type LineProps = {
   /** Find's marks, by `side:no`, and the current match. */
   found: Map<string, Mark[]>;
   currentMatch: Match | null;
+  /** Whether a line can take a comment; its numbers are buttons only then. */
+  commentable: boolean;
 };
 
 /** How each kind of line is drawn; `on` names the gutter's colour, which a pin's rings cut out of. */
@@ -428,7 +432,7 @@ const TONE: Record<Cell["change"], { bg: string; gutter: string; on: Surface; si
 /** The menu for a commentable line: comment on it, or on the selected range it is in. */
 function commentMenu(e: React.MouseEvent, path: string, cell: Cell) {
   const s = useStore.getState();
-  if (cell.shown || s.composer) return;
+  if (cell.shown || s.composer || !canComment(s)) return;
   const sel = s.selection;
   const range = sel && !sel.dragging && sel.anchor !== sel.head && inSelection(sel, path, cell) ? sel : null;
   const removed = cell.side === "old" ? "Removed " : "";
@@ -503,7 +507,7 @@ function SplitHalf(props: LineProps & { cell: Cell | null }) {
 /** A row's numbers and sign as one target: a drag over it keeps the side it started on. */
 function Gutter({ cells, props, children }: { cells: (Cell | null)[]; props: LineProps; children: React.ReactNode }) {
   const line = gutterLine(cells);
-  if (!line) return <>{children}</>;
+  if (!line || !props.commentable) return <>{children}</>;
   return (
     <span
       onMouseDown={(e) => {
@@ -537,7 +541,7 @@ function Number({
 }) {
   const width = wide ? "w-16" : "w-12";
   if (!cell) return <span className={`${width} flex-none ${gutter}`} />;
-  if (cell.shown) {
+  if (cell.shown || !props.commentable) {
     return <span className={`${width} flex-none pr-2.5 text-right text-faint select-none ${gutter}`}>{cell.no}</span>;
   }
   return (

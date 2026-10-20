@@ -10,14 +10,21 @@ export type Checkout = {
  */
 name: string, 
 /**
- * Absolute path of the working tree's root.
+ * Absolute path of the repository's common git directory, which all its
+ * worktrees share: the project its reviews are kept under (ADR 0026 §1).
  */
-root: string, 
+project: string, 
 /**
- * What is checked out.
+ * Absolute path of the working tree's root; `None` for a branch no
+ * working tree has checked out, which shows only its commits.
+ */
+worktree: string | null, 
+/**
+ * What is checked out, or the branch shown.
  */
 head: Head, 
 /**
- * Full id of the commit at `HEAD`; `None` before the first commit.
+ * Full id of the commit at `HEAD`, or at the branch shown; `None` before
+ * the first commit.
  */
 commit: string | null, };

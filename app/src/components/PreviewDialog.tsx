@@ -4,7 +4,7 @@ import { api } from "../api";
 import { open as isOpen } from "../lifecycle";
 import { hasMod, modKey } from "../platform";
 import { previewSubtitle } from "../round";
-import { useStore } from "../store";
+import { useStore, whyNotSent } from "../store";
 
 /**
  * What Copy review puts on the clipboard, editable for this copy only. An
@@ -65,7 +65,8 @@ function Instructions({
   const instructionsRequest = useStore((s) => s.instructionsRequest);
   const copyText = useStore((s) => s.copyText);
   const [generated, setGenerated] = useState("");
-  const nothing = !comments.some(isOpen);
+  const unsendable = useStore(whyNotSent);
+  const nothing = !comments.some(isOpen) || unsendable !== null;
 
   useEffect(() => {
     const request = instructionsRequest();
@@ -145,16 +146,19 @@ function Instructions({
               Cancel
             </button>
           </Dialog.Close>
-          <button
-            type="button"
-            disabled={nothing}
-            onClick={copy}
-            className="flex h-[34px] items-center gap-2 rounded-[9px] bg-btn px-4 font-medium text-btn-fg disabled:opacity-60"
-          >
-            Copy to clipboard
-            {/* 65 %: the hint keeps 4.5:1 on the button in both appearances (HIG accessibility). */}
-            <span className="text-xs opacity-65">{modKey}↵</span>
-          </button>
+          {/* A disabled button takes no pointer: its reason is on what holds it. */}
+          <span title={unsendable ?? undefined}>
+            <button
+              type="button"
+              disabled={nothing}
+              onClick={copy}
+              className="flex h-[34px] items-center gap-2 rounded-[9px] bg-btn px-4 font-medium text-btn-fg disabled:opacity-60"
+            >
+              Copy to clipboard
+              {/* 65 %: the hint keeps 4.5:1 on the button in both appearances (HIG accessibility). */}
+              <span className="text-xs opacity-65">{modKey}↵</span>
+            </button>
+          </span>
         </div>
       </div>
     </>
