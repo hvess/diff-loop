@@ -52,7 +52,7 @@ When done, reply with one line per comment saying what you changed.
 ## Install
 
 A release on this repository's Releases page carries some of these, as
-chosen for it (0.9.0 carries only the `.dmg`):
+chosen for it (0.9.0 and 0.10.0 carry only the `.dmg`):
 
 | File | For |
 |---|---|

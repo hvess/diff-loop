@@ -66,6 +66,15 @@ contradicts) and the entry says so before it goes.
     single-instance channel asks the other window to focus where the
     desktop allows it, or the developer decides the notice is enough.
 
+27. **A claims test failed once under load.**
+    `a_review_claimed_by_one_window_is_refused_to_another_until_let_go`
+    (`app/src-tauri/src/claims.rs`) found the review still held
+    elsewhere just after the claim was dropped
+    (`assert!(!other.held_elsewhere(..))`), once, on 2026-10-23 while a
+    release build ran beside the review loop; it passed five runs after.
+    Why the lock outlived the dropped handle is not known. Closes when the
+    cause is found and fixed, or the test is shown not to flake.
+
 ## Distribution
 
 12. **macOS builds are not signed with a Developer ID or notarized**
