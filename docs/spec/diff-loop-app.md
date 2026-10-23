@@ -1,11 +1,11 @@
 # diff-loop-app
 
-The desktop app: Tauri commands around `diff-loop-core`, and the React front end built from the "Agent Review" design, at "Agent Review v2" since 2026-10-14 and "Agent Review v3" since 2026-10-19.
+The desktop app: Tauri commands around `diff-loop-core`, and the React front end built from the "Agent Review" design, at "Agent Review v2" since 2026-10-14 and "Agent Review v3" since 2026-10-19, and being redrawn as the redesign canvas since 2026-10-22 (ADR 0027, step 16).
 
-**Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15, and flow 6, reviews per branch, since 2026-10-19 (step 15).
+**Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15, and flow 6, reviews per branch, since 2026-10-19 (step 15); the redesign (step 16) landed 2026-10-22.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-20
+**Last Updated:** 2026-10-22
 
 ## Why
 
@@ -22,11 +22,11 @@ change, annotate, hand off to the agent, next round.
    deleted and binary files with image previews — done 2026-10-13; a
    tree of folders and files since 2026-10-14 (step 11).
 3. Annotate: click a line's gutter (its numbers or sign) for one line,
-   drag or shift-click for a range then C, Suggest code; edit, delete with
+   drag or shift-click for a range then C, Suggest Change; edit, delete with
    undo — done 2026-10-13; the whole gutter, not only its numbers, since
    2026-10-14; a drag opens the composer on release since 2026-10-15
    (Decision 30).
-4. Hand off: comment list (N / P to jump), Copy review, preview with
+4. Hand off: comment list, Copy Review, preview with
    format and toggles, clear with undo — done 2026-10-13; the preview is
    Markdown, edited in place, since 2026-10-14 (step 11).
 5. Next round: check for changes when the watch reports one or the
@@ -35,7 +35,7 @@ change, annotate, hand off to the agent, next round.
    commit is no longer an ancestor, or "Switched to <branch>" when another
    branch is checked out (until 2026-10-19: since then another branch is
    another review, step 15), each saying how many open comments are not in
-   this diff, and "Show what changed" compares with the
+   this diff, and "Show What Changed" compares with the
    previous `HEAD` when it moved — done 2026-10-13; from 2026-10-14 to
    2026-10-15 a load also removed comments whose code changed, with Undo
    in the banner; since 2026-10-15 the agent's work shows in the round
@@ -62,7 +62,7 @@ change, annotate, hand off to the agent, next round.
 11. The v2 design: the sidebar's tree and its progress header (Decisions
     23 and 24), the composer's look and suggested code without its
     shared indent (Decision 26), handles on the composer's range
-    (Decision 28), find in file (Decision 27), the preview edited in
+    (Decision 28; its ends dragged from the gutter since Decision 35), find in file (Decision 27), the preview edited in
     place (Decision 25), and a banner with Undo for removed comments
     (Decision 16) — done 2026-10-14.
 12. Keyboard shortcuts for moving through a review, commenting and
@@ -89,6 +89,26 @@ change, annotate, hand off to the agent, next round.
     review shown before is not built: the HIG `keyboards` page gives
     Control-Tab to moving focus between groups of controls (the
     developer's call, 2026-10-19).
+16. The redesign (ADR 0027), the canvas "Diff Loop macOS Redesign" drawn
+    for Tauri, in phases:
+    1. The shell (Decision 34): the canvas's palette and surfaces, the
+       fonts, Lucide icons, the inset sidebar card, the toolbar's
+       capsules with the layout toggle, banners as chrome cards — done
+       2026-10-22.
+    2. The sidebar: Filter Files, the Changes header with the files
+       left, the tree's rows, Other Reviews (2a) — done 2026-10-22.
+    3. The file's header, the diff's card and the split view (2a, 2c,
+       2g) — done 2026-10-22.
+    4. The floating bottom bar: the progress ring, files left, lines and
+       round, the comment count and Copy Review (2a, 4a) — done
+       2026-10-22.
+    5. Comments as gutter rails and margin notes, written in a popover,
+       and the selected range without handles (3c, 3f, 5a) — done
+       2026-10-22.
+    6. The base picker, the switcher, the comment list, the
+       instructions sheet, the banners' variants, Welcome, Nothing to
+       review and the file cards (1a, 1c, 2b, 2c, 4a, 4c, 6a, 6g) — done
+       2026-10-22.
 
 ## Decisions
 
@@ -156,6 +176,8 @@ change, annotate, hand off to the agent, next round.
     (Decision 4), and are dropped when the base changes. The diff cannot
     say whether its last hunk reaches the file's end, so "Show the rest
     of the file" is offered anyway; when nothing follows, the row goes.
+    Since Decision 35 the folds read "12 unchanged lines" and "Rest of
+    the file", "Show …" their accessible names.
 
 11. **Where the review store lives is chosen in `run`'s setup**, the
     composition root, as `Reviews` managed state over `dyn
@@ -197,15 +219,15 @@ change, annotate, hand off to the agent, next round.
     (`app/src/lifecycle.ts`, `kindOf`): a draft, sent, changed (its
     verdict changed, removed or applied), reopened (edited since sent),
     lost (a draft whose code went where it was last seen) or not in this
-    diff (outdated). A comment has a card, a pin and a stop for N / P only
+    diff (outdated). A comment has a card, a rail and margin note (a pin until Decision 35) and a stop for N / P only
     while current and unresolved (`hasCard`); a lost or outdated one is
     muted in the list, opens nothing, and is still copied; a lost one
     keeps its quoted code and offers Re-place and Delete. The banner names
     only a context change: a switched (until 2026-10-19; see Decision 33),
     moved or rewritten branch, with
-    "N comments are not in this diff." and Show comments, which opens the
-    list below it, and Show what changed when `HEAD` moved, or Show
-    uncommitted changes when it follows a commit on top of a round,
+    "N comments are not in this diff." and Show Comments, which opens the
+    list below it, and Show What Changed when `HEAD` moved, or Show
+    Uncommitted Changes when it follows a commit on top of a round,
     already showing what changed (ADR 0017 §2); a later commit while it
     follows keeps that banner, counting the commits since the round's
     (`following`, `followBanner`; since 2026-10-16), until another base
@@ -225,8 +247,8 @@ change, annotate, hand off to the agent, next round.
     Next Comment, Previous Comment, Viewed) and Window, so the context
     menus' commands are in the menu bar too (HIG `context-menus`). Linux keeps none, so its layout stays
     the design's; its shortcuts work without one. The developer's call,
-    2026-10-14. Menu items are title case, per the HIG's `menus` page,
-    where the rest of the app's text is sentence case.
+    2026-10-14. Menu items are title case, per the HIG's `menus` page, as
+    the rest of the app's labels are since ADR 0027 §7.
 19. **Context menus** (ADR 0010 §5, `app/src/contextMenu.ts`): a file in
     the sidebar offers Viewed; a line that can take a comment offers
     "Comment on Line N…" ("Removed Line" on the old side), or "Comment on
@@ -237,7 +259,8 @@ change, annotate, hand off to the agent, next round.
 20. **Indicators wait 200 ms** (ADR 0010 §6, `app/src/delay.ts`):
     "Opening…", "Loading changes…", "Showing N unchanged lines…" and an
     image preview's "Loading…" appear only once the wait reaches it; until
-    then the control that started it is disabled.
+    then the control that started it is disabled. Since Decision 35
+    "Loading changes…" is the spinner's label, not words beside it.
 21. **Not built:** type-ahead in the file list, because typing a letter
     there would clash with the single-letter shortcuts (Decision 29); and a translucent macOS sidebar,
     which would replace the design's sidebar colour and needs
@@ -259,12 +282,15 @@ change, annotate, hand off to the agent, next round.
     2026-10-15 (ADR 0016) a folder folds on a click, its open or closed
     folder icon saying which, as the design draws it (a disclosure
     triangle on its leading edge was removed, against the HIG
-    `disclosure-controls` page, the developer's call, 2026-10-16) and,
+    `disclosure-controls` page, the developer's call, 2026-10-16; since
+    Decision 35 the canvas's chevron before the folder icon says it) and,
     folded, how
-    many changed files it holds ("3 files"), a chain of folders holding nothing but one folder reads
+    many changed files it holds ("3 files"; since Decision 35 nothing,
+    as the canvas draws), a chain of folders holding nothing but one folder reads
     as one row (`src/api/share`), a selected file opens the folders it is
     under, names are not cut short, and the sidebar's edge drags its
-    width (200–560 px, a double-click back to 272), kept per viewer in
+    width (200–560 px, a double-click back to 240, the canvas's; 272
+    until 2026-10-22), kept per viewer in
     `localStorage`. Until then folders were labels that neither folded
     nor merged (the developer's call, 2026-10-14, withdrawn 2026-10-15).
     Folders cannot be selected; the arrows, J / K, N / P and the comment
@@ -272,11 +298,14 @@ change, annotate, hand off to the agent, next round.
     not; a load that selects another file, its own having left the diff,
     opens that file's folders too. A row shows the file's icon, name and
     change letter; a viewed
-    one is dimmed, its page icon ticked so colour is not all that says so,
+    one is dimmed, its page icon ticked so colour is not all that says so
+    (since Decision 35 a check in place of its letter),
     and it says "viewed" in its tooltip and its accessible name. Comment
     counts and the ✓ column are gone, as in the design. The developer's
     call, 2026-10-14.
-24. **The sidebar's header counts what is left**: a ring for the changed
+24. **The sidebar's header counts what is left** (since Decision 35 the
+    bottom bar does, the sidebar's "Changes" saying only the files left,
+    and no lines added and removed beside it): a ring for the changed
     lines in viewed files out of all (`viewedLines`, kept by V and each
     load, so the header never sums them), "N files left" or "All files
     viewed", then "L lines to review" before any is reviewed, else "R of
@@ -297,10 +326,10 @@ change, annotate, hand off to the agent, next round.
     copying." under it; focused, it has the focus ring; typing marks it
     "Edited" with "Edits change this text, not your comments." (the
     design's "Changes apply to this copy only." read as the clipboard's
-    copy beside Copy to clipboard; the developer's call, 2026-10-14) with
-    Reset to original, a bordered button so it is not taken for Cancel (the design's "Reset to generated" left unclear
+    copy beside Copy to Clipboard; the developer's call, 2026-10-14) with
+    Reset to Original, a bordered button so it is not taken for Cancel (the design's "Reset to generated" left unclear
     what it went back to; the developer's call, 2026-10-14),
-    and Copy to clipboard copies what is shown, ⌘/Ctrl-Return from inside
+    and Copy to Clipboard copies what is shown, ⌘/Ctrl-Return from inside
     the text too. Since 2026-10-15 the dialog is the design's restyled
     one: 720 × 700, a ✕ to close beside Cancel (two exits for one
     dialog, against the HIG `modality` page; the developer's call,
@@ -310,30 +339,36 @@ change, annotate, hand off to the agent, next round.
     (`previewSubtitle`, `app/src/round.ts`); the wording above stays
     rather than the design's "Click into the text to edit before
     copying." and "Changes apply to this copy only. Reset", the
-    developer's call, 2026-10-15. Closing the dialog keeps
+    developer's call, 2026-10-15. Since Decision 35 it is the canvas's
+    sheet (4c), 680 px wide from the window's top, "Review Instructions"
+    over the branch, its base and the counts: no ✕, Esc and Cancel
+    closing it; "Edited" a badge; Reset to Original shown once the text
+    is edited; and under the text "Edits change this text, not your
+    comments." with what copying ends, "You can edit the text before
+    copying." gone with the panel look it explained. Closing the dialog keeps
     the edit (HIG `modality`: closing loses nothing typed) until it is
     copied, reset, or what the instructions are written from changes:
     the comments in the order they are written, the base or what is
     checked out (`reviewKey`; a load
     that rebuilds the comments unchanged keeps it), when the text is
-    generated afresh. Copy review copies a kept edit, as the preview
+    generated afresh. Copy Review copies a kept edit, as the preview
     would show it, and any copy drops it (`keptEdit`, `copyText`): the
     author's call, 2026-10-15, so a copy never leaves out what was typed.
     The text is read-only until it has arrived.
 26. **Suggested code starts without its shared indent** (`suggestable`,
-    `app/src/store.ts`): "Suggest code" fills the + lines with the
+    `app/src/store.ts`): "Suggest Change" fills the + lines with the
     commented lines less the leading whitespace they share, the red
     lines and a saved comment's card show them the same way, and the
     code is saved and sent as typed, with nothing added back. A
     suggestion saved before this, indent and all, is shown on its card and
     opened for editing without its shared indent too, so its − and +
     lines line up and unchanged code still needs a reason. While on,
-    the button shows ✓ in place of ±, so its state is told by more than
-    shade (HIG `accessibility`). The editable + line has no ring of its
-    own, as the design draws it, against the HIG `focus-and-selection`
-    page; the header's "Edit the + line" and the caret say it takes
-    typing. The developer's call, 2026-10-14 (`ux` skill, "Where the
-    developer chose against the HIG"). The agent
+    the button reads Remove Suggestion where it read Suggest Change, so
+    its state is told by more than shade (HIG `accessibility`; the
+    canvas's 3f since Decision 35). The editable + line has the canvas's
+    accent ring, its corners rounded, and the header's "Edit the + line" and the caret say it
+    takes typing; until Decision 35 it had none, as the v2 design drew
+    it (the developer's call, 2026-10-14). The agent
     is trusted to place it. This is presentation, what the composer shows
     and starts from (`dedent`, `app/src/indent.ts`); writing a suggestion
     into the instructions stays the core's, which dedents any it is given,
@@ -368,11 +403,12 @@ change, annotate, hand off to the agent, next round.
     file. Stepping only moves the current match, and the marks
     are built once per query. ⌘/Ctrl-F and Edit › Find… do nothing while
     a dialog is open (`dialogOpen`).
-28. **The composer's range has handles** at its first line's top edge and
+28. **The composer's range has handles** (until Decision 35, which drags
+    its ends from the range's first and last gutter rows) at its first line's top edge and
     its last line's bottom edge, over the line numbers, while the
     composer is open on lines. Dragging one down the gutter moves that
     end, inside the hunk (Decision 6), past the other end too; the draft
-    is kept, and suggested code still as "Suggest code" made it follows
+    is kept, and suggested code still as "Suggest Change" made it follows
     the lines, while code the user changed stays (`resizeComposer`). The
     selection follows the pointer, and the composer reads the lines once,
     on release, as a drag-selection does. A drag released outside the
@@ -416,16 +452,16 @@ change, annotate, hand off to the agent, next round.
     | Shift-↓ / Shift-↑ | Extend the range |
     | Alt-↓ / Alt-↑ (Option) | Next / previous change |
     | C, or Return | Comment on the cursor or range; placing a lost draft, Return places it there |
-    | Alt-Return (Option), in the composer | Suggest code on or off |
+    | Alt-Return (Option), in the composer | Suggest Change on or off |
     | E | Edit the open comment |
     | R | Resolve the open comment, which closes its card; R again unresolves it and opens the card; nothing on a draft never sent (ADR 0015 §4) |
     | ⌘/Ctrl-Backspace | Delete the open comment, with Undo |
-    | ⌘/Ctrl-Z | Undo the last delete, Delete drafts or Re-place |
+    | ⌘/Ctrl-Z | Undo the last delete, Delete Drafts or Re-place |
     | Shift-X | Show every unchanged line of the file |
     | ⌘/Ctrl-1 / ⌘/Ctrl-2 | Unified / Split |
     | ⌘/Ctrl-Shift-B | Open the base picker |
     | ⌘/Ctrl-Shift-P | Preview the instructions, with comments |
-    | ⌘/Ctrl-Shift-C | Copy review, with comments |
+    | ⌘/Ctrl-Shift-C | Copy Review, with comments |
     | ⌘/Ctrl-R | Check for changes now |
     | ⌘/Ctrl-Shift-W | Close the folder |
     | ⌘/Ctrl-K | Open or close the review switcher, on the welcome screen too (ADR 0026 §7) |
@@ -448,10 +484,9 @@ change, annotate, hand off to the agent, next round.
     (`nextIn`), O(log rows), however many expanded lines it passes.
     A step scrolls only as far as shows the line, a jump centres it, as
     N / P and find do; either closes an open card, as a press on the
-    gutter does. A selection made by keys shows the range's pill, "Comment
-    on line N" for a single line, which a press on the gutter never leaves
-    without the composer. None of them acts while a comment is being written,
-    whose range moves only by its handles, or while the pointer drags.
+    gutter does. A selection made by keys is shown selected, for C to
+    comment on (Decision 35: no pill). None of them acts while a comment is being written,
+    whose range moves only by dragging its ends, or while the pointer drags.
     A press on the gutter takes focus from any control, so the keys that
     follow are the diff's: Return then opens the composer, where a
     focused button would otherwise take it. C and Return leave a comment
@@ -470,7 +505,7 @@ change, annotate, hand off to the agent, next round.
     highlights the current base each time it opens, however it opens, so
     Return keeps it; → or Return opens the list under the highlight, and
     ← (with the search empty) or Esc goes back to the first list, the
-    list just left highlighted (Decision 32). Its open state, the preview's and why Copy review
+    list just left highlighted (Decision 32). Its open state, the preview's and why Copy Review
     failed (`copyProblem`, a `Problem` from `describe`) live in the store, so a key can reach them;
     closing or opening a folder closes them and forgets the failure, as
     the review screen's own state went with it.
@@ -494,28 +529,20 @@ change, annotate, hand off to the agent, next round.
 30. **A drag-selection opens the composer when released** (the design's
     flow 3d, as edited 2026-10-15; the developer's call, 2026-10-15), on
     the lines dragged over, as a single press does. Shift-click and
-    Shift-↓ / Shift-↑ still leave a range with the "Comment on lines"
-    pill, so a range can be adjusted before C. Until 2026-10-15 a drag
-    left the pill too.
+    Shift-↓ / Shift-↑ still leave a range, so it can be adjusted before
+    C; since Decision 35 no pill offers it.
 
 31. **The loop's states are drawn as the design's component sheet draws
-    them** (ADR 0015; `app/src/components/Pin.tsx`, `CommentCard.tsx`,
-    `ReviewActions.tsx`, `Sidebar.tsx`, `FilePane.tsx`):
-    - **Pins** are 20 px continuous-corner squares: ink for a draft or a
-      reopened comment, paper (a white disc on a hairline) for a sent
-      one; an ink badge on paper says changed, a paper badge on ink says
-      reopened; the open pin lifts with a halo. Beside a mark in a list,
-      a card's chip or the round strip, the same look is a 10 px disc,
-      where the design draws a small rounded square: that reads as an
-      unticked checkbox beside Viewed (the author's call, 2026-10-16,
-      under the developer's instruction of 2026-10-15 to run the review
-      until clean; so for the pills below). Lost, resolved and
-      outdated comments draw none. A copy turns the pins and list entries
-      to paper top to bottom, 40 ms apart (`.pin` in `styles.css`, `--i`
-      the comment's index).
+    them** (ADR 0015; `app/src/components/DiffView.tsx`, `CommentCard.tsx`,
+    `CommentList.tsx`, `BottomBar.tsx`, `FilePane.tsx`):
+    - **Rails and notes** (Decision 35; pins, 20 px squares in ink and
+      paper, until then): a rail and margin note in the accent for a draft
+      or a reopened comment, grey once sent, amber once its code changed
+      (`toneOf`); beside a mark in the list, the same tone is a 6 px dot.
+      Lost, resolved and outdated comments draw none.
     - **Cards:** a draft keeps Edit and Delete; a sent one shows its chip
       (Sent, Changed, Reopened), "Sent in round N · 18 min ago" (`when`,
-      as the welcome screen's reviews; in `muted3`, as "You sent in
+      as the welcome screen's reviews; in `--sec`, as "You sent in
       round N"), a reopened
       one "You sent in round N" with the old text and "Copies as “Still:
       …”" (the composer shows the same while editing a sent comment), a
@@ -523,56 +550,56 @@ change, annotate, hand off to the agent, next round.
       the sent (−) and now (+) code under the commits it was sent on and
       is now on, "a1f3c9e → 7c20d14", or "a1f3c9e → uncommitted" when no
       commit followed; then a footer ("Untouched since sent", "… · nearby
-      lines changed", "Code changed since sent", "Code removed since
-      sent", "Suggestion applied") with Edit and Resolve R, primary on a
+      lines changed", "The code changed after you sent this. Resolve it
+      if the change answers you." (the canvas's, since Decision 35; "Code
+      changed since sent" until then), "Code removed since sent",
+      "Suggestion applied") with Edit and Resolve R, primary on a
       changed card; a draft's footer has Edit and Delete in the same
       place, where the design puts them in the header (ux gate 7).
       Resolving closes the card (a resolved comment has no
-      pin); R, or the macOS menu's Unresolve, then unresolves that
+      rail); R, or the macOS menu's Unresolve, then unresolves that
       comment and opens its card again (`lastResolved`), until another
       comment is shown. Only ⌘/Ctrl-Backspace deletes a sent comment.
-    - **The comment list** marks each entry (Sent, Changed in bold,
-      Reopened, Code gone, Not in this diff) with its glyph, keeps a lost
+    - **The comment list** marks each entry (Sent, Changed,
+      Reopened, Code gone, Not in this diff) in words beside its dot, in
+      its rail's tone (`toneOf`), keeps a lost
       draft's first line of code with Re-place and Delete, offers Resolve
       (and no Delete) on a sent comment on no line here (its file left the
       diff, or another base or branch is shown: it has no card), Delete on
       a draft not in this diff, and
       folds the resolved ones into "Resolved (n)" at the bottom, each with
       Unresolve, which opens the card again only for a comment that has
-      one. Its hint names "comments in this diff" only when one is not in
-      this diff (`notInDiff`, as the count). Text the list mutes is in
-      `muted3`, which reads at 4.5:1,
-      and a focused entry is highlighted with an inset ring. Its footer
-      has Preview instructions… and Delete drafts,
+      one. Text the list mutes is in
+      `--sec`, which reads at 4.5:1 or more since ADR 0027,
+      and the entry the keys are on is the accent row (Decision 35). Its footer
+      has Preview Instructions… and Delete Drafts,
       the ellipsis since the dialog follows (HIG `buttons`).
       The count button counts open comments.
-    - **The round strip** under the progress header (`roundStrip`,
+    - **The round strip**, the bottom bar's second line since Decision 35 (`roundStrip`,
       `app/src/round.ts`): "Nothing sent yet · 5 drafts"; "Round 2 sent ·
       5 comments · Just now" until the agent's work shows; then "Round 2 ·
       2 changed · 1 untouched · 1 resolved automatically", wrapping rather
       than cutting a count short. A count that steps N / P through its
-      comments (`commentFilter`) is a filled pill, outlined while pressed,
-      so it reads as a control (HIG `buttons`), where the design draws
-      plain text; a second press steps through all again, and a count
+      comments (`commentFilter`) is a button, filled while pressed,
+      where the design draws plain text; a second press steps through all again, and a count
       whose comments have no card opens the list. A copy clears the
       filter. A reopened comment counts in neither.
-    - **Copy:** "✓ Copied · round 2 sent", "3 comments copied as
+    - **Copy:** "Copied · round 2 sent", "3 comments copied as
       instructions and marked Sent. Paste them into your agent session.",
-      Preview instructions… (the list's words for the same dialog) and
-      Not sent (ADR 0015 §1). The popover of a copy that sent a round
+      Preview Instructions… (the list's words for the same dialog) and
+      Not Sent (ADR 0015 §1). The popover of a copy that sent a round
       stays until a load changes something, a comment is written, edited,
       deleted or resolved, or it is dismissed; one that sent nothing goes
       after 6 s, as does one whose round was recorded while a load or an
-      edit moved the review on, so Not sent could not be offered.
-      Not sent is drawn as the action it is, in the foreground weight. Copy review and the
+      edit moved the review on, so Not Sent could not be offered.
+      Not Sent is drawn as the action it is, in the foreground weight. Copy Review and the
       preview's Copy are disabled with no open comment. A comment changed
       while the round is recorded keeps its change and takes what was
       sent.
     - **Re-place** (ADR 0015 §2): from the list's Re-place, the lost
       draft's file is selected when the diff has it, a bar under the file
       header names the comment ("Re-place “…”", "Click a line number ·
-      Esc", then "↑ ↓ to move · Return to place · Esc"), a dashed pin and a "Place here ↩" pill
-      follow the pointer or the arrows (the list leaves focus on no
+      Esc", then "↑ ↓ to move · Return to place · Esc"), the selected line follows the pointer or the arrows (the list leaves focus on no
       control when it closes into placing), a click or Return places it, Esc
       leaves it lost, and the undo bar says "Placed on line 16. It is a
       draft again." with Undo. The bar's 10 s wait while the preview
@@ -607,7 +634,8 @@ change, annotate, hand off to the agent, next round.
     - **The design's faint text, short ages, trails and unheaded first
       list stay as drawn**
       (the developer's call, 2026-10-17; `ux` skill, "Where the developer
-      chose against the HIG"; open-tasks 16).
+      chose against the HIG"); since ADR 0027 the canvas's greys read at
+      4.5:1 or more, so the faint text no longer falls below it.
     - Refs, the default branch and the line counts are read again each
       time the picker opens.
 
@@ -634,9 +662,9 @@ change, annotate, hand off to the agent, next round.
       its branch was seen with its comments and rounds; a review never
       kept and still empty writes nothing, so looking at a branch leaves
       nothing (ADR 0026 §2). Only the base picker's choice is kept with
-      it (`chooseBase`); a follow or Show what changed is not, and the
+      it (`chooseBase`); a follow or Show What Changed is not, and the
       base picker says so under its first list once there is a review
-      ("Saved with this review. Switching back to it restores this
+      ("Saved with this review. Switching back restores this
       base."). Each load that finds the branch at another commit records
       it (`seen`).
     - **Where it is shown follows its branch** (ADR 0026 §3): a load that
@@ -650,7 +678,7 @@ change, annotate, hand off to the agent, next round.
     - **What a branch with no worktree, or a detached `HEAD`, cannot do**
       (`canSend`, `canComment`, `whyNotSent`): no round is sent, so Copy
       review and the preview's Copy are disabled, their reason written
-      beside Copy review while comments are open, unless the switched
+      beside Copy Review while comments are open, unless the switched
       banner, which says it, is up,
       and as the tooltip of what holds each ("feature/old-export isn’t
       checked out in any worktree. Check it out in
@@ -671,7 +699,7 @@ change, annotate, hand off to the agent, next round.
       then each other project's, most recently shown first (`seen`), with
       the dot, where its branch is ("Live in .wt/share-retry", relative to
       the project's folder, or "Committed only · not checked out", "… · on
-      origin"), its moved pill ("+3 commits", "Rewritten" outlined), its
+      origin"), its moved badge ("+3 commits", "Rewritten"), its
       open comments ("All resolved" once none is) and its last round. Its
       reviews are read and each project checked every time it opens
       (`refreshReviews`, the project shown first, a second call joining one
@@ -695,11 +723,10 @@ change, annotate, hand off to the agent, next round.
       project's, then the project's branches under the same heading, named
       for the project since the reviews above are every project's (HIG
       `searching`),
-      "Open without saving". Its last row, "Open folder… ⌘O", opens a folder (ADR 0026
+      "Open without saving". Its last row, "Open Folder… ⌘O", opens a folder (ADR 0026
       §7). ↑ ↓ move, Return opens, Esc closes; the search field, which
       takes the typing whenever the switcher is open, is drawn flat, as
-      the base picker's is (`ux` skill; the developer's call, 2026-10-20), and a group's trail is in mono
-      only when it is a path. Deleted branches are said
+      the base picker's is (`ux` skill; the developer's call, 2026-10-20). Deleted branches are said
       at its top until it closes, with how many comments went (6k); a
       review another window shows says at the top, with the deletions,
       where to find it (the design puts it under the list); the window's
@@ -715,38 +742,135 @@ change, annotate, hand off to the agent, next round.
       whether another window shows this review"; its lock work runs off the
       async runtime, and a claim is tried three times 20 ms apart, since
       another window's check holds the lock for that moment.
-    - **The title bar's chip** (6a, 6d, 6i, 6l): the dot, the project, the
-      branch ("HEAD at 4e1b2a0" detached), and "No review yet", "Committed
-      only" or "Detached"; its hover note on "Committed only" is a tooltip
-      where the design draws a popover, as the base picker's dates are. Copy's reason is written beside it while there
+    - **The title bar's chip** (6a, 6d, 6i, 6l), the review capsule since
+      Decision 34: the branch symbol, or the hollow dot when read from
+      commits alone, the project, the branch ("HEAD at 4e1b2a0" detached), and "No review yet", "Committed
+      only" or "Detached" (since Decision 34 in its tooltip only, as the
+      canvas draws the capsule without them); its hover note on "Committed only" is a tooltip
+      where the design draws a popover, as the base picker's dates are. Copy's reason is written beside it (since Decision 35 above
+      the bottom bar's Copy Review) while there
       are open comments, not only on hover, so it is seen without a pointer
-      (HIG `feedback`). The first comment shows "Review saved" under it for
-      6 s, or until Dismiss (6e, `reviewSaved`), 240 px wide so it stays over
+      (HIG `feedback`). The first comment shows "Review Saved" under it for
+      6 s, or until Dismiss (6e, `reviewSaved`), 260 px wide so it stays over
       the sidebar's head at its default width: "… is with your reviews now, under ⌘K.",
       where the design says "in the switcher", a word no window shows. Its hints are
       ↑ ↓, Return and Esc, without the design's ⌃Tab (step 15).
-    - **The welcome screen** (1a): "Open a project", and the 8 reviews
-      most recently shown, with "Show all reviews ⌘K", in place of recent
+    - **The welcome screen** (1a): "Open Folder…", and the 8 reviews
+      most recently shown under "Recent Reviews", with "All Reviews ⌘K", in place of recent
       folders (`diff-loop.recent` is no longer read or written). Each row
-      reads as the switcher's does, its moved pill and its place line
+      reads as the switcher's does, its moved badge and its place line
       ("Live in .wt/share-retry"), where the design writes the moved
-      state after the count and the place as a whole path in mono. Each
+      state after the count and the place as a whole path in mono; the
+      place line is in the text face, as the switcher's. Each
       row's dot is centred on its two lines, as the switcher's is.
       Closing the folder lets the session go (`close_repository`), so
       another window may show its review.
     - **The banners** (`resumedBanner`, `switchedBanner`): the design's
       words for 6f, 6g and 6j, their detail wrapping rather than cut
-      short, with the dot, title and actions on its first line; a detached `HEAD`'s, "With no branch
+      short, with the dot, title and actions on its first line (since
+      Decision 34 the title over the detail, the actions at the end); a detached `HEAD`'s, "With no branch
       there is nowhere to keep comments, so none can be written here. Check
       out a branch to comment.", is the
       author's under ADR 0026 §5, the design's having said comments
       vanish on leaving; and the moved banner's "Comments follow their
       code.", where the design says "re-anchored", a word of the code's
-      (HIG `writing`). A banner's dot is the title bar's, and means
-      what a switcher row's does: solid while the diff is read live from a
-      worktree, a detached `HEAD`'s included, hollow from commits alone
-      (`isLive`); whether Copy sends a round is said in words beside it. Show what changed compares
+      (HIG `writing`). Since Decision 34 a banner draws the warning symbol
+      where it drew a dot that meant what a switcher row's does; whether
+      Copy sends a round is said in words beside it. Show What Changed compares
       with the commit the branch was at, as the design's Show commits.
+
+34. **The redesign's shell** (ADR 0027 §5; the canvas's 2a). The window
+    is the canvas's: an 8 px margin, the sidebar an inset card (`.side`)
+    keeping its width and resizing (ADR 0016), 240 px at first, and beside
+    it the main column under a 52 px toolbar (`.tb`) of capsules (`.cap`):
+    the review, which opens the switcher, the base, which opens the base
+    picker, each ringed while its popover is open, and, at the end,
+    Unified and Split (`.cap.seg`), moved from the file's header and
+    shown, as there, only for a file with lines to show, each named in
+    its tooltip. On macOS the toolbar and a 16 px strip atop the sidebar
+    drag the window, whose own controls sit over the card's corner at
+    the canvas's place (`trafficLightPosition` 17, 32); Linux and Windows
+    keep their title bar (Decision 2), and there neither drags. A review
+    read from commits alone shows the hollow dot in place of the branch
+    symbol, and why it is limited is said on hover (the canvas's rules
+    note). Banners, the undo bar and the save problem are the canvas's
+    banner (`.banner`, 6g): the warning symbol, a title over a detail,
+    their actions, and a close button named Dismiss, but for the save
+    problem, which stays until Try Again works. A folder dragged
+    over the window tints its outline (the canvas's rules note). The v3
+    tokens keep their names, remapped to the canvas's values. The
+    recommended path, 2026-10-22; revised by Decision 35.
+35. **The redesign as the canvas draws it** (ADR 0027 §7; the
+    developer's direction, 2026-10-22). Every screen is the canvas's
+    markup on its rules, in its words and title case:
+    - **The sidebar** (2a): Filter Files, which narrows the tree as typed,
+      ignoring case and accents, as the switcher's and base picker's
+      searches now do (`folded`), every folder open while it does, the
+      open file's row kept whatever is typed so the sidebar never loses
+      what the pane shows, dimmed and saying "not a match" after its
+      name, its letter kept, when it does not match, and "Changes" saying how many files match
+      ("1 of 4"), Esc
+      clearing it (`fileFilter`, not kept), the arrows, J / K and V's step
+      to the next file not viewed going through the files it keeps (from
+      an open file it does not match, to the first of them); "Changes" with the files left
+      and a chevron that folds it; the tree's rows with the status letter,
+      or a check once viewed; Other Reviews, folded at first, the
+      switcher's reviews for the project's other branches and other
+      projects, the 8 most recently shown, each a sidebar row (the dot, the branch, and another
+      project's name) rather than the switcher's two lines.
+    - **The bottom bar** (2a, 4a), floating over the diff: the progress
+      ring of lines reviewed, the files left over the lines, drafts and
+      round (`barLines`; a round's counts filter N / P as the strip's
+      did), the open comments' count, which opens their list above it,
+      and Copy Review, which once it copies says what was sent and
+      offers Not Sent and Preview Instructions…. It replaces the
+      sidebar's ring and the toolbar's comment and copy controls.
+    - **The diff** (2a, 3e): the file's name as a large title over its
+      path and counts, with the Viewed switch; one card of 18 px rows,
+      folds reading "12 unchanged lines" with the hunk's section, or
+      "Rest of the file"; Split under column heads naming the base and
+      the branch, its lines cut with a fade at the column's edge. Unified
+      lines wrap rather than run past the card, which the canvas, drawing
+      no long line, leaves open. Split's heads sit at the card's top when
+      the file's first row is a line, not a fold. The scroller leaves
+      88 px under the card for the bar.
+    - **Comments** (3a, 3c, 3f, 5a): a 4 px rail beside a comment's
+      lines, accent for a draft, grey once sent, amber once its code
+      changed; its note in the margin centred on its first line, 4 px
+      under the note above where they would meet; in Split a mark that
+      opens into the note on hover. Hovering a note rings its rail and
+      tints its lines. A note opens the comment, and a range opens the
+      composer, as a popover under the range's last line, its arrow's tip
+      on that line's edge (7 px under it, where the canvas leaves 12), 400 px wide,
+      520 with suggested code, 560 for a changed card. While the
+      composer is open, the range's first and last gutter rows drag its
+      ends, with the resize cursor, in place of handles; the "Comment on
+      lines" pill is gone, as the canvas draws none: a range is
+      commented on by releasing a drag, C, the context menu or the menu
+      bar, and a lost draft is placed by clicking a line or Return.
+      Ticks on the right edge mark the file's comments.
+    - **Popovers and the sheet** (2b, 4a, 4c, 6a): the canvas's popover
+      with its arrow; the instructions as a sheet, Reset to Original
+      shown once the text is edited and no close button beside Cancel.
+    - **Words**: where Decisions 32 and 33 quote a sentence-case label,
+      the canvas's title case stands ("Search Branches, Tags, or
+      Commits", "Last Commit", "Under review" for the checked-out
+      branch's row, "4 open", "No rounds yet"). Lists in the base picker
+      still open in place (Decision 32), and the switcher's foot leaves
+      out the review shown before (step 15). Find in file, which the
+      canvas does not draw, keeps its place over the diff in the
+      popover's look. The suggestion box says "Edit the + line", by its
+      mark, where the canvas says "Edit the green line" (ux gate 8), and
+      on Welcome's card the ⌘K cap takes the card's colour, as the
+      canvas's field colour is that card's own in light. The sheet's ⌘↩
+      sits on Copy to Clipboard, not before Cancel, and a draft's
+      Delete on its card is in the deletion colour, as Delete Drafts is;
+      the comment list's row the keys are on is the accent row the base
+      picker and switcher draw; and the Viewed switch's off track is
+      grey, where the canvas's field colour barely parts from the window
+      in light,
+      as the bottom bar's progress ring keeps a visible track.
+
 
 ## Pitfalls
 
@@ -756,18 +880,37 @@ change, annotate, hand off to the agent, next round.
   the rest for the next load. Until 2026-10-14 a comment moved during a
   load went back to where the load put it, keeping only its new text.
 
-- Overlays (composer, comment card, range pill) live inside virtualized
-  rows; their row is lifted with `z-index`, or the next row paints over
-  them.
-- Code rows have an integer line height (24 px, the v2 design's; 25 px
-  until 2026-10-14); a fractional one leaves
-  hairline gaps between measured rows.
+- Overlays (rails, notes, the comment popover) are placed over the
+  virtualized rows from their measures (`measurementsCache`), not inside
+  a row, which the next row would paint over.
+- Code rows have an integer line height (18 px, the canvas's; 24 px
+  until 2026-10-22), and every height around them is whole, a fold's
+  hairlines being inset shadows; a fractional one leaves hairline gaps
+  between measured rows.
 - A native context menu needs the pointer's position (`showMenu` passes
   `clientX`/`clientY`): without one, GTK on Wayland opens it at a corner
   of the window.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-22, the redesign as drawn)
+
+Steps 16.2–16.6 (ADR 0027 §7, Decision 35): the canvas ported as it is
+written: its rules in `styles.css`, Lucide through `Sym`, the sidebar
+with Filter Files and Other Reviews, the bottom bar, the diff's card and
+Split, comments as rails, margin notes and popovers, the base picker,
+switcher, comment list, instructions sheet and Welcome redrawn, and the
+labels in title case.
+
+## Progress (2026-10-22, the redesign's shell)
+
+Step 16.1 (ADR 0027, Decision 34): the canvas's palette, opaque surfaces,
+system fonts on macOS with Geist elsewhere, and Lucide icons through
+`Icon`; the inset sidebar card, the toolbar's capsules with the layout
+toggle moved from the file's header, banners as chrome cards, and the
+window's controls at the canvas's place. The parts still to come keep
+their v3 look in the new window.
 
 ## Progress (2026-10-19, reviews per branch)
 
@@ -836,7 +979,7 @@ Step 12 landed: the keys of Decision 29, a full read on request
 An audit of the v2 change fixed seven faults: the find bar took focus
 whenever it was drawn for another file, find scrolled back to its match
 when the rows changed, its place carried over to the next file, Esc went
-to a find bar not shown, Copy review left out a kept preview edit, that
+to a find bar not shown, Copy Review left out a kept preview edit, that
 edit outlived a change of base, and suggestions saved with their indent
 showed misaligned (Decisions 25, 26 and 27).
 

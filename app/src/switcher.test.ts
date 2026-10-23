@@ -126,8 +126,8 @@ describe("a review's row", () => {
     expect(reviewRow(review, check, "/home/me", NOW)).toMatchObject({
       where: "Live in .wt/share-retry",
       live: true,
-      moved: { label: "+3 commits", rewritten: false },
-      comments: "4 comments",
+      moved: "+3 commits",
+      comments: "4 open",
       open: true,
       round: "Round 1 sent · 10 min ago",
     });
@@ -136,11 +136,11 @@ describe("a review's row", () => {
 
   it("names a rewrite, a review open in another window, and one all resolved", () => {
     const check: Check = checked([branch("agent/share-retry")], [{ branch: "agent/share-retry", since: { kind: "rewritten", from: "a" } }]);
-    expect(reviewRow(review, check, null, NOW).moved).toEqual({ label: "Rewritten", rewritten: true });
+    expect(reviewRow(review, check, null, NOW).moved).toBe("Rewritten");
     expect(reviewRow({ ...review, elsewhere: true }, check, null, NOW).where).toBe("Open in another window");
     const done = kept(P, "b", { comments: 2, open: 0 });
     done.summary.open = 0;
-    expect(reviewRow(done, undefined, null, NOW)).toMatchObject({ comments: "All resolved", open: false, round: "Nothing sent yet" });
+    expect(reviewRow(done, undefined, null, NOW)).toMatchObject({ comments: "All resolved", open: false, round: "No rounds yet" });
     expect(roundOf({ number: 3, at: NOW }, NOW)).toBe("Round 3 sent · Just now");
   });
 });

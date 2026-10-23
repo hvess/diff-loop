@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "../store";
+import { Sym } from "./Icon";
 
 /**
  * Find in file, over the diff's top right while open: Return, ⌘/Ctrl-G and the
@@ -34,23 +35,23 @@ export function FindBar({
 
   if (!find) return null;
   const status = searched === "" ? "" : count === 0 ? "No matches" : `${current + 1} of ${count}`;
-  const arrow = (by: 1 | -1, label: string, glyph: string) => (
+  const arrow = (by: 1 | -1, label: string, name: "up" | "down") => (
     <button
       type="button"
       aria-label={label}
       title={label}
       disabled={count === 0}
       onClick={() => stepFind(by)}
-      className="flex size-7 items-center justify-center rounded-full text-[13px] text-muted2 hover:bg-chip disabled:opacity-40"
+      className="flex size-7 items-center justify-center rounded-full text-[13px] text-[var(--sec)] hover:bg-[var(--field)] disabled:opacity-40"
     >
-      {glyph}
+      <Sym name={name} />
     </button>
   );
   return (
     <div
       role="search"
       // The field draws no ring of its own inside the pill, so the pill shows its focus (HIG `focus-and-selection`).
-      className="absolute top-3 right-6 z-[8] flex items-center gap-1 rounded-full border border-line bg-bg py-[5px] pr-[5px] pl-3.5 font-sans text-[13px] leading-none shadow-pop has-[input:focus]:outline-2 has-[input:focus]:outline-sel-fg"
+      className="pop-body findbar absolute top-3 right-6 z-[8] flex items-center gap-1 py-[5px] pr-[5px] pl-3.5 font-sans text-[13px] leading-none"
     >
       <input
         ref={input}
@@ -63,25 +64,25 @@ export function FindBar({
           e.preventDefault();
           e.stopPropagation();
         }}
-        placeholder="Find in file"
-        aria-label="Find in file"
+        placeholder="Find in File"
+        aria-label="Find in File"
         spellCheck={false}
-        className="w-[168px] bg-transparent text-fg outline-none placeholder:text-muted3"
+        className="w-[168px] bg-transparent text-[var(--label)] outline-none placeholder:text-[var(--sec)]"
       />
-      <span role="status" className="px-2 text-[12.5px] whitespace-nowrap text-muted3">
+      <span role="status" className="px-2 text-xs whitespace-nowrap text-[var(--sec)] tabular-nums">
         {status}
       </span>
-      <span className="h-4 w-px bg-border" />
-      {arrow(-1, "Previous match", "↑")}
-      {arrow(1, "Next match", "↓")}
+      <span className="vsep" aria-hidden />
+      {arrow(-1, "Previous match", "up")}
+      {arrow(1, "Next match", "down")}
       <button
         type="button"
         aria-label="Close"
         title="Close"
         onClick={closeFind}
-        className="flex size-7 items-center justify-center rounded-full bg-chip text-[11px] text-muted2"
+        className="flex size-7 items-center justify-center rounded-full bg-[var(--field)] text-[var(--sec)]"
       >
-        ✕
+        <Sym name="xmark" />
       </button>
     </div>
   );

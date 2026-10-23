@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Comment } from "./bindings/Comment";
-import { footOf, hasCard, kindOf, markOf, notInDiff, reopened, resolvable } from "./lifecycle";
+import { footOf, hasCard, kindOf, markOf, notInDiff, reopened, resolvable, toneOf } from "./lifecycle";
 
 const draft: Comment = {
   id: "c",
@@ -66,6 +66,15 @@ describe("a comment's kind", () => {
     expect(notInDiff(draft)).toBe(false);
   });
 
+  it("takes the accent while the reviewer holds it, amber once its code changed, grey once sent or resolved", () => {
+    expect(toneOf(draft)).toBe("");
+    expect(toneOf({ ...sent("untouched"), text: "edited" })).toBe("");
+    expect(toneOf(sent("changed"))).toBe("changed");
+    expect(toneOf(sent("untouched"))).toBe("sent");
+    expect(toneOf({ ...draft, state: "lost" })).toBe("sent");
+    expect(toneOf({ ...sent("changed"), resolved: "byReviewer" })).toBe("sent");
+  });
+
   it("can be resolved only once sent", () => {
     expect(resolvable(draft)).toBe(false);
     expect(resolvable({ ...sent("untouched"), text: "edited" })).toBe(true);
@@ -86,6 +95,7 @@ describe("the words for a comment", () => {
   it("say what became of sent code in the card's footer", () => {
     expect(footOf(sent("untouched"))).toBe("Untouched since sent");
     expect(footOf(sent("nearbyChanged"))).toBe("Untouched since sent · nearby lines changed");
+    expect(footOf(sent("changed"))).toBe("The code changed after you sent this. Resolve it if the change answers you.");
     expect(footOf(sent("removed"))).toBe("Code removed since sent");
     expect(footOf(sent(null))).toBe("");
   });

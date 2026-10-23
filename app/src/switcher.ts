@@ -8,6 +8,7 @@ import type { SinceSeen } from "./bindings/SinceSeen";
 import { when } from "./format";
 import { sameKey } from "./key";
 import { projectRoot, tildify, whereIs } from "./path";
+import { folded } from "./search";
 
 /** A project's last check: done, or failed; absent until its first answers. */
 export type Check = ProjectCheck | "failed";
@@ -20,8 +21,8 @@ export type Row =
       /** Whether its branch is checked out in a worktree: the dot is solid. */
       live: boolean;
       where: string;
-      /** "+3 commits" or "Rewritten", with its look; null when the branch is where it was, or not checked yet. */
-      moved: { label: string; rewritten: boolean } | null;
+      /** "+3 commits" or "Rewritten", drawn as a badge; null when the branch is where it was, or not checked yet. */
+      moved: string | null;
       comments: string;
       /** Whether `comments` names open ones, drawn heavier. */
       open: boolean;
@@ -32,8 +33,8 @@ export type Row =
   | { kind: "branch"; key: ReviewKey; live: boolean; where: string; current: boolean }
   | { kind: "openFolder" };
 
-/** A group of rows under its name, and its trail: a path, set as one, or words. */
-export type Group = { key: string; name: string; meta: string; metaIsPath: boolean; rows: Row[] };
+/** A group of rows under its name, and its trail: a project's path, or words. */
+export type Group = { key: string; name: string; meta: string; rows: Row[] };
 
 /** What the switcher lists, and above it, when the project has no review yet, how one starts. */
 export type Listing = { empty: { title: string; body: string } | null; groups: Group[] };
@@ -47,7 +48,7 @@ const SHOWN = 50;
 /** "+3 commits", or that the branch was rewritten, since the review was last shown. */
 function movedOf(since: SinceSeen | undefined): Extract<Row, { kind: "review" }>["moved"] {
   if (!since || since.kind === "unchanged") return null;
-  return since.kind === "moved" ? { label: `+${since.count} ${since.count === 1 ? "commit" : "commits"}`, rewritten: false } : { label: "Rewritten", rewritten: true };
+  return since.kind === "moved" ? `+${since.count} ${since.count === 1 ? "commit" : "commits"}` : "Rewritten";
 }
 
 /** The root of the worktree that has `branch` checked out, if one does (as the core's `Branch::worktree`). */
@@ -60,9 +61,9 @@ function whereOf(branch: Branch, project: string, home: string | null): string {
   return location.worktree === null ? "Committed only · not checked out" : `Live in ${whereIs(location.worktree, project, home)}`;
 }
 
-/** "Round 2 sent · 10 min ago", or "Nothing sent yet", as the round strip says it. */
+/** "Round 2 sent · 10 min ago", or "No rounds yet", as the canvas's 6a says it. */
 export function roundOf(round: RoundSummary | null, now: number): string {
-  return round ? `Round ${round.number} sent · ${when(round.at, now)}` : "Nothing sent yet";
+  return round ? `Round ${round.number} sent · ${when(round.at, now)}` : "No rounds yet";
 }
 
 /** A check's branches and reviews by branch name, built once per check, which is never changed. */
@@ -103,8 +104,7 @@ export function reviewRow(
     live: branch !== undefined && worktreeOf(branch) !== null,
     where,
     moved: movedOf(since),
-    // Its open comments, counted in the title bar's words.
-    comments: summary.open > 0 ? `${summary.open} ${summary.open === 1 ? "comment" : "comments"}` : summary.comments > 0 ? "All resolved" : "",
+    comments: summary.open > 0 ? `${summary.open} open` : summary.comments > 0 ? "All resolved" : "",
     open: summary.open > 0,
     round: roundOf(summary.round, now),
     current: sameKey(key, shown),
@@ -159,7 +159,7 @@ export function listing(at: {
   /** Said where a project is not checked yet: `CHECKING`, or nothing for the first 200 ms (ADR 0010 §6). */
   checking: string;
 }): Listing {
-  const q = at.query.trim().toLowerCase();
+  const q = folded(at.query.trim());
   const here = at.shown?.project ?? null;
   const check = here === null ? undefined : at.checks.get(here);
   const branches = check && check !== "failed" ? check.branches : [];
@@ -167,21 +167,20 @@ export function listing(at: {
   const row = (review: KeptReview) => reviewRow(review, at.checks.get(review.key.project), at.home, at.now, shownKey, at.checking);
   const open: Row = { kind: "openFolder" };
   if (q) {
-    const matches = at.kept.filter((r) => r.key.branch.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)).sort(byShown);
+    const matches = at.kept.filter((r) => folded(r.key.branch).includes(q) || folded(r.name).includes(q)).sort(byShown);
     const reviewed = new Set(at.kept.filter((r) => r.key.project === here).map((r) => r.key.branch));
-    const unreviewed = branches.filter((b) => !reviewed.has(b.name) && b.name.toLowerCase().includes(q)).sort(byPlace);
-    const groups: Group[] = [{ key: "reviews", name: "Reviews", meta: matches.length === 0 ? "No matches" : "", metaIsPath: false, rows: matches.slice(0, SHOWN).map(row) }];
+    const unreviewed = branches.filter((b) => !reviewed.has(b.name) && folded(b.name).includes(q)).sort(byPlace);
+    const groups: Group[] = [{ key: "reviews", name: "Reviews", meta: matches.length === 0 ? "No matches" : "", rows: matches.slice(0, SHOWN).map(row) }];
     if (at.shown !== null && here !== null && unreviewed.length > 0) {
       // Named for its project, since the reviews above it are every project's (HIG `searching`).
       groups.push({
         key: "branches",
         name: `Branches without a review in ${at.shown.name}`,
         meta: "",
-        metaIsPath: false,
         rows: unreviewed.slice(0, SHOWN).map((b) => branchRow(b, here, at.home, shownKey)),
       });
     }
-    groups.push({ key: "open", name: "", meta: "", metaIsPath: false, rows: [open] });
+    groups.push({ key: "open", name: "", meta: "", rows: [open] });
     return { empty: null, groups };
   }
   const byProject = new Map<string, KeptReview[]>();
@@ -197,7 +196,7 @@ export function listing(at: {
     byProject.delete(here);
     if (own.length > 0) {
       const ordered = [...own.filter((r) => sameKey(r.key, shownKey)), ...own.filter((r) => !sameKey(r.key, shownKey))];
-      groups.push({ key: here, name: at.shown.name, meta: tildify(projectRoot(here), at.home), metaIsPath: true, rows: ordered.slice(0, SHOWN).map(row) });
+      groups.push({ key: here, name: at.shown.name, meta: tildify(projectRoot(here), at.home), rows: ordered.slice(0, SHOWN).map(row) });
     } else {
       empty = {
         title: `No reviews in ${at.shown.name} yet`,
@@ -207,15 +206,14 @@ export function listing(at: {
         key: "branches",
         name: `Branches without a review in ${at.shown.name}`,
         meta: check === undefined ? at.checking : check === "failed" ? "Couldn’t be checked" : branchCounts(branches),
-        metaIsPath: false,
         rows: [...branches].sort(byPlace).slice(0, SHOWN).map((b) => branchRow(b, here, at.home, shownKey)),
       });
     }
   }
   for (const [project, reviews] of byProject) {
-    groups.push({ key: project, name: reviews[0]!.name, meta: tildify(projectRoot(project), at.home), metaIsPath: true, rows: reviews.slice(0, SHOWN).map(row) });
+    groups.push({ key: project, name: reviews[0]!.name, meta: tildify(projectRoot(project), at.home), rows: reviews.slice(0, SHOWN).map(row) });
   }
-  groups.push({ key: "open", name: "", meta: "", metaIsPath: false, rows: [open] });
+  groups.push({ key: "open", name: "", meta: "", rows: [open] });
   return { empty, groups };
 }
 

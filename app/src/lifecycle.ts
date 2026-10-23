@@ -2,7 +2,7 @@
 import type { Comment } from "./bindings/Comment";
 import type { Verdict } from "./bindings/Verdict";
 
-/** How a comment is drawn: its pin, its glyph in a list, its mark. Resolved comments are told apart by `resolved`. */
+/** How a comment is drawn: its rail's and dot's tone (`toneOf`), its mark. Resolved comments are told apart by `resolved`. */
 export type Kind = "draft" | "sent" | "changed" | "reopened" | "lost" | "outdated";
 
 /** Whether the comment was edited since it was sent: the one comparison of the fields the core keeps, as its `Comment::reopened` makes it for the instructions. */
@@ -35,7 +35,7 @@ export function notInDiff(c: Comment): boolean {
   return c.resolved === null && kindOf(c) === "outdated";
 }
 
-/** Whether the comment can be shown on its lines: a pin, a card, a stop for N / P. */
+/** Whether the comment can be shown on its lines: a rail and margin note, a card, a stop for N / P. */
 export function hasCard(c: Comment): boolean {
   return c.state === "current" && c.resolved === null;
 }
@@ -48,6 +48,25 @@ export function open(c: Comment): boolean {
 /** Whether R can resolve the comment: a draft never sent would only vanish from the copy (ADR 0015 §4). */
 export function resolvable(c: Comment): boolean {
   return c.sent !== null;
+}
+
+/**
+ * The tone a comment's rail, tick and list dot take: the accent for one the reviewer holds (a draft, or
+ * reopened), amber once its code changed, grey once sent or set aside (the canvas's `.rail.sent`, `.rail.changed`).
+ */
+export function toneOf(c: Comment): "" | "sent" | "changed" {
+  if (c.resolved !== null) return "sent";
+  switch (kindOf(c)) {
+    case "draft":
+    case "reopened":
+      return "";
+    case "changed":
+      return "changed";
+    case "sent":
+    case "lost":
+    case "outdated":
+      return "sent";
+  }
 }
 
 /** The list entry's mark; empty for a draft. */
@@ -77,7 +96,8 @@ export function footOf(c: Comment): string {
     case "nearbyChanged":
       return "Untouched since sent · nearby lines changed";
     case "changed":
-      return "Code changed since sent";
+      // The canvas's words for the card that most needs the reviewer (5a).
+      return "The code changed after you sent this. Resolve it if the change answers you.";
     case "removed":
       return "Code removed since sent";
     case "applied":

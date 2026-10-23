@@ -202,7 +202,7 @@ describe("the banner on showing a review again", () => {
     expect(moved).toEqual({
       title: "agent/share-retry moved since you last looked",
       body: "3 new commits, 9b04e1a → 2d7f3c0. Comments follow their code.",
-      action: { kind: "base", label: "Show what changed", base: { kind: "ref", name: "9b04e1a11" } },
+      action: { kind: "base", label: "Show What Changed", base: { kind: "ref", name: "9b04e1a11" } },
     });
   });
 
@@ -452,7 +452,7 @@ describe("reloading", () => {
     expect(useStore.getState().banner).toEqual({
       title: "The branch moved: 1 new commit",
       body: null,
-      action: { kind: "base", label: "Show what changed", base: { kind: "ref", name: "abc" } },
+      action: { kind: "base", label: "Show What Changed", base: { kind: "ref", name: "abc" } },
     });
     expect(useStore.getState().comments.map((c) => c.id)).toEqual(["c"]);
   });
@@ -471,7 +471,7 @@ describe("reloading", () => {
     expect(useStore.getState().banner).toEqual({
       title: "The branch moved: 1 new commit · showing changes since round 1 (abc)",
       body: null,
-      action: { kind: "base", label: "Show uncommitted changes", base: { kind: "uncommitted" } },
+      action: { kind: "base", label: "Show Uncommitted Changes", base: { kind: "uncommitted" } },
     });
     answerNextLoadWithCodeGone("/a", "outdated", "agent/x", "def");
     await useStore.getState().takeBannerAction();
@@ -565,7 +565,7 @@ describe("reloading", () => {
     expect(useStore.getState().banner).toEqual({
       title: "The branch moved: 2 new commits · showing changes since round 1 (abc)",
       body: null,
-      action: { kind: "base", label: "Show uncommitted changes", base: { kind: "uncommitted" } },
+      action: { kind: "base", label: "Show Uncommitted Changes", base: { kind: "uncommitted" } },
     });
   });
 
@@ -598,7 +598,7 @@ describe("reloading", () => {
     expect(useStore.getState().banner).toEqual({
       title: "The branch moved: 1 new commit",
       body: null,
-      action: { kind: "base", label: "Show what changed", base: { kind: "ref", name: "def" } },
+      action: { kind: "base", label: "Show What Changed", base: { kind: "ref", name: "def" } },
     });
   });
 
@@ -963,7 +963,7 @@ describe("the preview's kept edit", () => {
     }
   });
 
-  it("is what Copy review copies, and is dropped once copied", async () => {
+  it("is what Copy Review copies, and is dropped once copied", async () => {
     const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
     setEdit("mine");
     await useStore.getState().copyReview();
@@ -1010,6 +1010,17 @@ describe("moving between files by key", () => {
     expect(selected()).toBe("c.ts");
     expect(useStore.getState().selection).toBe(lines);
     useStore.getState().stepFile(-1);
+    expect(selected()).toBe("b.ts");
+  });
+
+  it("steps only through the files Filter Files keeps", () => {
+    useStore.getState().setFileFilter("C");
+    useStore.getState().stepFile(1);
+    expect(selected()).toBe("c.ts");
+    useStore.getState().stepFile(-1);
+    expect(selected()).toBe("c.ts");
+    useStore.getState().setFileFilter("b");
+    useStore.getState().stepUnviewed(1);
     expect(selected()).toBe("b.ts");
   });
 
@@ -1130,7 +1141,7 @@ describe("keys that would lose work", () => {
   });
 });
 
-describe("Copy review", () => {
+describe("Copy Review", () => {
   it("says why it failed, until a copy succeeds", async () => {
     const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
     await openWith("/a", keptReview([comment("c")], []));
@@ -1221,7 +1232,7 @@ describe("rounds", () => {
     expect(useStore.getState().copied).toBeNull();
   });
 
-  it("does not offer Not sent when a comment changed while the round was recorded", async () => {
+  it("does not offer Not Sent when a comment changed while the round was recorded", async () => {
     let answer = () => {};
     vi.mocked(api.endRound).mockImplementationOnce(
       (r) => new Promise((resolve) => (answer = () => resolve({ ...r.review, comments: r.review.comments.map((c) => sent(c, 2)), rounds: [...r.review.rounds, round(2)] }))),
@@ -1312,7 +1323,7 @@ describe("resolving", () => {
     expect(useStore.getState().openComment).toBeNull();
   });
 
-  it("forgets the comment R last resolved once another is shown, by the list or a pin", () => {
+  it("forgets the comment R last resolved once another is shown, by the list or a margin note", () => {
     useStore.getState().resolveComment("s");
     useStore.getState().showComment("d");
     expect(useStore.getState().lastResolved).toBeNull();

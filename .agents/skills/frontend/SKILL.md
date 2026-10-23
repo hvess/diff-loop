@@ -72,9 +72,17 @@ event and per IPC call, nothing proportional to a whole diff.
 ## Look and words
 
 - **Colours, spacing and type come from the tokens** in `styles.css`
-  through Tailwind classes; no raw colour in a component.
+  through Tailwind classes; no raw colour in a component. The canvas's
+  rules are the component classes there (`.cap`, `.row`, `.pop`, …), its
+  variable names aliasing the tokens: draw a part with its rule before
+  writing classes of your own (ADR 0027 §7). A component names a colour
+  one way, by the canvas's alias in an arbitrary value
+  (`text-[var(--sec)]`, `bg-[var(--field)]`); the theme defines no
+  colour utilities.
+- **Icons are Lucide's**, drawn through `Sym` (`components/Icon.tsx`),
+  never a text glyph standing in for one (ADR 0027 §3).
 - **Every visible string follows the `ux` skill** (HIG `writing`):
-  sentence case (menu items title case, HIG `menus`), plain words, errors that say what happened and what to
+  title case for labels, as the canvas writes them (ADR 0027 §7), plain words, errors that say what happened and what to
   do, meaning never in colour alone.
 
 ## Tests

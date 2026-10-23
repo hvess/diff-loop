@@ -4,6 +4,7 @@ import type { BaseRef } from "../bindings/BaseRef";
 import {
   arrival,
   baseLabel,
+  groupCount,
   groupSize,
   groupsOf,
   listItems,
@@ -102,7 +103,7 @@ describe("the lists it opens in place", () => {
 
   it("split local branches, each remote by name and tags, keeping the refs' order", () => {
     expect(groups.map((g) => [g.title, g.refs.map((r) => r.name)])).toEqual([
-      ["Local branches", ["agent/fix-upload-retry", "main"]],
+      ["Local Branches", ["agent/fix-upload-retry", "main"]],
       ["origin", ["origin/main", "origin/agent/x"]],
       ["upstream", ["upstream/main"]],
       ["Tags", ["v1.2"]],
@@ -128,6 +129,10 @@ describe("the lists it opens in place", () => {
     expect(picks(listed.items[0])).toBe(false);
     expect(arrival(listed.items, { kind: "ref", name: "main" }, null)).toBe(2);
     expect(arrival(listed.items, { kind: "uncommitted" }, null)).toBe(1);
+  });
+
+  it("count their rows in branches or tags, as their rows say it", () => {
+    expect(groups.map(groupCount)).toEqual(["3 branches", "2 branches", "1 branch", "1 tag"]);
   });
 
   it("leave out a list with nothing in it, but keep local branches for the checked-out one", () => {

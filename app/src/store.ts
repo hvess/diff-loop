@@ -29,7 +29,7 @@ import { whereIs } from "./path";
 import { changedLines, type Expanded, type Gap, gapsOf, lastLine, linesOn, withinHunk } from "./rows";
 import { clampWidth, loadWidth, rememberWidth } from "./sidebar";
 import type { Check } from "./switcher";
-import { folderCounts, folderKeys, type TreeRow, treeRows } from "./tree";
+import { folderKeys, keptOrder, type TreeRow, treeRows } from "./tree";
 
 export type Problem = { title: string; detail: string };
 
@@ -44,8 +44,6 @@ export type LoadedReview = Omit<Review, "files" | "snapshot"> & {
   tree: TreeRow[];
   /** Path → the keys of the folder rows it is under, which selecting it opens. */
   folders: Map<string, string[]>;
-  /** Folder row key → how many changed files it holds, which a folded folder shows. */
-  folderFiles: Map<string, number>;
   /** Files in sidebar order: as `tree` nests them. */
   order: FileDiff[];
   /** Path → index in `order`. */
@@ -56,7 +54,7 @@ export type Composer = {
   path: string;
   target: Target;
   text: string;
-  /** Replacement code while "Suggest code" is on. */
+  /** Replacement code while "Suggest Change" is on. */
   suggestion: string | null;
   /** The comment being edited, if any. */
   editing: string | null;
@@ -72,7 +70,7 @@ export function canSave(composer: Composer): boolean {
   return suggestion !== null && target.kind === "lines" && suggestion !== suggestable(target.code);
 }
 
-/** Lines as "Suggest code" starts from them: without their shared indent (diff-loop-app.md Decision 26). */
+/** Lines as "Suggest Change" starts from them: without their shared indent (diff-loop-app.md Decision 26). */
 export function suggestable(code: string[]): string {
   return dedent(code).join("\n");
 }
@@ -175,6 +173,8 @@ type State = {
   /** The comment R last resolved, which R unresolves while no card is open; null once another is shown. */
   lastResolved: string | null;
   commentFilter: CommentFilter;
+  /** What Filter Files holds: the sidebar's tree shows only the paths containing it (diff-loop-app.md Decision 35). */
+  fileFilter: string;
   /** Whether the comments list is open. */
   commentList: boolean;
   /** Whether the base picker is open. */
@@ -184,9 +184,9 @@ type State = {
   banner: Banner | null;
   /** The last copy, with the round it sent; null once it is no longer shown. */
   copied: { round: number | null } | null;
-  /** The review before the last copy, offered as "Not sent" until the next load changes something. */
+  /** The review before the last copy, offered as "Not Sent" until the next load changes something. */
   unsend: SavedReview | null;
-  /** Why the last Copy review failed, if it did. */
+  /** Why the last Copy Review failed, if it did. */
   copyProblem: Problem | null;
   undo: Undo | null;
   /**
@@ -269,6 +269,7 @@ type Actions = {
   showComment: (id: string) => void;
   /** Steps N / P through the sent comments `filter` names, from the first; null steps through all again. */
   setCommentFilter: (filter: CommentFilter) => void;
+  setFileFilter: (filter: string) => void;
   /** Starts placing the lost draft `id` again: the selected file's gutter takes the next click or Return. */
   startReplace: (id: string) => void;
   /** Places the draft being placed on line `no` of `side` in the selected file; it is a current draft again. */
@@ -321,13 +322,13 @@ function followBanner(count: number, following: Following): Banner {
   return {
     title: `${moved(count)} · showing changes since round ${following.round} (${shortId(following.since)})`,
     body: null,
-    action: { kind: "base", label: "Show uncommitted changes", base: { kind: "uncommitted" } },
+    action: { kind: "base", label: "Show Uncommitted Changes", base: { kind: "uncommitted" } },
   };
 }
 
 /** The banner's offer to compare with the commit before the branch moved. */
 function whatChanged(previous: string): BannerAction {
-  return { kind: "base", label: "Show what changed", base: { kind: "ref", name: previous } };
+  return { kind: "base", label: "Show What Changed", base: { kind: "ref", name: previous } };
 }
 
 /** "Round 1 was" / "Rounds 1 and 2 were" / "Rounds 1, 2 and 3 were". */
@@ -452,7 +453,12 @@ export function requestOf(s: Pick<State, "review" | "comments" | "base">): Instr
   return { head: s.review.checkout.head, base: s.base, comments: orderedComments(s.review, s.comments) };
 }
 
-/** The preview's edit, if one is kept for the review `key` names; the one rule the preview and Copy review share. */
+/** The files the arrows and J / K step through: those Filter Files keeps (diff-loop-app.md Decision 35). */
+function steppable(review: LoadedReview, fileFilter: string): { files: FileDiff[]; position: Map<string, number> } {
+  return fileFilter.trim() === "" ? { files: review.order, position: review.position } : keptOrder(review.order, fileFilter);
+}
+
+/** The preview's edit, if one is kept for the review `key` names; the one rule the preview and Copy Review share. */
 export function keptEdit(edit: State["previewEdit"], key: string): string | null {
   return edit?.key === key ? edit.text : null;
 }
@@ -490,7 +496,6 @@ async function fetchReview(base: Base, comments: Comment[], held: LoadedReview |
     byPath: new Map(files.map((f) => [f.path, f])),
     tree,
     folders,
-    folderFiles: folderCounts(folders),
     order,
     position: new Map(order.map((f, i) => [f.path, i])),
   };
@@ -556,6 +561,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   replacing: null,
   lastResolved: null,
   commentFilter: null,
+  fileFilter: "",
   commentList: false,
   basePicker: false,
   preview: false,
@@ -677,6 +683,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
       selection: null,
       replacing: null,
       commentFilter: null,
+      fileFilter: "",
       commentList: false,
       basePicker: false,
       preview: false,
@@ -926,18 +933,19 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 
   stepFile(step) {
-    const { review, selected } = get();
+    const { review, selected, fileFilter } = get();
     if (!review) return;
-    const at = selected === null ? -1 : (review.position.get(selected) ?? -1);
-    const next = review.order[Math.min(review.order.length - 1, Math.max(0, at + step))];
+    const { files, position } = steppable(review, fileFilter);
+    const at = selected === null ? -1 : (position.get(selected) ?? -1);
+    const next = files[Math.min(files.length - 1, Math.max(0, at + step))];
     if (next && next.path !== selected) get().select(next.path);
   },
 
   stepUnviewed(step) {
-    const { review, selected, viewed } = get();
+    const { review, selected, viewed, fileFilter } = get();
     if (!review) return;
-    const { order } = review;
-    const at = selected === null ? -1 : (review.position.get(selected) ?? -1);
+    const { files: order, position } = steppable(review, fileFilter);
+    const at = selected === null ? -1 : (position.get(selected) ?? -1);
     // O(files viewed in a row from `at`): it stops at the first not viewed, and at `at` itself.
     for (let i = 1; i <= order.length; i++) {
       const file = order[(((at + step * i) % order.length) + order.length) % order.length]!;
@@ -1098,7 +1106,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         ];
     // The first comment starts the review (ADR 0026 §2): the title bar says where it is kept.
     const starts = !composer.editing && !holdsReview(get());
-    // A comment written or edited moves the review on: the last copy's popover and its "Not sent" go with it.
+    // A comment written or edited moves the review on: the last copy's popover and its "Not Sent" go with it.
     set({ comments, composer: null, selection: null, copied: null, unsend: null, reviewSaved: starts || get().reviewSaved });
   },
 
@@ -1123,7 +1131,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
       // Resolved, it has no card to stay open; R again unresolves it and opens the card (ADR 0015 §4).
       openComment: resolved && get().openComment === id ? null : get().openComment,
       lastResolved: resolved ? id : null,
-      // A resolve moves the review on, as writing does: "Not sent" would drop it (ADR 0015 §1).
+      // A resolve moves the review on, as writing does: "Not Sent" would drop it (ADR 0015 §1).
       copied: null,
       unsend: null,
     });
@@ -1181,6 +1189,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
       get().select(c.path);
       set({ openComment: id, selection: null, composer: null, find, lastResolved: null });
     }
+  },
+
+  setFileFilter(filter) {
+    set({ fileFilter: filter });
   },
 
   setCommentFilter(filter) {
@@ -1419,6 +1431,7 @@ async function show(opening: Opening, banner: Banner | null): Promise<void> {
     replacing: null,
     lastResolved: null,
     commentFilter: null,
+    fileFilter: "",
     commentList: false,
     basePicker: false,
     preview: false,

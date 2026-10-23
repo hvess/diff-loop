@@ -11,11 +11,11 @@ export function roundStrip(
   comments: Comment[],
   autoResolved: number,
   now: number,
-): { title: string; quiet: boolean; parts: StripPart[]; meta: string } {
+): Strip {
   const last = rounds.at(-1);
   if (!last) {
     const drafts = comments.filter((c) => c.sent === null && c.resolved === null).length;
-    return { title: "Nothing sent yet", quiet: true, parts: [], meta: drafts > 0 ? `${drafts} ${drafts === 1 ? "draft" : "drafts"}` : "" };
+    return { title: "Nothing sent yet", stage: "none", parts: [], meta: drafts > 0 ? `${drafts} ${drafts === 1 ? "draft" : "drafts"}` : "" };
   }
   const sent = comments.filter((c) => c.sent?.round === last.number);
   // A reopened comment is the reviewer's again: neither changed nor untouched until sent once more.
@@ -27,20 +27,23 @@ export function roundStrip(
     const n = sent.length;
     return {
       title: `Round ${last.number} sent`,
-      quiet: false,
-      parts: [{ filter: null, glyph: "sent", text: `${n} ${n === 1 ? "comment" : "comments"}` }],
+      stage: "sent",
+      parts: [{ filter: null, text: `${n} ${n === 1 ? "comment" : "comments"}` }],
       meta: when(last.at, now),
     };
   }
   const parts: StripPart[] = [];
-  if (changedN > 0) parts.push({ filter: "changed", glyph: "changed", text: `${changedN} changed` });
-  if (untouchedN > 0) parts.push({ filter: "untouched", glyph: "sent", text: `${untouchedN} untouched` });
-  if (autoResolved > 0) parts.push({ filter: null, glyph: null, text: `${autoResolved} resolved automatically` });
-  return { title: `Round ${last.number}`, quiet: false, parts, meta: "" };
+  if (changedN > 0) parts.push({ filter: "changed", text: `${changedN} changed` });
+  if (untouchedN > 0) parts.push({ filter: "untouched", text: `${untouchedN} untouched` });
+  if (autoResolved > 0) parts.push({ filter: null, text: `${autoResolved} resolved automatically` });
+  return { title: `Round ${last.number}`, stage: "answered", parts, meta: "" };
 }
 
 /** One count in the strip; clicking one with a `filter` steps N / P through those comments. */
-export type StripPart = { filter: CommentFilter; glyph: "changed" | "sent" | null; text: string };
+export type StripPart = { filter: CommentFilter; text: string };
+
+/** The strip, at its stage: before any round, a round sent and unanswered, or answered once the agent's work shows. */
+export type Strip = { title: string; stage: "none" | "sent" | "answered"; parts: StripPart[]; meta: string };
 
 
 /** "5 comments across 3 files" before any round; "3 new · 2 still open" once one was sent. */

@@ -82,7 +82,8 @@ before reopening a decision they cover.
   read by running `git` with optional locks off; two `localStorage` keys
   (recent folders, instruction preferences; the second unused since
   0013, and replaced by the sidebar's width in 0016; the first unused
-  since 0026).
+  since 0026). The stack gains Lucide, and the fonts become the system's
+  on macOS, by 0027.
 - **0002 — Watch the checkout instead of polling it.** `Repository::watch`
   on the port; `diff-loop-git` watches with `notify`; the app emits
   `repository-changed`, and polls every 2 s only when a watch cannot start.
@@ -140,7 +141,8 @@ before reopening a decision they cover.
   ADR 0020).
 - **0016 — The sidebar folds, merges lone folders, and resizes.** Folders
   fold on a click, a chain of lone folders is one row, the edge drags
-  the width, kept under `diff-loop.sidebar`.
+  the width, kept under `diff-loop.sidebar`; no guides, a disclosure
+  chevron, and 240 px at first, by 0027.
 - **0017 — A round on the uncommitted changes follows a commit on top.**
   Comments sent against the uncommitted changes are judged only at the
   commit they were sent on, or compared with it by name; when the agent
@@ -181,6 +183,12 @@ before reopening a decision they cover.
   never checking anything out; a detached `HEAD` keeps none; a deleted
   branch takes its reviews; a review switcher moves between them;
   `reviews.json` is version 4, and earlier reviews are dropped.
+- **0027 — The redesign, drawn for Tauri.** The canvas "Diff Loop macOS
+  Redesign" is the app's design, refined for Tauri: opaque layered
+  surfaces instead of Liquid Glass; Lucide icons; SF Pro and SF Mono on
+  macOS, Geist elsewhere; an inset sidebar, toolbar capsules, a floating
+  bottom bar, rails and margin notes; built in phases on main; the
+  canvas ported as written, its labels title case.
 
 ## Key Constraints (non-negotiable)
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FileDiff } from "./bindings/FileDiff";
-import { fold, folderCounts, folderKeys, treeRows } from "./tree";
+import { filterTree, fold, folderKeys, keptOrder, treeRows } from "./tree";
 
 const file = (path: string): FileDiff => ({ path, status: { kind: "modified" }, content: { kind: "text", hunks: [] } });
 
@@ -40,25 +40,14 @@ describe("treeRows", () => {
     expect(shape(["a/b/x.ts", "a/y.ts"])).toEqual(["a/", "  b/", "    a/b/x.ts", "  a/y.ts"]);
   });
 
-  it("folds a closed folder's rows away and draws the guides for what is left", () => {
+  it("folds a closed folder's rows away", () => {
     const rows = treeRows(["a/b/x.ts", "a/y.ts", "z.ts"].map(file));
     const shown = fold(rows, new Set(["d:a/b/"]));
     expect(shown.map((r) => r.key)).toEqual(["d:a/", "d:a/b/", "f:a/y.ts", "f:z.ts"]);
-    expect(shown[1]?.guides).toEqual([{ start: true, end: false }]);
-    expect(shown[2]?.guides).toEqual([{ start: false, end: true }]);
     expect(fold(rows, new Set(["d:a/"])).map((r) => r.key)).toEqual(["d:a/", "f:z.ts"]);
     expect(fold(rows, new Set())).toBe(rows);
   });
 
-  it("counts the files each folder holds, at any depth", () => {
-    const rows = treeRows(["a/b/x.ts", "a/y.ts", "z.ts"].map(file));
-    expect(folderCounts(folderKeys(rows))).toEqual(
-      new Map([
-        ["d:a/", 2],
-        ["d:a/b/", 1],
-      ]),
-    );
-  });
 
   it("names the folders each file is under", () => {
     const rows = treeRows(["a/b/x.ts", "a/y.ts", "z.ts"].map(file));
@@ -75,22 +64,50 @@ describe("treeRows", () => {
     expect(shape(["v10.ts", "v9.ts"])).toEqual(["v9.ts", "v10.ts"]);
   });
 
-  it("starts a guide under its folder and stops it at the folder's last row", () => {
-    const rows = treeRows(["a/b/x.ts", "a/y.ts", "z.ts"].map(file));
-    // a/, b/, x.ts, y.ts, z.ts
-    expect(rows.map((r) => r.guides)).toEqual([
-      [],
-      [{ start: true, end: false }],
-      [
-        { start: false, end: false },
-        { start: true, end: true },
-      ],
-      [{ start: false, end: true }],
-      [],
-    ]);
-  });
 
   it("has no rows for no files", () => {
     expect(treeRows([])).toEqual([]);
+  });
+});
+
+describe("Filter Files", () => {
+  const files = ["src/api/Résumé.ts", "src/lib/redis.ts", "docs/api/share.md"].map(file);
+  const rows = treeRows(files);
+  const paths = (query: string) => filterTree(rows, query).flatMap((r) => (r.kind === "file" ? [r.file.path] : []));
+
+  it("keeps the files whose path holds what is typed, ignoring case and diacritics", () => {
+    expect(paths("api")).toEqual(["docs/api/share.md", "src/api/Résumé.ts"]);
+    expect(paths("RESUME")).toEqual(["src/api/Résumé.ts"]);
+    expect(paths("redis")).toEqual(["src/lib/redis.ts"]);
+  });
+
+  it("keeps every file for a blank query, and none when nothing holds it", () => {
+    expect(filterTree(rows, "  ")).toBe(rows);
+    expect(filterTree(rows, "nowhere")).toEqual([]);
+  });
+
+  it("keeps the open file's row, which the pane still shows, whatever is typed", () => {
+    expect(filterTree(rows, "redis", "docs/api/share.md").map((r) => r.key)).toEqual([
+      "d:docs/api/",
+      "f:docs/api/share.md",
+      "d:src/",
+      "d:src/lib/",
+      "f:src/lib/redis.ts",
+    ]);
+  });
+
+  it("finds the files kept once per query, with each one's place", () => {
+    const kept = keptOrder(files, "API");
+    expect(kept.files.map((f) => f.path)).toEqual(["src/api/Résumé.ts", "docs/api/share.md"]);
+    expect(kept.position.get("docs/api/share.md")).toBe(1);
+    expect(keptOrder(files, "API")).toBe(kept);
+    expect(keptOrder(files, "redis").files.map((f) => f.path)).toEqual(["src/lib/redis.ts"]);
+    // The query before stays cached beside the latest, as the sidebar's deferred one trails the typed one.
+    expect(keptOrder(files, "API")).toBe(kept);
+  });
+
+  it("keeps the folders above a match, once each, and no others", () => {
+    expect(filterTree(rows, "redis").map((r) => r.key)).toEqual(["d:src/", "d:src/lib/", "f:src/lib/redis.ts"]);
+    expect(filterTree(rows, ".ts").map((r) => r.key)).toEqual(["d:src/", "d:src/api/", "f:src/api/Résumé.ts", "d:src/lib/", "f:src/lib/redis.ts"]);
   });
 });

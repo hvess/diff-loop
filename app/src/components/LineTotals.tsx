@@ -4,9 +4,9 @@ import type { LineCounts } from "../bindings/LineCounts";
 export function LineTotals({ counts }: { counts: LineCounts }) {
   return (
     <>
-      {counts.added > 0 && <span className="text-add">+{counts.added}</span>}
+      {counts.added > 0 && <span className="add-t">+{counts.added}</span>}
       {counts.added > 0 && counts.removed > 0 && " "}
-      {counts.removed > 0 && <span className="text-del">−{counts.removed}</span>}
+      {counts.removed > 0 && <span className="del-t">−{counts.removed}</span>}
     </>
   );
 }

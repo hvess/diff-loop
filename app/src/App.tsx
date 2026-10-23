@@ -211,7 +211,7 @@ export function App() {
     <div className="relative h-full">
       {hasRepository ? <ReviewScreen /> : <Welcome />}
       {dropping && (
-        <div className="pointer-events-none absolute inset-2 z-50 rounded-2xl border-2 border-dashed border-ghost bg-bg/60" />
+        <div className="pointer-events-none absolute inset-0 z-50 rounded-[inherit] shadow-[inset_0_0_0_3px_var(--accent)]" />
       )}
     </div>
   );

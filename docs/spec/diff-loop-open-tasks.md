@@ -5,7 +5,7 @@ Work that is known, understood and not done. Each entry says what was seen, wher
 **Status:** active — a ledger, not a spec. Nothing here blocks anything else.
 **Scope:** everything outstanding.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-19
+**Last Updated:** 2026-10-22
 
 An entry leaves this file by being done, or by being decided against — in
 which case the decision goes where it belongs (an ADR, or the spec it
@@ -20,34 +20,16 @@ contradicts) and the entry says so before it goes.
     shortcuts (diff-loop-app.md Decision 29, `app/src/keys.ts`), among
     them ⌘Z beside the menu bar's own Undo, and Option-↓ and
     Option-Return. Closes when each is walked on macOS and any fault fixed.
-16. **The design's pale greys fall below the HIG's contrast minimum**
-    (4.5:1 for text): `--ui-faint` and `--ui-muted` (`app/src/styles.css`)
-    draw the composer's and the card's line label ("Line 17"), the
-    suggestion box's header and a viewed file's name in the sidebar at
-    about 2–3.3:1 in light, 2.8–2.9:1 in dark (the UI judge's captures,
-    2026-10-14); since 2026-10-17 also the base picker's search
-    placeholders, a remote's faint prefix ("origin/") and the dimmed
-    checked-out branch, at about 1.6–2.4:1 (diff-loop-app.md Decision
-    32); since 2026-10-19 also the title bar chip's state ("Committed
-    only"), the review switcher's place lines, hints, "Open without
-    saving", search placeholder and group trails, the welcome screen's
-    place lines, "Reviews" heading and "Show all reviews", and the base
-    picker's note and reason, at about 2.0–3.3:1 in light (the
-    UI judge's captures, 2026-10-19; diff-loop-app.md Decision 33; the
-    developer's call for these too, 2026-10-19). The developer kept the design's palette for now
-    (`ux` skill, "Where the developer chose against the HIG"). Closes when
-    those tokens, or the text drawn in them, reach 4.5:1, or the developer
-    decides the palette stays.
 17. **Nothing in the window lists the keyboard shortcuts**
     (diff-loop-app.md Decision 29, `BINDINGS` in `app/src/keys.ts`). The
     developer chose to build the keys first and show them later
     (2026-10-15): only the Viewed checkbox's tooltip (V), the composer's
-    Comment button (⌘/Ctrl-Return), the welcome screen's Open folder
-    (⌘/Ctrl-O), the comments list's hint (N / P), the range pill (C), a
+    Comment button (⌘/Ctrl-Return), the welcome screen's Open Folder…
+    (⌘/Ctrl-O), a
     sent card's Resolve button (R), the preview's Copy (⌘/Ctrl-↵), the
     review switcher's field, rows and hints (⌘/Ctrl-K, ⌘/Ctrl-O, ↑ ↓,
     Return, Esc; since 2026-10-19) and the welcome screen's
-    Show all reviews (⌘/Ctrl-K), and
+    All Reviews (⌘/Ctrl-K), and
     the macOS menu bar's Open Folder and Find items name a key, and Linux
     has no menu bar (Decision 18). The HIG `offering-help` page offers
     tips to help people "discover faster ways to accomplish a task". Closes when ? (and ⌘-? on macOS, with a Help menu

@@ -1,16 +1,18 @@
 import * as Popover from "@radix-ui/react-popover";
 import { useEffect } from "react";
 import { notInDiff } from "../lifecycle";
+import { isMac, modKey } from "../platform";
+import { hunksOf } from "../rows";
 import { bannerDetail, holdsReview, isLive, useStore } from "../store";
 import { BasePicker } from "./BasePicker";
-import { Dot } from "./Dot";
-import { Switcher } from "./Switcher";
-import { modKey } from "../platform";
+import { BottomBar } from "./BottomBar";
 import { FilePane } from "./FilePane";
-import { ReviewActions } from "./ReviewActions";
+import { Sym } from "./Icon";
+import { LiveDot } from "./LiveDot";
 import { Sidebar } from "./Sidebar";
-import { TitleBar } from "./TitleBar";
+import { Switcher } from "./Switcher";
 
+/** The canvas's window (ADR 0027 §5; diff-loop-app.md Decision 35): the sidebar card, and the main column under its toolbar. */
 export function ReviewScreen() {
   const opening = useStore((s) => s.opening);
   const review = useStore((s) => s.review);
@@ -22,39 +24,60 @@ export function ReviewScreen() {
   if (!checkout) return null;
 
   return (
-    <div className="flex h-full flex-col">
-      <Popover.Root open={commentList} onOpenChange={setCommentList}>
-        <TitleBar>
-          <div className="relative flex items-center gap-3.5">
-            <ReviewChip />
-            <BasePicker open={basePicker} onOpenChange={setBasePicker} />
+    <div className="flex h-full gap-2 p-2">
+      <Sidebar />
+      <main className="relative flex min-w-0 flex-1 flex-col px-4">
+        <Popover.Root open={commentList} onOpenChange={setCommentList}>
+          {/* The title bar on macOS, which drags the window (diff-loop-app.md Decision 34); a capsule takes its own clicks. */}
+          <div role="toolbar" aria-label="Review" data-tauri-drag-region={isMac || undefined} className="tb">
+            <div className="relative flex items-center gap-2">
+              <ReviewChip />
+              <BasePicker open={basePicker} onOpenChange={setBasePicker} />
+            </div>
+            <span data-tauri-drag-region={isMac || undefined} className="h-full grow" />
+            <LayoutToggle />
           </div>
-          <ReviewActions />
-        </TitleBar>
-        <Banner />
-        <UndoBar />
-        {/* Anchors the comments list (ReviewActions) below the banner and the undo bar; the banner's Show comments opens it too. */}
-        <Popover.Anchor asChild>
-          <div className="mx-6 flex-none" />
-        </Popover.Anchor>
-      </Popover.Root>
-      <SaveProblem />
-      <div className="flex min-h-0 flex-1">
-        <Sidebar />
-        <FilePane />
-      </div>
+          <Banner />
+          <UndoBar />
+          <SaveProblem />
+          <FilePane />
+          <BottomBar />
+        </Popover.Root>
+      </main>
     </div>
   );
 }
 
-/** What the title bar's chip says after the branch: why the review is limited, or that there is none yet (the design's 6d, 6i, 6l). */
-function chipTag(s: { worktree: string | null; detached: boolean; kept: boolean }): { tag: string; why?: string } | null {
-  if (s.detached) return { tag: "Detached" };
-  if (s.worktree === null) return { tag: "Committed only", why: "Not checked out in any worktree. Showing committed changes only." };
-  return s.kept ? null : { tag: "No review yet" };
+/** Unified or Split, for a file with lines to show: the canvas's segmented capsule. */
+function LayoutToggle() {
+  const mode = useStore((s) => s.mode);
+  const setMode = useStore((s) => s.setMode);
+  const hasDiff = useStore((s) => {
+    const file = s.selected === null ? undefined : s.review?.byPath.get(s.selected);
+    return file !== undefined && hunksOf(file).length > 0;
+  });
+  if (!hasDiff) return null;
+  const option = (m: typeof mode, label: string) => (
+    <button type="button" role="radio" aria-checked={mode === m} aria-label={label} title={label} onClick={() => setMode(m)}>
+      <Sym name={m} />
+    </button>
+  );
+  return (
+    <div role="radiogroup" aria-label="Diff layout" className="cap seg">
+      {option("unified", "Unified")}
+      {option("split", "Split")}
+    </div>
+  );
 }
 
-/** The project and branch the window shows, which opens the review switcher (ADR 0026 §7; the design's 6a). */
+/** Why a review is limited, or that there is none yet: said on hover, as the canvas draws the capsule without it. */
+function chipNote(s: { worktree: string | null; detached: boolean; kept: boolean }): string | undefined {
+  if (s.detached) return "Detached HEAD";
+  if (s.worktree === null) return "Committed only. Not checked out in any worktree; showing committed changes only.";
+  return s.kept ? undefined : "No review yet";
+}
+
+/** The project and branch the window shows, which opens the review switcher (ADR 0026 §7; the canvas's 6a). */
 function ReviewChip() {
   const checkout = useStore((s) => s.review?.checkout ?? s.opening?.checkout);
   const kept = useStore(holdsReview);
@@ -63,23 +86,16 @@ function ReviewChip() {
   const setSwitcher = useStore((s) => s.setSwitcher);
   if (!checkout) return null;
   const { head } = checkout;
-  const tag = chipTag({ worktree: checkout.worktree, detached: head.kind === "detached", kept });
+  const note = chipNote({ worktree: checkout.worktree, detached: head.kind === "detached", kept });
+  const branch = head.kind === "branch" ? head.name : `HEAD at ${head.commit}`;
   return (
     <>
       <Switcher open={switcher} onOpenChange={setSwitcher}>
-        <button type="button" className="flex items-center gap-2 rounded-full bg-chip py-1.5 pr-2.5 pl-3 text-[13px]">
-          <Dot live={live} />
-          <span className="font-medium">{checkout.name}</span>
-          <span className="text-faint">/</span>
-          <span className="font-mono text-[12.5px] text-muted2">{head.kind === "branch" ? head.name : `HEAD at ${head.commit}`}</span>
-          {tag && (
-            <span className="border-l border-line pl-2 text-xs text-muted" title={tag.why}>
-              {tag.tag}
-            </span>
-          )}
-          <span aria-hidden className="text-[10px] text-faint">
-            ▾
-          </span>
+        <button type="button" className="cap" title={note} aria-label={`${checkout.name} ${branch}${note ? `, ${note}` : ""}. Switch review, ${modKey}K`}>
+          {/* Read from commits alone, the hollow dot stands in for the branch symbol (the canvas's rules note). */}
+          {live ? <Sym name="branch" /> : <LiveDot live={false} />}
+          <span className="k">{checkout.name}</span>
+          <span>{branch}</span>
         </button>
       </Switcher>
       <ReviewSaved />
@@ -99,32 +115,59 @@ function ReviewSaved() {
   }, [saved, dismiss]);
   if (!saved || !branch) return null;
   return (
-    <div
-      role="status"
-      className="absolute top-[calc(100%+8px)] left-0 z-30 flex w-[240px] flex-col gap-1 rounded-xl border border-line bg-bg px-3.5 py-3 text-[13px] leading-[1.5] shadow-pop"
-    >
-      <span className="flex items-baseline justify-between gap-3">
-        <span className="text-[13.5px] font-semibold">Review saved</span>
-        <button type="button" className="text-[12.5px] text-muted3" onClick={dismiss}>
+    <div role="status" className="pop-body absolute top-[calc(100%+10px)] left-0 z-30 flex w-[260px] flex-col gap-1 px-4 py-3.5 text-[13px] leading-[1.45]">
+      <span className="flex items-center justify-between gap-3">
+        <b className="font-semibold">Review Saved</b>
+        <button type="button" className="btnplain h-auto text-xs" onClick={dismiss}>
           Dismiss
         </button>
       </span>
-      <span className="text-muted3">
+      <span className="text-xs text-[var(--sec)]">
         {branch} is with your reviews now, under {modKey}K. Every comment is saved as you write it.
       </span>
     </div>
   );
 }
 
+/** The canvas's banner (6g; its rules note lists the variants): symbol, title over detail, actions, and close. */
+function BannerCard({
+  role = "status",
+  title,
+  detail,
+  label,
+  onClose,
+  children,
+}: {
+  role?: "status" | "alert";
+  title: string;
+  detail?: string;
+  label: string;
+  onClose?: () => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div role={role} aria-label={label} className="banner mb-2 flex-none">
+      <Sym name="warning" className="text-[var(--amber)]" />
+      <div className="txt">
+        <b>{title}</b>
+        {detail && <span className="text-pretty">{detail}</span>}
+      </div>
+      {children}
+      {onClose && (
+        <button type="button" className="x" aria-label="Dismiss" title="Dismiss" onClick={onClose}>
+          <Sym name="xmark" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 /**
  * The context of the review changed, or is limited: a moved, rewritten or switched branch, a
- * branch moved while away, a detached `HEAD` (ADR 0015 §10, ADR 0026). Its dot is the title
- * bar's: solid while the diff is read live from a worktree, a detached `HEAD`'s included, hollow
- * from commits alone.
+ * branch moved while away, a detached `HEAD` (ADR 0015 §10, ADR 0026).
  */
 function Banner() {
   const banner = useStore((s) => s.banner);
-  const live = useStore(isLive);
   const takeAction = useStore((s) => s.takeBannerAction);
   const dismiss = useStore((s) => s.dismissBanner);
   const notInDiffCount = useStore((s) => (s.banner ? s.comments.filter(notInDiff).length : 0));
@@ -132,29 +175,18 @@ function Banner() {
   if (!banner) return null;
   const detail = [banner.body, bannerDetail(notInDiffCount)].filter(Boolean).join(" ");
   return (
-    // Aligned on the first line, so a detail that wraps leaves the title and actions beside its start.
-    <div role="status" className="flex flex-none items-start gap-3 border-b border-border bg-side px-6 py-2.5 text-[13px]">
-      <span className="flex h-[1lh] flex-none items-center">
-        <Dot live={live} />
-      </span>
-      <span className="flex-none font-medium">{banner.title}</span>
-      {detail && <span className="min-w-0 text-pretty text-muted3">{detail}</span>}
-      <span className="ml-auto flex flex-none gap-3 whitespace-nowrap">
-        {notInDiffCount > 0 && (
-          <button type="button" className="font-medium" onClick={() => setCommentList(true)}>
-            Show comments
-          </button>
-        )}
-        {banner.action && (
-          <button type="button" className="font-medium" onClick={() => void takeAction()}>
-            {banner.action.label}
-          </button>
-        )}
-        <button type="button" className="text-muted3" onClick={dismiss}>
-          Dismiss
+    <BannerCard title={banner.title} detail={detail} label={banner.title} onClose={dismiss}>
+      {notInDiffCount > 0 && (
+        <button type="button" className="btn" onClick={() => setCommentList(true)}>
+          Show Comments
         </button>
-      </span>
-    </div>
+      )}
+      {banner.action && (
+        <button type="button" className="btn" onClick={() => void takeAction()}>
+          {banner.action.label}
+        </button>
+      )}
+    </BannerCard>
   );
 }
 
@@ -175,15 +207,11 @@ function UndoBar() {
   }, [undo, covered, clearUndo]);
   if (!undo) return null;
   return (
-    <div
-      role="status"
-      className="flex flex-none items-center gap-3 border-b border-border bg-side px-6 py-2 text-[13px]"
-    >
-      <span>{undo.label}</span>
-      <button type="button" className="font-medium" onClick={undoLast}>
+    <BannerCard title={undo.label} label={undo.label} onClose={clearUndo}>
+      <button type="button" className="btn" onClick={undoLast}>
         Undo
       </button>
-    </div>
+    </BannerCard>
   );
 }
 
@@ -193,14 +221,10 @@ function SaveProblem() {
   const retrySave = useStore((s) => s.retrySave);
   if (!problem) return null;
   return (
-    <div role="alert" className="flex flex-none items-center gap-3 border-b border-border bg-side px-6 py-2 text-[13px]">
-      <span className="font-medium">{problem.title}</span>
-      <span className="min-w-0 truncate text-muted" title={problem.detail}>
-        {problem.detail}. Comments stay in this window until it closes.
-      </span>
-      <button type="button" className="ml-auto flex-none font-medium" onClick={() => void retrySave()}>
-        Try again
+    <BannerCard role="alert" title={problem.title} detail={`${problem.detail}. Comments stay in this window until it closes.`} label={problem.title}>
+      <button type="button" className="btn" onClick={() => void retrySave()}>
+        Try Again
       </button>
-    </div>
+    </BannerCard>
   );
 }

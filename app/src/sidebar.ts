@@ -3,7 +3,7 @@
 const KEY = "diff-loop.sidebar";
 
 /** The design's width, and what a double-click on the edge goes back to. */
-export const DEFAULT_WIDTH = 272;
+export const DEFAULT_WIDTH = 240;
 export const MIN_WIDTH = 200;
 export const MAX_WIDTH = 560;
 

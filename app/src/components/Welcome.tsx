@@ -1,17 +1,20 @@
 import { useEffect } from "react";
+import appIcon from "../../src-tauri/icons/128x128@2x.png";
 import { chooseFolder } from "../choose";
 import { idOf } from "../key";
 import { useDelayed } from "../delay";
-import { modKey } from "../platform";
+import { isMac, modKey } from "../platform";
 import { useStore } from "../store";
 import { CHECKING, recentReviews, reviewRow } from "../switcher";
-import { Dot } from "./Dot";
+import { Sym } from "./Icon";
+import { LiveDot } from "./LiveDot";
 import { Moved, Switcher } from "./Switcher";
 import { TitleBar } from "./TitleBar";
 
 /** How many reviews the welcome screen lists; the switcher lists them all. */
 const LISTED = 8;
 
+/** The window with no project open (ADR 0027, screen 1a): open one on the left, the recent reviews on the right. */
 export function Welcome() {
   const problem = useStore((s) => s.openProblem);
   const busy = useStore((s) => s.busy);
@@ -28,82 +31,97 @@ export function Welcome() {
   // A project not checked yet says so only once the check has taken 200 ms (ADR 0010 §6).
   const checking = useDelayed(recent.some((r) => !reviews.checks.has(r.key.project))) ? CHECKING : "";
   const now = Date.now();
+  const listed = recent.length > 0;
 
   return (
-    <div className="flex h-full flex-col">
-      <TitleBar />
-      <div className="flex flex-1 justify-center overflow-auto pt-[120px]">
-        <div className="flex w-[560px] flex-col gap-7">
-          <div className="flex flex-col gap-2">
-            <h1 className="m-0 text-[28px] font-semibold tracking-[-0.025em]">Open a project</h1>
-            <p className="m-0 text-[15px] leading-[1.55] text-muted3">
-              Choose a git folder. Each branch you comment on becomes its own review, saved as you write, and opens
-              live from whichever worktree has it checked out.
-            </p>
+    <div className="relative flex h-full">
+      <TitleBar className={listed ? "w-[380px]" : "w-full"} />
+      <section
+        aria-label="Open a project"
+        className={`box-border flex flex-col items-center overflow-auto px-10 pt-[18px] pb-8 text-center ${listed ? "w-[380px] flex-none" : "flex-1"}`}
+      >
+        {/* Room for the window's controls, where the canvas draws them (macOS); the same height elsewhere keeps the layout. */}
+        <div aria-hidden className="mt-1 h-4 flex-none" />
+        <img src={appIcon} alt="" width={128} height={128} draggable={false} className="mt-[42px] flex-none" />
+        <h1 className="m-0 mt-[18px] text-[28px] font-bold tracking-[-0.01em]">Diff Loop</h1>
+        <p className="m-0 mt-1.5 text-[13px] leading-[1.45] text-[var(--sec)]">Review what your agent wrote, then hand it back.</p>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void chooseFolder()}
+          title={`${modKey}O`}
+          className="btnp btnl mt-8"
+        >
+          <Sym name="folderplus" />
+          {slow ? "Opening…" : "Open Folder…"}
+        </button>
+        <p className="m-0 mt-2.5 text-[11px] text-[var(--sec)]">or drop a folder onto this window</p>
+        {problem && (
+          <div role="alert" className="mt-5 flex flex-col gap-0.5 rounded-[10px] bg-[var(--redbg)] px-3 py-2.5 text-left text-xs leading-[1.45]">
+            <span className="font-semibold text-[var(--deltx)]">{problem.title}</span>
+            <span>{problem.detail}</span>
           </div>
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void chooseFolder()}
-              title={`${modKey}O`}
-              className="rounded-full bg-btn px-5 py-2.5 font-medium text-btn-fg disabled:opacity-60"
-            >
-              {slow ? "Opening…" : "Open folder…"}
-            </button>
-            <span className="ml-2 text-[13px] text-muted">or drop a folder onto this window</span>
-          </div>
-          {problem && (
-            <div role="alert" className="flex flex-col gap-1 rounded-[14px] bg-del-bg px-4 py-3.5 text-[13.5px] leading-[1.5]">
-              <span className="font-semibold text-del">{problem.title}</span>
-              <span>{problem.detail}</span>
-            </div>
-          )}
-          {/* With no review kept, ⌘/Ctrl-K still opens the switcher, which offers Open folder… (diff-loop-app.md Decision 29). */}
-          {recent.length === 0 && (
+        )}
+        <p className="m-0 mt-auto pt-6 text-[11px] leading-normal text-[var(--sec)]">
+          Each branch you comment on becomes its own review, saved as you write.
+        </p>
+      </section>
+      {/* With no review kept, ⌘/Ctrl-K still opens the switcher, which offers Open Folder… (diff-loop-app.md Decision 29). */}
+      {!listed && (
+        <Switcher open={switcher} onOpenChange={setSwitcher}>
+          <span aria-hidden className="h-0" />
+        </Switcher>
+      )}
+      {listed && (
+        <section
+          aria-label="Recent Reviews"
+          className="side m-2 ml-0 min-w-0 flex-1"
+        >
+          <div data-tauri-drag-region={isMac ? "deep" : undefined} className="flex items-center px-3 pt-1.5 pb-2.5">
+            <span className="text-[13px] font-semibold">Recent Reviews</span>
+            <span className="flex-1" />
             <Switcher open={switcher} onOpenChange={setSwitcher}>
-              <span aria-hidden className="h-0" />
+              {/* The cap on the card's colour: the field's is the sidebar card's own in light. */}
+              <button type="button" className="kbd rounded-[5px] [&_b]:bg-[var(--card)]">
+                All Reviews <b>{modKey}K</b>
+              </button>
             </Switcher>
-          )}
-          {recent.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between px-3.5 text-xs font-medium text-muted">
-                <span>Reviews</span>
-                <Switcher open={switcher} onOpenChange={setSwitcher}>
-                  <button type="button" className="-my-0.5 flex gap-1.5 rounded-full bg-chip px-2.5 py-0.5 text-muted3">
-                    Show all reviews<span className="font-mono text-[11.5px] text-muted2">{modKey}K</span>
-                  </button>
-                </Switcher>
-              </div>
-              {recent.map((review) => {
-                const row = reviewRow(review, reviews.checks.get(review.key.project), home, now, null, checking);
-                return (
-                  <button
-                    type="button"
-                    key={idOf(review.key)}
-                    disabled={busy}
-                    onClick={() => void pickReview(review.key)}
-                    className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 rounded-xl px-3.5 py-[11px] text-left hover:bg-chip focus-visible:bg-chip"
-                  >
-                    {/* Centred on both lines, as the switcher's rows place it. */}
-                    <span className="row-span-2 flex self-center">
-                      <Dot live={row.live} />
+          </div>
+          <div className="flex min-h-0 flex-col overflow-auto">
+            {recent.map((review) => {
+              const row = reviewRow(review, reviews.checks.get(review.key.project), home, now, null, checking);
+              return (
+                <button
+                  type="button"
+                  key={idOf(review.key)}
+                  disabled={busy}
+                  onClick={() => void pickReview(review.key)}
+                  // Focus is a highlight with an inset ring, as in a list (HIG `focus-and-selection`).
+                  className="rv flex-none px-3 py-[9px] text-left hover:bg-[var(--rowsel)] focus-visible:bg-[var(--rowsel)] focus-visible:-outline-offset-2"
+                >
+                  <LiveDot live={row.live} />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex min-w-0 gap-1.5 text-[13px]">
+                      <span className="flex-none text-[var(--sec)]">{review.name}</span>
+                      <span className="truncate">{review.key.branch}</span>
                     </span>
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="font-medium">{review.name}</span>
-                      <span className="truncate font-mono text-xs text-muted2">{review.key.branch}</span>
+                    <span className="truncate text-[11px] text-[var(--sec)]" title={row.where}>
+                      {row.where}
+                    </span>
+                  </span>
+                  <span className="flex flex-none flex-col items-end gap-[3px] text-[11px] whitespace-nowrap text-[var(--sec)]">
+                    <span className="flex gap-1">
+                      {row.comments && <span className={`badge ${row.open ? "b-draft" : "b-ok"}`}>{row.comments}</span>}
                       <Moved moved={row.moved} />
                     </span>
-                    <span className={`text-right text-[12.5px] ${row.open ? "font-medium" : "text-muted"}`}>{row.comments}</span>
-                    <span className="truncate text-xs text-muted">{row.where}</span>
-                    <span className="text-right text-[12.5px] text-muted">{row.round}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+                    <span>{row.round}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

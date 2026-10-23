@@ -1,4 +1,4 @@
-// Code as "Suggest code" shows it: without the indent its lines share (diff-loop-app.md Decision 26).
+// Code as "Suggest Change" shows it: without the indent its lines share (diff-loop-app.md Decision 26).
 
 /**
  * `lines` without the leading whitespace every non-blank one shares, blank

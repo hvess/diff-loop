@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
 import type { Target } from "../bindings/Target";
-import { hasMod, modKey } from "../platform";
 import { dedent } from "../indent";
+import { hasMod, modKey } from "../platform";
 import { lastLine } from "../rows";
 import { canSave, suggestable, useStore } from "../store";
+import { Sym } from "./Icon";
 
 export function targetLabel(target: Target): string {
   if (target.kind === "file") return "Whole file";
@@ -12,19 +13,23 @@ export function targetLabel(target: Target): string {
   return target.start === end ? `${prefix} ${target.start}` : `${prefix}s ${target.start}–${end}`;
 }
 
-/** Writes or edits a comment; Return with the command key saves, with Alt (Option) turns Suggest code on or off, Esc cancels. */
-export function Composer({ floating = false }: { floating?: boolean }) {
+/**
+ * The comment popover's body, writing or editing a comment (the canvas's 3c, and 3f with suggested code); its
+ * caller draws the popover. Return with the command key saves, with Alt (Option) turns Suggest Change on or off,
+ * Esc cancels.
+ */
+export function Composer() {
   const composer = useStore((s) => s.composer);
   const update = useStore((s) => s.updateComposer);
   const save = useStore((s) => s.saveComposer);
   const cancel = useStore((s) => s.cancelComposer);
-  // Editing a sent comment reopens it: the card says what was sent, and that it copies as "Still: …" (ADR 0015 §5).
+  // Editing a sent comment reopens it: the popover says what was sent, and that it copies as "Still: …" (ADR 0015 §5).
   const sent = useStore((s) => s.comments.find((c) => c.id === s.composer?.editing)?.sent ?? null);
   const text = useRef<HTMLTextAreaElement>(null);
   const code = useRef<HTMLTextAreaElement>(null);
   const suggesting = composer?.suggestion !== null && composer?.suggestion !== undefined;
 
-  // Typing goes on in the field left: the code once Suggest code is on, the text once it is off.
+  // Typing goes on in the field left: the code once Suggest Change is on, the text once it is off.
   useEffect(() => {
     (suggesting ? code : text).current?.focus();
   }, [suggesting]);
@@ -53,83 +58,89 @@ export function Composer({ floating = false }: { floating?: boolean }) {
   };
 
   return (
-    <div
-      onKeyDown={onKeyDown}
-      className={`overflow-hidden rounded-[14px] border border-ghost bg-bg text-[13.5px] leading-[1.55] ${floating ? "shadow-pop" : ""}`}
-    >
-      {sent && (
-        <div className="mx-4 mt-3 flex flex-col gap-0.5 rounded-lg bg-chip px-2.5 py-2 text-[12.5px] leading-[1.5]">
-          <span className="text-[11.5px] text-muted3">You sent in round {sent.round}</span>
-          <span className="code whitespace-pre-wrap text-muted3">{sent.text === "" ? "Suggested change" : sent.text}</span>
-        </div>
-      )}
+    <div onKeyDown={onKeyDown}>
+      <div className="mb-2.5 flex items-baseline gap-1.5">
+        <span className="text-[13px] font-semibold">Comment</span>
+        <span className="text-xs text-[var(--sec)]">{targetLabel(target)}</span>
+      </div>
+      {sent && <SentBefore round={sent.round} text={sent.text} />}
       <AutoTextarea
         inputRef={text}
         autoFocus
+        minRows={composer.suggestion === null ? 3 : 2}
         value={composer.text}
         onChange={(value) => update({ text: value })}
+        aria-label="Comment"
         placeholder={
-          reasonOptional
-            ? "Why this change? (optional)"
-            : composer.suggestion !== null
-              ? "Change the code, or say why"
-              : "Leave a comment for the agent"
+          reasonOptional ? "Why this change? (optional)" : composer.suggestion !== null ? "Change the code, or say why" : "Leave a comment for the agent"
         }
-        className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-1.5 outline-none placeholder:text-muted3"
+        className="block w-full resize-none rounded-[7px] bg-[var(--card)] px-2 py-1.5 text-[13px] leading-[1.4] text-[var(--label)] shadow-[0_0_0_0.5px_var(--popbd)] outline-none placeholder:text-[var(--sec)] focus:shadow-[0_0_0_0.5px_var(--popbd),0_0_0_3.5px_var(--ring)]"
       />
       {canSuggest && composer.suggestion !== null && (
-        <div className="mx-4 mt-1.5 mb-0.5 overflow-hidden rounded-[10px] border border-line font-mono text-[11.5px] leading-[1.9]">
-          <div className="flex justify-between border-b border-border bg-hunk px-3 py-1.5 font-sans text-xs text-muted">
-            <span>Suggested change</span>
-            <span>Edit the + {composer.suggestion.includes("\n") ? "lines" : "line"}</span>
+        <>
+          <div className="mt-3.5 mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--sec)]">
+            <Sym name="suggest" />
+            <span>Suggested Change</span>
+            <span className="grow" />
+            {/* By its mark, not its colour (ux gate 8), where the canvas says "Edit the green line". */}
+            <span className="font-medium">Edit the + {composer.suggestion.includes("\n") ? "lines" : "line"}</span>
           </div>
-          {dedent(target.code).map((line, i) => (
-            <div key={i} className="flex bg-del-bg pr-3">
-              <span className="w-6 flex-none text-center text-del">−</span>
-              <span className="whitespace-pre-wrap">{line}</span>
+          <div className="sug" role="group" aria-label="Suggested change">
+            {dedent(target.code).map((line, i) => (
+              <div key={i} className="m">
+                <span className="sg" aria-label="Current">
+                  −
+                </span>
+                <span>{line}</span>
+              </div>
+            ))}
+            <div className="p edit">
+              <span className="sg" aria-label="Replacement">
+                +
+              </span>
+              <AutoTextarea
+                inputRef={code}
+                value={composer.suggestion}
+                onChange={(value) => update({ suggestion: value })}
+                aria-label="Suggested code"
+                spellCheck={false}
+                className="block flex-1 resize-none bg-transparent font-[inherit] break-all whitespace-pre-wrap text-[var(--label)] outline-none"
+              />
             </div>
-          ))}
-          <div className="flex bg-add-bg pr-3">
-            <span className="w-6 flex-none text-center text-add">+</span>
-            <AutoTextarea
-              inputRef={code}
-              value={composer.suggestion}
-              onChange={(value) => update({ suggestion: value })}
-              aria-label="Suggested code"
-              spellCheck={false}
-              className="block flex-1 resize-none bg-transparent break-all whitespace-pre-wrap outline-none"
-            />
           </div>
-        </div>
+        </>
       )}
-      <div className="flex items-center gap-2.5 px-4 pt-2.5 pb-3 text-[12.5px]">
-        <span className="text-faint">{sent ? "Copies as “Still: …”" : targetLabel(target)}</span>
-        {canSuggest && (
-          <button
-            type="button"
-            aria-pressed={composer.suggestion !== null}
-            onClick={toggleSuggestion}
-            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-[3px] font-medium ${
-              composer.suggestion !== null ? "border-muted2 bg-chip text-fg" : "border-line text-muted2"
-            }`}
-          >
-            {/* On shows a tick, so the state is told by more than shade. */}
-            <span className="font-mono text-[11.5px]">{composer.suggestion !== null ? "✓" : "±"}</span>Suggest code
-          </button>
-        )}
-        <button type="button" onClick={cancel} className="ml-auto text-muted3">
+      <div className="mt-3.5 flex items-center gap-2">
+        {canSuggest &&
+          (composer.suggestion === null ? (
+            <button type="button" className="btnplain" onClick={toggleSuggestion}>
+              <Sym name="suggest" />
+              Suggest Change
+            </button>
+          ) : (
+            <button type="button" className="btnplain" onClick={toggleSuggestion}>
+              Remove Suggestion
+            </button>
+          ))}
+        {sent && <span className="text-[11px] text-[var(--sec)]">Copies as “Still: …”</span>}
+        <span className="grow" />
+        <button type="button" className="btn" onClick={cancel}>
           Cancel
         </button>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!canSave(composer)}
-          title={`${modKey}Return`}
-          className="rounded-full bg-btn px-3.5 py-1.5 font-medium text-btn-fg disabled:opacity-50"
-        >
+        <button type="button" className="btnp" onClick={save} disabled={!canSave(composer)} title={`${modKey}Return`}>
           {composer.editing ? "Save" : "Comment"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** What a reopened comment said when it was sent (ADR 0015 §5). */
+export function SentBefore({ round, text }: { round: number; text: string }) {
+  return (
+    <div className="mb-2.5 flex flex-col gap-0.5 rounded-lg bg-[var(--field)] px-2.5 py-2 text-xs leading-[1.45]">
+      <span className="text-[11px] text-[var(--sec)]">You sent in round {round}</span>
+      <span className="whitespace-pre-wrap text-[var(--sec)]">{text === "" ? "Suggested change" : text}</span>
     </div>
   );
 }
@@ -138,11 +149,13 @@ function AutoTextarea({
   inputRef,
   value,
   onChange,
+  minRows = 1,
   ...rest
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   value: string;
   onChange: (value: string) => void;
+  minRows?: number;
 } & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange">) {
   useEffect(() => {
     const el = inputRef.current;
@@ -150,5 +163,5 @@ function AutoTextarea({
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [value, inputRef]);
-  return <textarea ref={inputRef} rows={1} value={value} onChange={(e) => onChange(e.target.value)} {...rest} />;
+  return <textarea ref={inputRef} rows={minRows} value={value} onChange={(e) => onChange(e.target.value)} {...rest} />;
 }

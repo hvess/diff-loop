@@ -17,14 +17,14 @@ and interaction.** When designing, creating or changing an interface, justify
 decisions from the HIG and nothing else — not other design systems, not
 other apps, not your own taste.
 
-Diff Loop has no design system yet. When one is adopted, it becomes the
+Diff Loop's design system is the redesign canvas (ADR 0027): it is the
 authority for visual values — colour, type, spacing — and the HIG stays the
 authority for behaviour:
 
 | Question | Authority |
 |---|---|
 | Is it intuitive, familiar, predictable, forgiving? What happens on a key, a click, an error? What does the text say? | **HIG** |
-| Which colour, typeface, spacing, icon? | **The design system**, once adopted |
+| Which colour, typeface, spacing, icon? | **The design system**: the redesign canvas (ADR 0027) |
 
 Where the two disagree, do not quietly pick one: record the disagreement
 with both halves and which the app follows, and tell the developer.
@@ -126,34 +126,31 @@ own decisions to depart from it, each recorded with both halves.
   folders go: only changed paths are listed, chains of lone folders read
   as one row, and since 2026-10-15 each folder folds on a click (ADR
   0016).
-- **A folder folds by its icon, with no disclosure triangle** (diff-loop-app
-  Decision 23; the developer's call, 2026-10-16). The HIG
-  `disclosure-controls` page shows a folder hierarchy revealed by
-  disclosure triangles, pointing inward when hidden and down when shown,
-  and the `sidebars` page groups hierarchy with disclosure controls. The
-  developer chose the v2 design, which draws only the open or closed
-  folder icon; a folded folder also says how many files it holds.
-- **The design's pale greys stay, for now** (the developer's call,
-  2026-10-14; open-tasks 16). The HIG `accessibility` page asks for
-  4.5:1 contrast for text; `--ui-faint` and `--ui-muted` draw line
-  labels, the suggestion box's header and viewed files' names below it,
-  and since 2026-10-17 the base picker's search placeholders, a
-  remote's prefix and the dimmed checked-out branch; since 2026-10-19
-  the title bar chip's state, the review switcher's place lines, hints,
-  "Open without saving" and search placeholder, the welcome screen's
-  place lines, drop hint, "Reviews" heading and "Show all reviews", the
-  switcher's group trails (a project's path, "No matches", "2 local"),
-  and the base picker's note and reason (the developer's call for these
-  too, 2026-10-19).
 - **Two notes in popovers, as the design draws them** (diff-loop-app
   Decision 33; the developer's call, 2026-10-19). The HIG `popovers`
   page advises against a warning in a popover and against one covering
   content: a deleted branch's notice (6k) is said at the review
-  switcher's top, which Esc closes, and "Review saved" (6e) hangs from
+  switcher's top, which Esc closes, and "Review Saved" (6e) hangs from
   the title bar's chip over the sidebar's head for 6 s or until
-  Dismiss. The deletion is git's, already made. Neither draws the arrow
-  the same page asks to point at what revealed it, as no popover in the
-  design or the app does; each hangs straight below its control.
+  Dismiss. The deletion is git's, already made. "Review Saved" draws
+  no arrow, as the canvas draws none for it; the popovers that open
+  from a control point at it (ADR 0027).
+- **A comment's popover covers the lines under its range** (diff-loop-app
+  Decision 35; the developer's direction, 2026-10-22). The HIG
+  `popovers` page advises against covering content people need; the
+  canvas hangs the composer and a comment under the range's last line,
+  its arrow's tip on that line's edge, over the lines below, so the
+  commented lines stay in view. Esc or a click on the gutter closes it.
+- **Split cuts long lines with a fade** (diff-loop-app Decision 35; the
+  developer's direction, 2026-10-22). The HIG `layout` page asks that
+  content stay legible; the canvas's Split ends each column's code in a
+  24 px fade at its edge, which says it goes on, and its comment marks
+  sit at the right edge over the code; Unified, which wraps, shows the
+  whole line.
+- **Long places are cut at their end** (the canvas's 1a and 6a; the
+  developer's direction, 2026-10-22). macOS cuts a path in the middle;
+  the canvas cuts a review's place line at its end, and the whole of it
+  is in the line's tooltip.
 - **A review open in another window is not brought forward** (ADR 0026
   §9; the developer's call, 2026-10-19; open-tasks 25). Desktop apps
   bring forward a document already open; each Diff Loop window is its
@@ -166,37 +163,35 @@ own decisions to depart from it, each recorded with both halves.
   and `layout` asks that items align for scanning; the design ends a
   ref's row with a short age ("5m", "3mo", the full date on hover), and
   puts a list row's count before its ›, not in line with the trails
-  above it. Its first list has no headings: the HIG `menus` page groups
-  related items under a title, and without one "Last commit", which
+  above it. Uncommitted Changes ends with its line counts in green and
+  red, "+4 −1", as the file's header writes them, with no word for what
+  they count. Its first list has no headings: the HIG `menus` page groups
+  related items under a title, and without one "Last Commit", which
   narrows the diff, sits beside the default branch, which is a base;
   the design relies on the order and the "Default" trail. It is a list
-  in a popover with its own search, not a menu, so its rows take the
-  app's sentence case ("Last commit", "Local branches"), not the
-  title case HIG `menus` asks of menu items. Its search field, which
+  in a popover with its own search, not a menu; its rows take the
+  canvas's title case ("Last Commit", "Local Branches"), as every label
+  does (ADR 0027 §7). Its search field, which
   holds focus while the picker is open, is drawn flat, with no focus
   ring (HIG `focus-and-selection`); the highlighted row shows where
   Return goes. The review switcher's field is drawn the same way, so
   the two read alike (the developer's call, 2026-10-20).
-- **The range handles look as the design draws them** (diff-loop-app
-  Decision 28; the developer's call, 2026-10-14): a 4 px bar on the
-  row's edge, in a 28 × 20 px target. The HIG `accessibility` page asks
-  for controls that are easy to see and hit; the target meets its size,
-  the bar is the design's.
-- **The sidebar's progress ring stays** (diff-loop-app Decision 24; the
-  developer's call, 2026-10-14). The HIG `progress-indicators` page keeps
+- **A range's ends drag from the gutter, with no handles** (diff-loop-app
+  Decision 35; the developer's direction, 2026-10-22): while the
+  composer is open, the range's first and last gutter rows take the
+  drag, with the resize cursor, as the canvas draws it. The HIG
+  `accessibility` page asks for controls that are easy to see and hit;
+  each is a whole row of the gutter, 80 px wide.
+- **The progress ring stays, in the bottom bar** (diff-loop-app
+  Decisions 24 and 35; the developer's call, 2026-10-14). The HIG `progress-indicators` page keeps
   a determinate ring for an operation under way; the design uses one as
   a lasting meter of the lines reviewed, with the count beside it in
   words.
-- **The editable + line has no ring of its own** (diff-loop-app Decision
-  26; the developer's call, 2026-10-14). The HIG `focus-and-selection`
-  page asks for a focus ring on a text field; the v2 design draws the
-  editable + line like the code around it, and says "Edit the + line"
-  in the box's header, with the caret in the line.
-- **The preview's text looks like the code panels until it has focus**
-  (diff-loop-app Decision 25; the developer's call, 2026-10-14). The HIG
-  `entering-data` page asks that a field look like one; the v2 design
-  draws the instructions as a panel, and its footer says "You can edit
-  the text before copying." Focused, it has the focus ring.
+- **The preview's text has its focus ring only while focused**
+  (diff-loop-app Decisions 25 and 35; the developer's call, 2026-10-14).
+  The HIG `entering-data` page asks that a field look like one; the
+  canvas's sheet draws the instructions as an inset panel with a hairline,
+  and its note says "Edits change this text, not your comments." 
 - **Most review shortcuts are single keys** (diff-loop-app Decision 29;
   the developer's call, 2026-10-15). The HIG `keyboards` page prefers
   Command as the main modifier of a custom shortcut, and warns that many
@@ -208,12 +203,12 @@ own decisions to depart from it, each recorded with both halves.
   the developer's call, 2026-10-15). The HIG `keyboards` page says to
   avoid adding a modifier to an existing shortcut for an unrelated
   command, and ⌘B is Bold; no field in the app formats text.
-- **Alt-Return (Option-Return) turns Suggest code on or off in the
+- **Alt-Return (Option-Return) turns Suggest Change on or off in the
   composer** (diff-loop-app Decision 29; the developer's call,
   2026-10-15). The HIG `keyboards` page says to prefer a modifier other
   than Command only with alphabetic characters, and in a text field
   Option-Return otherwise types a line break. The developer chose it
-  for Suggest code; Return alone still types the line break.
+  for Suggest Change; Return alone still types the line break.
 - **⌘/Ctrl-Shift-C copies the review and ⌘/Ctrl-Shift-P opens its
   preview** (diff-loop-app Decision 29; the developer's call,
   2026-10-15). The HIG `keyboards` page lists them as Show Colors and Page
@@ -224,27 +219,18 @@ own decisions to depart from it, each recorded with both halves.
   task 17). The HIG `offering-help` page offers tips and tooltips to help
   people "discover faster ways to accomplish a task". The developer chose
   to build the keys first and show them later, in a list of their own;
-  the hints already there (V on Viewed, C on the range pill, N / P in the
-  comments list, R on a sent card's Resolve, ⌘/Ctrl-↵ on the preview's
+  the hints already there (V on Viewed, R on a sent card's Resolve, ⌘/Ctrl-↵ on the preview's
   Copy) stay.
-- **"Not sent" names a state, not a verb** (ADR 0015 §1; the design's
+- **"Not Sent" names a state, not a verb** (ADR 0015 §1; the design's
   red-pen note 02, the developer's call, 2026-10-15). The HIG `writing`
   page prefers a verb on a button; the popover's second action keeps the
-  design's "Not sent", which says what it makes true of the round.
-- **The preview's footer keeps its own words** (diff-loop-app Decision
-  25; the developer's call, 2026-10-15). The design as edited 2026-10-15
-  says "Click into the text to edit before copying.", "Changes apply to
-  this copy only." and "Reset"; the app keeps "You can edit the text
-  before copying.", "Edits change this text, not your comments." and
-  "Reset to original", which say what the edit touches and what Reset
-  goes back to (HIG `writing`).
-- **The preview has a ✕ as well as Cancel** (diff-loop-app Decision
-  25; the developer's call, 2026-10-15). The HIG `modality` page asks
-  for one obvious way to dismiss a modal view and warns against a
-  second control that could be taken for it; the design as edited
-  2026-10-15 draws a ✕ in the dialog's header and Cancel in its
-  footer, both closing it and keeping any edit, and the app follows
-  the design.
+  design's "Not Sent", which says what it makes true of the round.
+- **The preview's footer is the canvas's** (diff-loop-app Decisions 25
+  and 35; the developer's direction, 2026-10-22): "Edits change this
+  text, not your comments." with what copying ends, Reset to Original
+  once the text is edited, Cancel and Copy to Clipboard. It has no ✕:
+  Esc and Cancel close it, one way to dismiss it as the HIG `modality`
+  page asks.
 
 ## Settled wording
 
@@ -254,8 +240,7 @@ against other wording that would also do.
 - **Comments whose code is not in the diff** (diff-loop-app Decision
   16; the developer's call, 2026-10-14). One term, "not in this diff",
   everywhere: the comment count ("2 comments (1 not in this diff)"),
-  the list chip ("Not in this diff"), the list hint ("N / P to jump
-  between comments in this diff"), and the banner.
+  the list chip ("Not in this diff"), and the banner.
 - **The banner's detail** (diff-loop-app Decision 16; the developer's
   call, 2026-10-15). One sentence, only when it holds: "2 comments are
   not in this diff." (The banners of a review's own context in ADR 0026,
@@ -270,7 +255,7 @@ against other wording that would also do.
   removed (ADR 0015 §10). Following a commit on top of a round, the
   title adds "· showing changes since round 3 (a1f3c9e)", the commit
   the base picker names, and its action is "Show
-  uncommitted changes" in place of "Show what changed" (ADR 0017 §2; the
+  Uncommitted Changes" in place of "Show What Changed" (ADR 0017 §2; the
   author's wording under the developer's instruction of 2026-10-16 to
   fix every open task). Until 2026-10-15 it counted comments
   "addressed and removed", with "Undo removal".
@@ -279,13 +264,14 @@ against other wording that would also do.
   gone", "Not in this diff", "Resolved" and "Resolved · suggestion
   applied". On a card: the chip repeats the mark, and the footer says
   "Untouched since sent", "Untouched since sent · nearby lines changed",
-  "Code changed since sent", "Code removed since sent", "Suggestion
+  "The code changed after you sent this. Resolve it if the change
+  answers you." (the canvas's), "Code removed since sent", "Suggestion
   applied" or "Copies as “Still: …”". In the round strip: "Nothing sent
   yet", "Round 2 sent", "N changed", "N untouched", "N resolved
-  automatically". The copy says "✓ Copied · round 2 sent" and "… copied
+  automatically". The copy says "Copied · round 2 sent" and "… copied
   as instructions and marked Sent."; its actions are "Preview
-  instructions…", as the list's, and "Not sent"; the list's clearing is
-  "Delete drafts". Placing a lost draft again is "Re-place",
+  Instructions…", as the list's, and "Not Sent"; the list's clearing is
+  "Delete Drafts". Placing a lost draft again is "Re-place",
   ADR 0015 §2's word and the design's; its bar says "Re-place “…”" and
   its undo bar "Placed on line 16. It is a draft again." In the
   instructions, "Still: …" prefixes a reopened comment's new text and
@@ -301,11 +287,12 @@ against other wording that would also do.
   goes; the HIG `text-fields` advice to add a separate label is passed
   over here.
 - **The base picker's search** (diff-loop-app Decision 32; the
-  developer's call, 2026-10-17): "Search branches, tags or commits",
+  developer's call, 2026-10-17; title case since ADR 0027 §7): "Search
+  Branches, Tags, or Commits",
   where the design says "SHAs", and the typed row "Compare with “…”".
 - **Projects and folders** (ADR 0026; the design's words, the
-  developer's call, 2026-10-19): the welcome screen's "Open a project"
-  over "Choose a git folder…" and "Open folder…". A project is what is
+  developer's call, 2026-10-19): Welcome's "Open Folder…" (the canvas's 1a).
+  A project is what is
   reviewed, its branches' reviews together; a folder is what is picked
   to open one.
 - **Reviews per branch** (diff-loop-app Decision 33; the developer's
@@ -317,9 +304,9 @@ against other wording that would also do.
   compare with its uncommitted changes.") and the switched banner, and the
   detached banner's "… Check out a branch to comment.", each with its
   next step; "Open without saving" on a branch row, to match "↩ Open";
-  "Review saved" with "… is with your reviews now, under ⌘K." (Ctrl+K
+  "Review Saved" with "… is with your reviews now, under ⌘K." (Ctrl+K
   off macOS), as no window names a switcher; notices
-  closed by "Dismiss", as banners are.
+  closed by "Dismiss", as banners' close buttons are named.
 - **What git removed** (ADR 0026 §4 and §6; the design's words, the
   developer's calls, 2026-10-19): "agent/pdf-preview was deleted" with
   "Its review and 2 comments were deleted with it. There is no copy to

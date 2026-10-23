@@ -5,15 +5,17 @@ import { api } from "../api";
 import type { Base } from "../bindings/Base";
 import type { BaseRef } from "../bindings/BaseRef";
 import type { LineCounts } from "../bindings/LineCounts";
+import { folded } from "../search";
 import { holdsReview, isLive, sameBase, useStore } from "../store";
 import { LineTotals } from "./LineTotals";
+import { Sym } from "./Icon";
+import { PopArrow } from "./PopArrow";
 
 /** A row that compares with `base`; one without a base is shown and cannot be picked. */
 type Choice = {
   key: string;
   base: Base | null;
   label: ReactNode;
-  mono: boolean;
   trail: ReactNode;
   /** The trail's full meaning, where it is abbreviated. */
   title?: string;
@@ -30,6 +32,8 @@ type Group = {
   none: string;
   more: string;
   refs: BaseRef[];
+  /** What its row counts: "24 branches". */
+  unit: "branch" | "tag";
   /** The checked-out branch, listed first and not to be picked. */
   current: string | null;
 };
@@ -70,11 +74,12 @@ export function groupsOf(refs: BaseRef[], current: string | null): Group[] {
   if (local.length > 0 || current !== null) {
     groups.push({
       key: "local",
-      title: "Local branches",
-      search: "Search local branches",
+      title: "Local Branches",
+      search: "Search Local Branches",
       none: "No matching branch",
       more: "More local branches — type to narrow",
       refs: local,
+      unit: "branch",
       current,
     });
   }
@@ -86,6 +91,7 @@ export function groupsOf(refs: BaseRef[], current: string | null): Group[] {
       none: "No matching branch",
       more: `More ${remote} branches — type to narrow`,
       refs: list,
+      unit: "branch",
       current: null,
     });
   }
@@ -93,10 +99,11 @@ export function groupsOf(refs: BaseRef[], current: string | null): Group[] {
     groups.push({
       key: "tags",
       title: "Tags",
-      search: "Search tags",
+      search: "Search Tags",
       none: "No matching tag",
       more: "More tags — type to narrow",
       refs: tags,
+      unit: "tag",
       current: null,
     });
   }
@@ -106,15 +113,22 @@ export function groupsOf(refs: BaseRef[], current: string | null): Group[] {
 /** How many rows a group lists, the checked-out branch included. */
 export const groupSize = (group: Group) => group.refs.length + (group.current === null ? 0 : 1);
 
+/** "24 branches", as a list's row counts it. */
+export function groupCount(group: Group): string {
+  const n = groupSize(group);
+  const noun = group.unit === "tag" ? (n === 1 ? "tag" : "tags") : n === 1 ? "branch" : "branches";
+  return `${n} ${noun}`;
+}
+
 /** Up to `SHOWN` of `refs` whose names hold `query`, an exactly named one first; `more` when some were left out. */
 export function matching(refs: BaseRef[], query: string): { matches: BaseRef[]; more: boolean; exact: boolean } {
-  const q = query.trim().toLowerCase();
+  const q = folded(query.trim());
   // Typing more cannot narrow past a full name.
   const exactRef = refs.find((r) => r.name === query.trim());
   const matches: BaseRef[] = exactRef ? [exactRef] : [];
   // Stops at SHOWN matches: a repository can have thousands of refs, and only matches render.
   for (const r of refs) {
-    if (r === exactRef || !r.name.toLowerCase().includes(q)) continue;
+    if (r === exactRef || !folded(r.name).includes(q)) continue;
     if (matches.length === SHOWN) return { matches, more: true, exact: exactRef !== undefined };
     matches.push(r);
   }
@@ -143,14 +157,9 @@ export function baseLabel(base: Base): string {
   }
 }
 
-/** "+42 −8", spaced as the design shows the uncommitted changes. */
+/** "+42 −8": the row's trail spaces the two. */
 function lineTrail(counts: LineCounts | null): ReactNode {
-  if (counts === null) return null;
-  return (
-    <span className="flex gap-2">
-      <LineTotals counts={counts} />
-    </span>
-  );
+  return counts === null ? null : <LineTotals counts={counts} />;
 }
 
 /** A ref's name, a remote's prefix faint (diff-loop-app.md Decision 32). */
@@ -159,7 +168,7 @@ function refName(ref: BaseRef): ReactNode {
   const [remote, rest] = remoteOf(ref.name);
   return (
     <>
-      <span className="text-faint">{remote}/</span>
+      <span className="k">{remote}/</span>
       {rest}
     </>
   );
@@ -170,7 +179,6 @@ function refChoice(ref: BaseRef, now: number, searched: boolean): Choice {
     key: `ref:${ref.name}`,
     base: { kind: "ref", name: ref.name },
     label: refName(ref),
-    mono: true,
     ...refTrail(ref, now, searched),
   };
 }
@@ -196,14 +204,13 @@ export function listItems(at: {
     const { matches, more } = matching(at.group.refs, q);
     const current = at.group.current;
     const currentRow =
-      current !== null && current.toLowerCase().includes(q.toLowerCase())
+      current !== null && folded(current).includes(folded(q))
         ? [
             choiceItem({
               key: "current",
               base: null,
               label: current,
-              mono: true,
-              trail: "Current",
+              trail: "Under review",
             }),
           ]
         : [];
@@ -223,10 +230,9 @@ export function listItems(at: {
           // Whatever git resolves is taken: a commit, `HEAD~2`, a ref not listed.
           label: (
             <>
-              Compare with “<span className="font-mono text-[12.5px]">{q}</span>”
+              Compare with “<span className="font-mono">{q}</span>”
             </>
           ),
-          mono: false,
           trail: "",
         }),
       );
@@ -238,15 +244,13 @@ export function listItems(at: {
         ? {
             key: "uncommitted",
             base: { kind: "uncommitted" },
-            label: "Uncommitted changes",
-            mono: false,
+            label: "Uncommitted Changes",
             trail: lineTrail(at.uncommitted),
           }
         : {
             key: "uncommitted",
             base: null,
-            label: "Uncommitted changes",
-            mono: false,
+            label: "Uncommitted Changes",
             trail: null,
             why: `${at.committedOnly} isn’t checked out in any worktree. Check it out in one to compare with its uncommitted changes.`,
           },
@@ -254,9 +258,8 @@ export function listItems(at: {
     choiceItem({
       key: "lastCommit",
       base: { kind: "lastCommit" },
-      label: "Last commit",
-      mono: false,
-      trail: at.commit == null ? null : <span className="font-mono text-xs">{shortId(at.commit)}</span>,
+      label: "Last Commit",
+      trail: at.commit == null ? null : <span className="font-mono">{shortId(at.commit)}</span>,
     }),
   ];
   const fallback = at.defaultBranch;
@@ -266,12 +269,11 @@ export function listItems(at: {
         key: "default",
         base: { kind: "ref", name: fallback },
         label: fallback,
-        mono: true,
         trail: "Default",
       }),
     );
   }
-  // A base other than these is listed under them, so it shows ✓ and Return keeps it.
+  // A base other than these is listed under them, so it shows its check and Return keeps it.
   const base = at.base;
   if (base.kind === "ref" && base.name !== fallback) {
     const ref = at.refs.find((r) => r.name === base.name);
@@ -283,7 +285,6 @@ export function listItems(at: {
               key: "base",
               base,
               label: baseLabel(base),
-              mono: true,
               trail: "Commit",
             },
       ),
@@ -312,9 +313,8 @@ export function arrival(items: Item[], base: Base, left: Group | null): number {
   return at >= 0 ? at : firstPick(items);
 }
 
-const ROW = "grid h-8 flex-none grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2.5 text-left";
 
-/** The "vs main ▾" control: choose what the checkout is compared with. */
+/** The "vs main" capsule: choose what the checkout is compared with. */
 export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const base = useStore((s) => s.base);
   const choices = useStore((s) => s.choices);
@@ -421,24 +421,22 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
   };
 
   const row = (item: Item, index: number) => {
-    const highlight = index === at ? "bg-chip" : "";
+    const hi = index === at;
     if (item.kind === "group") {
       return (
         <button
           type="button"
           role="option"
-          aria-selected={index === at}
+          aria-selected={hi}
           onMouseEnter={() => setActive(index)}
           onClick={() => choose(item)}
-          className={`${ROW} ${highlight}`}
+          className={`li ${hi ? "hi" : ""}`}
         >
-          <span />
+          <span className="w-3.5 flex-none" />
           <span className="truncate">{item.group.title}</span>
-          <span className="flex items-center gap-2 text-[12.5px] text-muted tabular-nums">
-            {groupSize(item.group)}
-            <span aria-hidden className="flex w-2.5 justify-center text-faint">
-              ›
-            </span>
+          <span className="r tabular-nums">
+            <span>{groupCount(item.group)}</span>
+            <Sym name="right" />
           </span>
         </button>
       );
@@ -447,58 +445,60 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
     const disabled = choice.base === null;
     if (choice.why !== undefined) {
       return (
-        <div
-          role="option"
-          aria-selected={false}
-          aria-disabled
-          className="grid flex-none grid-cols-[16px_minmax(0,1fr)] gap-x-2 gap-y-px rounded-lg px-2.5 py-1.5"
-        >
-          <span />
-          <span className="text-faint">{choice.label}</span>
-          <span />
-          <span className="text-xs leading-[1.45] text-muted">{choice.why}</span>
+        <div role="option" aria-selected={false} aria-disabled className="li dim items-start">
+          <span className="w-3.5 flex-none" />
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span>{choice.label}</span>
+            <span className="text-[11px] leading-[1.45]">{choice.why}</span>
+          </span>
         </div>
       );
     }
+    const checked = isBase(item, base);
     return (
       <button
         type="button"
         role="option"
-        aria-selected={index === at}
+        aria-selected={hi}
         aria-disabled={disabled}
+        aria-current={checked || undefined}
         onMouseEnter={() => !disabled && setActive(index)}
         onClick={() => choose(item)}
-        className={`${ROW} ${highlight} ${disabled ? "cursor-default opacity-45" : ""}`}
+        className={`li ${hi ? "hi" : ""} ${disabled ? "dim cursor-default" : ""}`}
       >
-        <span className="flex justify-center text-xs font-semibold">{isBase(item, base) ? "✓" : ""}</span>
-        <span className={`truncate ${choice.mono ? "font-mono text-[12.5px]" : ""}`}>{choice.label}</span>
-        <span className="text-[12.5px] text-muted tabular-nums" title={choice.title}>
+        <span className="ck">
+          {checked && <Sym name="check" />}
+        </span>
+        <span className="truncate">{choice.label}</span>
+        <span className="r tabular-nums" title={choice.title}>
           {choice.trail}
         </span>
       </button>
     );
   };
 
-  // The design's divider sits above the first row that opens a list.
+  // The canvas's divider sits above the first row that opens a list.
   const firstGroup = !group && !query.trim() ? items.findIndex((item) => item.kind === "group") : -1;
+  const search = group?.search ?? "Search Branches, Tags, or Commits";
   return (
     <Popover.Root open={open} onOpenChange={onOpenChange}>
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[13px] text-muted3"
+          aria-label={`Compare with ${baseLabel(base)}`}
+          className="cap"
         >
-          vs <span className="font-mono text-[12.5px] text-fg">{baseLabel(base)}</span>
-          <span aria-hidden className="text-[10px] text-faint">
-            ▾
-          </span>
+          <span className="text-[var(--sec)]">vs</span>
+          <span>{baseLabel(base)}</span>
+          <Sym name="updown" className="text-[var(--sec)]" />
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
           align="start"
-          sideOffset={8}
-          className="z-40 flex w-[320px] flex-col gap-px rounded-[14px] border border-line bg-bg p-1.5 text-[13.5px] shadow-pop"
+          sideOffset={12}
+          aria-label="Compare with"
+          className="pop-body z-40 flex w-[360px] flex-col pb-1 text-[var(--label)] outline-none"
           // Esc in an opened list goes back to the first; there, it closes.
           onEscapeKeyDown={(e) => {
             if (!group) return;
@@ -515,51 +515,53 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
             e.preventDefault();
           }}
         >
+          <PopArrow />
           {group && (
-            <button type="button" onClick={() => enter(null)} aria-label={`Back from ${group.title}`} className={ROW}>
-              <span aria-hidden className="flex justify-center text-[15px] text-muted">
-                ‹
-              </span>
-              <span className="truncate font-semibold">{group.title}</span>
-              <span className="text-[12.5px] text-muted tabular-nums">{groupSize(group)}</span>
+            <button
+              type="button"
+              onClick={() => enter(null)}
+              aria-label={`Back from ${group.title}`}
+              className="lihead mt-1.5 text-left"
+            >
+              <Sym name="back" />
+              <span className="truncate">{group.title}</span>
+              <span className="font-medium tabular-nums">{groupSize(group)}</span>
             </button>
           )}
-          <input
-            autoFocus
-            // A new field per list, so focus lands in it on arrival.
-            key={group?.key ?? "top"}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setActive(0);
-            }}
-            placeholder={group?.search ?? "Search branches, tags or commits"}
-            aria-label={group?.search ?? "Search branches, tags or commits"}
-            className={`h-[34px] flex-none rounded-lg bg-chip px-2.5 outline-none placeholder:text-faint ${group ? "mt-0.5 mb-1" : "mb-1"}`}
-          />
-          <div
-            role="listbox"
-            className={`flex flex-col gap-px overflow-auto ${group ? "max-h-[268px]" : "max-h-[360px]"}`}
-          >
+          <label className={`search ${group ? "mt-1" : ""}`}>
+            <Sym name="search" />
+            <input
+              autoFocus
+              // A new field per list, so focus lands in it on arrival.
+              key={group?.key ?? "top"}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              placeholder={search}
+              aria-label={search}
+              className="placeholder:text-[var(--sec)]"
+            />
+          </label>
+          <div role="listbox" className={`flex flex-col overflow-auto ${group ? "max-h-[300px]" : "max-h-[420px]"}`}>
             {items.map((item, i) => (
               <Fragment key={item.kind === "group" ? item.group.key : item.choice.key}>
-                {i === firstGroup && i > 0 && <div className="mx-2.5 my-[5px] h-px flex-none bg-border" />}
+                {i === firstGroup && i > 0 && <div className="lisep flex-none" />}
                 {row(item, i)}
               </Fragment>
             ))}
             {more && (
-              <span className="px-2.5 py-1.5 text-xs text-muted">
+              <span className="px-[18px] py-1.5 text-[11px] text-[var(--sec)]">
                 {group?.more ?? "More branches and tags — type to narrow"}
               </span>
             )}
             {items.length === 0 && (
-              <span className="px-2.5 py-2 text-muted">{group?.none ?? "No matching branch or tag"}</span>
+              <span className="px-[18px] py-2 text-[13px] text-[var(--sec)]">{group?.none ?? "No matching branch or tag"}</span>
             )}
           </div>
           {kept && !group && !query.trim() && (
-            <p className="m-0 mt-1 border-t border-border px-2.5 pt-2 pb-1 text-xs leading-[1.45] text-muted">
-              Saved with this review. Switching back to it restores this base.
-            </p>
+            <div className="foot mt-1 text-[11px] text-[var(--sec)]">Saved with this review. Switching back restores this base.</div>
           )}
         </Popover.Content>
       </Popover.Portal>
