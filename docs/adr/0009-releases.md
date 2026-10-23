@@ -14,11 +14,14 @@ the desktop app and install it, for Linux and macOS, for now.
 1. **A tag `v<version>` releases.** `.github/workflows/release.yml` builds
    on that tag and refuses one that does not match `tauri.conf.json`'s
    `version`. The installers go to a **draft** GitHub Release, published
-   by hand once checked.
+   by hand once checked. (Amended by ADR 0028 §1 and §2: the workflow runs
+   only when started by hand, and releases are built on the developer's
+   Mac.)
 2. **What a release carries:** an AppImage and a `.deb` for x86-64 Linux,
    and a `.dmg` for Apple Silicon only. The AppImage is the format for
    Arch and other distributions Tauri builds no package for; Intel Macs
-   are not built for. The developer's call, 2026-10-13.
+   are not built for. The developer's call, 2026-10-13. (Amended by ADR
+   0028 §3: a release carries those of these chosen for it.)
 3. **Linux builds on Ubuntu 22.04**, the oldest Tauri supports, because an
    AppImage runs only where glibc is at least as new as the build's.
 4. **macOS builds are ad-hoc signed** (`bundle.macOS.signingIdentity`

@@ -5,7 +5,7 @@ Work that is known, understood and not done. Each entry says what was seen, wher
 **Status:** active — a ledger, not a spec. Nothing here blocks anything else.
 **Scope:** everything outstanding.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-22
+**Last Updated:** 2026-10-23
 
 An entry leaves this file by being done, or by being decided against — in
 which case the decision goes where it belongs (an ADR, or the spec it
@@ -84,8 +84,8 @@ contradicts) and the entry says so before it goes.
 
 12. **macOS builds are not signed with a Developer ID or notarized**
     (ADR 0009 §4), so Gatekeeper refuses a downloaded copy until the user
-    allows it (README, Install). Closes when the Release workflow signs
-    and notarizes with a Developer ID, or the developer decides the step
+    allows it (README, Install). Closes when a release build (ADR 0028)
+    signs and notarizes with a Developer ID, or the developer decides the step
     is fine.
 13. **Releases reach only people with access to this repository**
     (ADR 0009 §5); the README says so under Install, and carries no

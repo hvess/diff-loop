@@ -1,11 +1,11 @@
 # The desktop app's installers for a version tag (ADR 0009): an AppImage and a
 # .deb for Linux, a .dmg for Apple Silicon, attached to a draft GitHub Release
-# that is published by hand once checked.
+# that is published by hand once checked. Started only by hand, on the tag's
+# ref: releases are built on the developer's Mac (ADR 0028).
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write

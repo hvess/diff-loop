@@ -51,7 +51,8 @@ When done, reply with one line per comment saying what you changed.
 
 ## Install
 
-Each release on this repository's Releases page carries:
+A release on this repository's Releases page carries some of these, as
+chosen for it (0.9.0 carries only the `.dmg`):
 
 | File | For |
 |---|---|
@@ -83,12 +84,22 @@ xattr -dr com.apple.quarantine "/Applications/Diff Loop.app"
 
 ## Release
 
-Set the new version in `app/src-tauri/tauri.conf.json`,
-`app/src-tauri/Cargo.toml` and `app/package.json` (then `cargo check` and
-`npm install` update the lockfiles), commit, and push a tag `v<version>`.
-The Release workflow refuses a tag that does not match
-`tauri.conf.json`, builds the installers above and attaches them to a
-draft release; publish it once the files are checked.
+Releases are built on a Mac, not by Actions (ADR 0028). Set the new
+version in `app/src-tauri/tauri.conf.json`, `app/src-tauri/Cargo.toml`
+and `app/package.json` (then `cargo check` and `npm install` update the
+lockfiles) and commit. Build the Apple Silicon installer:
+
+```sh
+cd app
+npm run tauri build -- --target aarch64-apple-darwin --bundles app,dmg
+```
+
+Push a tag `v<version>`, then attach
+`target/aarch64-apple-darwin/release/bundle/dmg/Diff Loop_<version>_aarch64.dmg`
+to a draft release (`gh release create v<version> --draft <file>`);
+publish it once the file is checked. The Release workflow, started by
+hand on the tag, builds every installer itself, the `.dmg` included: use
+it only for a release not built here.
 
 ## Run from source
 

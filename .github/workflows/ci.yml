@@ -1,12 +1,10 @@
 # The review loop's deterministic stages (.agents/skills/review/SKILL.md),
 # Rust's on every platform tauri.conf.json bundles for, the front end's on
-# one. Run only for a release: a version tag, or by hand before tagging;
-# every commit already passed them through the local gate (ADR 0025).
+# one. Run only by hand, before a release (ADR 0025, ADR 0028); every commit
+# already passed them through the local gate.
 name: CI
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

@@ -112,7 +112,7 @@ before reopening a decision they cover.
 - **0009 — Releases for Linux and Apple Silicon.** A `v<version>` tag
   builds an AppImage, a `.deb` and an Apple Silicon `.dmg` into a draft
   GitHub Release in this private repository; macOS builds are ad-hoc
-  signed, not notarized.
+  signed, not notarized. Built on the developer's Mac since 0028.
 - **0010 — Native behaviour of the window.** Hidden until first paint,
   its state kept (`tauri-plugin-window-state`); a release profile with
   LTO; on Linux, shared-memory buffers under NVIDIA and the portal's
@@ -172,7 +172,7 @@ before reopening a decision they cover.
   the next reads again only the paths whose state changed.
 - **0024 — CI checks macOS and Windows at a release** (superseded by
   0025).
-- **0025 — CI runs only for a release.** On a `v*` tag or by hand, on
+- **0025 — CI runs only for a release.** By hand (a `v*` tag until 0028), on
   Linux, macOS and Windows; the local gate checks every commit between,
   as Actions bills macOS at 10x and Windows at 2x on a private
   repository.
@@ -189,6 +189,10 @@ before reopening a decision they cover.
   macOS, Geist elsewhere; an inset sidebar, toolbar capsules, a floating
   bottom bar, rails and margin notes; built in phases on main; the
   canvas ported as written, its labels title case.
+- **0028 — Releases are built here.** Actions minutes are used up, so
+  both workflows run only by hand; a release is built on the developer's
+  Mac, its tag pushed and its files attached to a draft release with
+  `gh`; which installers it carries is chosen per release.
 
 ## Key Constraints (non-negotiable)
 

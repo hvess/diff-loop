@@ -5,7 +5,7 @@ The desktop app: Tauri commands around `diff-loop-core`, and the React front end
 **Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15, and flow 6, reviews per branch, since 2026-10-19 (step 15); the redesign (step 16) landed 2026-10-22.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-22
+**Last Updated:** 2026-10-23
 
 ## Why
 
@@ -209,10 +209,12 @@ change, annotate, hand off to the agent, next round.
     desktop sizes `tauri.conf.json` lists; the others it makes are not
     kept. The design's `icon/` layers are for Icon Composer, which this
     app does not use yet. The developer's choice, 2026-10-13.
-15. **Releases are built by `.github/workflows/release.yml`** from a
-    `v<version>` tag matching `tauri.conf.json`: an AppImage and a `.deb`
-    on Ubuntu 22.04, an ad-hoc signed Apple Silicon `.dmg` on macOS
-    (ADR 0009).
+15. **Releases are built on the developer's Mac** (ADR 0028; by
+    `.github/workflows/release.yml` from a `v<version>` tag until then,
+    which still builds an AppImage and a `.deb` on Ubuntu 22.04 when
+    started by hand on a tag matching `tauri.conf.json`): an ad-hoc
+    signed Apple Silicon `.dmg`, attached to a draft release with `gh`
+    (ADR 0009). 0.9.0 carries only the `.dmg`.
 16. **Nothing removes a comment but the reviewer** (ADR 0015, which
     supersedes the removal this Decision held from 2026-10-13 to
     2026-10-15). A comment's lifecycle is read off its fields
