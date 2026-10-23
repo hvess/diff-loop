@@ -15,6 +15,8 @@ export type Highlights = Record<Side, Map<number, Token[]>>;
  * string left open where a hunk ends does not run on into the next hunk.
  */
 export type HighlightRequest = { id: number; path: string; sides: Record<Side, string[][]> };
+/** A request no longer wanted: the worker drops it if it has not begun it, and answers nothing for it. */
+export type HighlightCancel = { cancel: number };
 /** Its answer: tokens per line sent, or null when the language is unknown or tokenizing failed. */
 export type HighlightReply = { id: number; tokens: Record<Side, Token[][]> | null };
 
@@ -97,8 +99,9 @@ function getWorker(): Worker {
   return worker;
 }
 
-function requestTokens(path: string, lines: Record<Side, Line[]>): Promise<HighlightReply["tokens"]> {
-  if (failed) return Promise.resolve(null);
+/** The worker's tokens for `lines`; null at once once `signal` aborts, so a file stepped past is not tokenized. */
+function requestTokens(path: string, lines: Record<Side, Line[]>, signal: AbortSignal): Promise<HighlightReply["tokens"]> {
+  if (failed || signal.aborted) return Promise.resolve(null);
   const id = nextId++;
   const request: HighlightRequest = {
     id,
@@ -107,18 +110,24 @@ function requestTokens(path: string, lines: Record<Side, Line[]>): Promise<Highl
   };
   return new Promise((resolve) => {
     waiting.set(id, resolve);
-    getWorker().postMessage(request);
+    const running = getWorker();
+    running.postMessage(request);
+    signal.addEventListener("abort", () => {
+      if (!waiting.delete(id)) return;
+      running.postMessage({ cancel: id } satisfies HighlightCancel);
+      resolve(null);
+    });
   });
 }
 
 /** Highlights per file version and its expansions, so coming back to a file shows them at once. */
 const cache = new WeakMap<FileDiff, { expanded: Expanded | undefined; highlights: Highlights | null }>();
 
-async function highlight(file: FileDiff, expanded: Expanded | undefined): Promise<Highlights | null> {
+async function highlight(file: FileDiff, expanded: Expanded | undefined, signal: AbortSignal): Promise<Highlights | null> {
   const hit = cache.get(file);
   if (hit && hit.expanded === expanded) return hit.highlights;
   const lines = linesOf(file, expanded);
-  const tokens = lines && (await requestTokens(file.path, lines));
+  const tokens = lines && (await requestTokens(file.path, lines, signal));
   const highlights = lines && tokens ? placed(lines, tokens) : null;
   // A file past MAX_LINES stays plain for this version; a null answer is asked again next time.
   if (!lines || highlights) cache.set(file, { expanded, highlights });
@@ -135,14 +144,13 @@ export function useHighlights(file: FileDiff | undefined, expanded?: Expanded): 
   const [state, setState] = useState<{ file: FileDiff; highlights: Highlights | null } | null>(null);
   useEffect(() => {
     if (!file) return;
-    let live = true;
-    highlight(file, expanded).then(
-      (highlights) => live && setState({ file, highlights }),
-      () => live && setState({ file, highlights: null }),
+    const asking = new AbortController();
+    const live = () => !asking.signal.aborted;
+    highlight(file, expanded, asking.signal).then(
+      (highlights) => live() && setState({ file, highlights }),
+      () => live() && setState({ file, highlights: null }),
     );
-    return () => {
-      live = false;
-    };
+    return () => asking.abort();
   }, [file, expanded]);
   const hit = file && cache.get(file);
   if (hit && hit.expanded === expanded) return hit.highlights;

@@ -113,12 +113,13 @@ change, annotate, hand off to the agent, next round.
 ## Decisions
 
 1. **Commands only convert and delegate** (quality-gate §2). `run`
-   chooses the adapters (`open_git`, and since ADR 0026 `open_git_branch`
-   and `open_git_project`); `Session` managed state holds them and the
-   open repository as `dyn Repository`, and setup manages `Claims` (ADR
-   0026 §9). The `Opener`, `BranchOpener` and `ProjectOpener` indirections
-   have one implementation each on purpose: the folder is picked at run time, and
-   §2 keeps choosing the adapter in `run`; every repository call runs in
+   chooses the adapter: `Session` managed state holds an `Opens`, the
+   repositories it opens (a folder's, a branch's since ADR 0026, a
+   project's), implemented by `diff_loop_git::GitProgram`, which looks for
+   git once (diff-loop-git.md Decision 8), and the open repository as
+   `dyn Repository`; setup manages `Claims` (ADR 0026 §9). `Opens` has one
+   implementation on purpose: the folder is picked at run time, and §2
+   keeps choosing the adapter in `run`; every repository call runs in
    `spawn_blocking`. `run` returns the runtime's error and `main` reports
    it.
 2. **Native window controls.** The design draws Windows and Linux window
@@ -140,8 +141,8 @@ change, annotate, hand off to the agent, next round.
    (`app/src/rows.ts`) clamps every drag and shift-click, so
    `Target::Lines` always has one `code` entry per line (diff-loop-core
    `anchor.rs`).
-7. **One watch per open repository.** `watch_repository` runs after a
-   repository opens; `Session` keeps its guard, drops it when another
+7. **One watch per open repository.** `watch_repository` runs once a
+   repository opens, before its first load (ADR 0029 §1); `Session` keeps its guard, drops it when another
    opens (atomically, under `current`, which `replace` holds while it
    clears the watch and the last load), and drops a guard that arrives
    for a repository no longer open, answering `false`. The store trusts
@@ -612,6 +613,7 @@ change, annotate, hand off to the agent, next round.
     and 2f; `app/src/components/BasePicker.tsx`):
     - **The first list**, ordered by what matters while reviewing:
       Uncommitted changes with its lines added and removed ("+42 −8",
+      from the review's own files when it shows them, else
       `uncommitted_lines`; a zero left out, as in the sidebar's header), Last commit with its short id, the default
       branch marked "Default" (diff-loop-core Decision 17), then, under
       a divider, a row per list it opens, with its count and ›: Local
@@ -656,7 +658,9 @@ change, annotate, hand off to the agent, next round.
       `Opening::key`; null on a detached `HEAD`). Opening a
       folder shows its branch's review; `openReview` shows one by key,
       wherever its branch is. Both go through `show`, which reads the
-      saved review, has the core resume it (`resume_review`) and sets it
+      saved review (`openReview` starts reading it while the checkout
+      opens), has the core resume it at the opening's checkout
+      (`resume_review`) and sets it
       with the checkout, so showing is not a change to save, then saves
       what resuming changed; a later `show` supersedes an earlier one
       still reading.
@@ -895,6 +899,23 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-23, faster switching and panels)
+
+A switch reads the saved review while the checkout opens, watches before
+its first load (ADR 0029), and passes `fetchReview` the review last shown
+for that review and base (`recent`, the last 4), so a return sends only
+what changed and keeps the same `FileDiff`s, whose caches hold. `Session`
+opens repositories through one `Opens` adapter, `GitProgram`, which looks
+for git once. The pure commands (`instructions`, `end_round`,
+`round_to_follow`, `merge_reviews`) run off the main thread. The base
+picker counts the uncommitted lines from the review when it shows them,
+replaces `choices` only when they changed, and lists nothing while
+closed; `setBase` no longer reads the choices again. The highlight
+worker drops a request its file was left before it began. Each line's
+code takes the highlights and find's marks whole, so a drag does not
+draw it again. The preview writes the instructions again for a new base
+or `HEAD`. After a menu action only the check items are set again.
 
 ## Progress (2026-10-22, the redesign as drawn)
 

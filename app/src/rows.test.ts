@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FileDiff } from "./bindings/FileDiff";
 import type { Hunk } from "./bindings/Hunk";
 import type { Line } from "./bindings/Line";
-import { type Cell, gapAfter, gapBefore, gapKey, gapsOf, gutterLine, REST, splitRows, unifiedRows } from "./rows";
+import { type Cell, gapAfter, gapBefore, gapKey, gapsOf, gutterLine, lineTotals, REST, splitRows, unifiedRows } from "./rows";
 
 const ctx = (old: number, new_: number): Line => ({ kind: "context", old, new: new_, text: "x" });
 const add = (new_: number): Line => ({ kind: "added", new: new_, text: "+" });
@@ -121,5 +121,13 @@ describe("gutterLine", () => {
     expect(gutterLine([cell("old", "context", true), cell("new", "context", true)])).toBeUndefined();
     expect(gutterLine([null])).toBeUndefined();
     expect(gutterLine([])).toBeUndefined();
+  });
+});
+
+describe("lineTotals", () => {
+  it("adds up every file's added and removed lines, a binary's none", () => {
+    const binary: FileDiff = { path: "b.png", status: { kind: "added" }, content: { kind: "binary", oldSize: null, newSize: 3 } };
+    expect(lineTotals([file, modified([hunk(1, 1, [add(1), add(2)])]), binary])).toEqual({ added: 4, removed: 1 });
+    expect(lineTotals([])).toEqual({ added: 0, removed: 0 });
   });
 });

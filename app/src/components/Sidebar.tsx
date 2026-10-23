@@ -249,14 +249,16 @@ function OtherReviews() {
   const refreshReviews = useStore((s) => s.refreshReviews);
   const pickReview = useStore((s) => s.pickReview);
   const busy = useStore((s) => s.busy);
-  // Per answer, not per render: each row reads its project's check.
+  // Per answer while open, not per render: each row reads its project's check.
   const others = useMemo(
     () =>
-      recentReviews(
-        (reviews.kept ?? []).filter((r) => !sameKey(r.key, key)),
-        OTHER_REVIEWS,
-      ).map((r) => ({ name: r.name, row: reviewRow(r, reviews.checks.get(r.key.project), home, Date.now()) })),
-    [reviews, key, home],
+      open
+        ? recentReviews(
+            (reviews.kept ?? []).filter((r) => !sameKey(r.key, key)),
+            OTHER_REVIEWS,
+          ).map((r) => ({ name: r.name, row: reviewRow(r, reviews.checks.get(r.key.project), home, Date.now()) }))
+        : [],
+    [open, reviews, key, home],
   );
   return (
     <>

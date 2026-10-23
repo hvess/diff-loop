@@ -1,39 +1,74 @@
-//! Finding the `git` executable as a terminal would.
+//! Finding the `git` executable as a terminal would, once per [`GitProgram`].
 
 #[cfg(unix)]
 use std::process::{Child, ExitStatus};
 use std::{
     env::{self, consts::EXE_SUFFIX},
     ffi::OsStr,
-    path::PathBuf,
+    path::{Path, PathBuf},
+    sync::OnceLock,
     time::Duration,
 };
 
-/// Why `git` could not be run when it was not found, naming where it was looked for.
-#[cfg(unix)]
-pub(crate) const MISSING: &str =
-    "git is not installed, or neither PATH nor the login shell finds it";
-/// Why `git` could not be run when it was not found, naming where it was looked for.
-#[cfg(not(unix))]
-pub(crate) const MISSING: &str = "git is not installed, or not on PATH";
+use crate::command::{Outcome, Runner};
 
 /// Longest the login shell may take to exit: a profile waiting on input or
 /// the network must not hang opening a repository.
 const SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// The `git` executable every [`Git`](crate::Git) and
+/// [`GitProject`](crate::GitProject) opened with it runs, looked for on first
+/// use and then kept; the composition root holds one (diff-loop-git.md Decision 8).
+#[derive(Debug, Default)]
+pub struct GitProgram {
+    found: OnceLock<PathBuf>,
+}
+
+impl GitProgram {
+    /// The executable, looked for now if it has not been yet: this may ask
+    /// the login shell, for up to [`SHELL_TIMEOUT`].
+    pub(crate) fn path(&self) -> PathBuf {
+        self.found.get_or_init(locate).clone()
+    }
+}
+
 /// The `git` to run: the first on `PATH`, else the one the user's login shell
-/// finds, else plain `git`, which fails to spawn with a message saying so.
-pub(crate) fn locate() -> PathBuf {
-    locate_with(
+/// finds, else plain `git`, which fails to spawn with a message saying so;
+/// past a launcher to the binary it starts (`past_launcher`).
+fn locate() -> PathBuf {
+    let found = locate_with(
         env::var_os("PATH").as_deref(),
         env::var_os("SHELL").as_deref(),
-    )
+    );
+    past_launcher(found)
 }
 
 fn locate_with(path: Option<&OsStr>, shell: Option<&OsStr>) -> PathBuf {
     path.and_then(on_path)
         .or_else(|| shell.and_then(|shell| from_login_shell(shell, SHELL_TIMEOUT)))
         .unwrap_or_else(|| PathBuf::from("git"))
+}
+
+/// macOS's `git`: a launcher that looks up Xcode's on every run, about 17 ms
+/// a call (diff-loop-git.md Decision 8).
+const LAUNCHER: &str = "/usr/bin/git";
+
+/// `found`, or on macOS, when it is the [`LAUNCHER`], the `git` in its exec
+/// path, the binary it starts, when there is one. Only the launcher: another
+/// git's exec path can be a versioned folder an upgrade removes (Homebrew's
+/// Cellar), and the one found is kept for the whole run.
+fn past_launcher(found: PathBuf) -> PathBuf {
+    if !cfg!(target_os = "macos") || found != Path::new(LAUNCHER) {
+        return found;
+    }
+    // Any folder will do: `--exec-path` reads no repository.
+    let asked = Runner::new(found.clone(), env::temp_dir()).outcome(&["--exec-path"]);
+    let Ok(Outcome::Success(exec_path)) = asked else {
+        return found;
+    };
+    let binary =
+        Path::new(exec_path.trim_end_matches(['\r', '\n'])).join(format!("git{EXE_SUFFIX}"));
+    if binary.is_file() { binary } else { found }
 }
 
 fn on_path(path: &OsStr) -> Option<PathBuf> {
@@ -140,6 +175,31 @@ mod tests {
         fs::write(&git, "").unwrap();
         let path = env::join_paths([dir.path().join("missing"), dir.path().to_path_buf()]).unwrap();
         assert_eq!(locate_with(Some(&path), None), git);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_macos_launcher_gives_way_to_the_git_in_its_exec_path() {
+        let launcher = PathBuf::from(LAUNCHER);
+        let binary = past_launcher(launcher.clone());
+        let exec_path = Command::new(&launcher).arg("--exec-path").output().unwrap();
+        let dir = String::from_utf8(exec_path.stdout).unwrap();
+        assert!(binary.is_file(), "{binary:?}");
+        assert!(
+            binary.starts_with(dir.trim_end()),
+            "{binary:?} not in {dir}"
+        );
+    }
+
+    #[test]
+    fn any_git_but_the_macos_launcher_is_kept_as_found() {
+        let dir = TempDir::new().unwrap();
+        let missing = dir.path().join("git");
+        assert_eq!(past_launcher(missing.clone()), missing);
+        let found = locate_with(env::var_os("PATH").as_deref(), None);
+        if found != Path::new(LAUNCHER) || !cfg!(target_os = "macos") {
+            assert_eq!(past_launcher(found.clone()), found);
+        }
     }
 
     #[test]

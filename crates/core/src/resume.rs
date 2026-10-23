@@ -5,7 +5,7 @@ use ts_rs::TS;
 
 use crate::{
     base::Base,
-    repository::{RepoError, Repository},
+    repository::{Checkout, RepoError, Repository},
     saved::{SavedReview, Seen},
 };
 
@@ -46,7 +46,7 @@ pub struct Resumed {
     pub dropped: Vec<u32>,
 }
 
-/// `review` as `repository` shows it now, at `at` (milliseconds since the
+/// `review` as `checkout`, `repository`'s just read, shows it now, at `at` (milliseconds since the
 /// Unix epoch): compared with its own base, or `default` when it has none or
 /// keeps the uncommitted changes and the checkout has no working tree; with
 /// where its branch went since it was last seen, and, when its history was
@@ -55,15 +55,15 @@ pub struct Resumed {
 /// one more per round when it was rewritten.
 ///
 /// # Errors
-/// As [`Repository::checkout`] and [`Repository::commits_between`].
+/// As [`Repository::commits_between`].
 pub fn resume(
     repository: &(impl Repository + ?Sized),
+    checkout: &Checkout,
     review: SavedReview,
     default: Base,
     at: i64,
 ) -> Result<Resumed, RepoError> {
-    let checkout = repository.checkout()?;
-    let now = checkout.commit;
+    let now = checkout.commit.clone();
     let between = |from: &str, to: &str| repository.commits_between(from, to);
     let since = since_seen(
         review.seen.as_ref().map(|s| s.commit.as_str()),
@@ -264,16 +264,11 @@ mod tests {
             seen: seen_at("x"),
             ..SavedReview::default()
         };
-        let resumed = resume(
-            &At {
-                commit: "c",
-                worktree: true,
-            },
-            review,
-            Base::LastCommit,
-            7,
-        )
-        .unwrap();
+        let at = At {
+            commit: "c",
+            worktree: true,
+        };
+        let resumed = resume(&at, &at.checkout().unwrap(), review, Base::LastCommit, 7).unwrap();
         assert_eq!(resumed.since, SinceSeen::Rewritten { from: "x".into() });
         assert_eq!(resumed.dropped, [1]);
         let left: Vec<u32> = resumed.review.rounds.iter().map(|r| r.number).collect();
@@ -294,16 +289,11 @@ mod tests {
             seen: seen_at("a"),
             ..SavedReview::default()
         };
-        let resumed = resume(
-            &At {
-                commit: "c",
-                worktree: true,
-            },
-            review,
-            Base::LastCommit,
-            7,
-        )
-        .unwrap();
+        let at = At {
+            commit: "c",
+            worktree: true,
+        };
+        let resumed = resume(&at, &at.checkout().unwrap(), review, Base::LastCommit, 7).unwrap();
         assert_eq!(
             resumed.since,
             SinceSeen::Moved {
@@ -332,7 +322,9 @@ mod tests {
             commit: "c",
             worktree: false,
         };
-        let resumed = |at: &At, review| resume(at, review, Base::LastCommit, 0).unwrap();
+        let resumed = |at: &At, review| {
+            resume(at, &at.checkout().unwrap(), review, Base::LastCommit, 0).unwrap()
+        };
         assert_eq!(resumed(&live, with(main.clone())).base, main);
         assert_eq!(
             resumed(&live, with(Base::Uncommitted)).base,

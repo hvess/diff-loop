@@ -45,7 +45,8 @@ function resolveOf(open: ReturnType<typeof useStore.getState>["comments"][number
 export async function installMenuBar(): Promise<() => void> {
   const act = (action: (s: Store) => void) => () => {
     action(useStore.getState());
-    void apply(menuState(useStore.getState()));
+    // A chosen check item has flipped itself, whether or not the state did: only those are set again.
+    void check(menuState(useStore.getState()));
   };
   const unified = await CheckMenuItem.new({ text: "Unified", action: act((s) => s.setMode("unified")) });
   const split = await CheckMenuItem.new({ text: "Split", action: act((s) => s.setMode("split")) });
@@ -134,18 +135,21 @@ export async function installMenuBar(): Promise<() => void> {
   await menu.setAsAppMenu();
   await windowMenu.setAsWindowsMenuForNSApp();
 
-  /** Every item's state; a chosen check item has flipped itself, so all are set, not only what changed. */
+  /** The check items' marks. */
+  function check(now: MenuState): Promise<unknown> {
+    return Promise.all([unified.setChecked(now.unified), split.setChecked(!now.unified), viewed.setChecked(now.viewed === true)]);
+  }
+
+  /** Every item's state, set whole when the store's changes it (`sameMenuState`). */
   function apply(now: MenuState): Promise<unknown> {
     return Promise.all([
+      check(now),
       unified.setEnabled(now.open),
       split.setEnabled(now.open),
       find.setEnabled(now.open),
       findNext.setEnabled(now.finding),
       findPrevious.setEnabled(now.finding),
-      unified.setChecked(now.unified),
-      split.setChecked(!now.unified),
       viewed.setEnabled(now.viewed !== null),
-      viewed.setChecked(now.viewed === true),
       next.setEnabled(now.hasComments),
       previous.setEnabled(now.hasComments),
       comment.setEnabled(now.canComment),

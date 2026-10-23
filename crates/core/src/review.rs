@@ -28,8 +28,8 @@ pub struct Review {
     pub key: Option<ReviewKey>,
     /// What it is compared with.
     pub base: Base,
-    /// [`Repository::fingerprint`] for `base`, taken before `files`; `None`
-    /// for a load since the last one against `base` under a watch, which
+    /// [`Repository::fingerprint`] for `base`, taken before `files`, by a
+    /// load with no watch ([`load_polled`]); `None` under a watch, which
     /// takes none.
     pub fingerprint: Option<String>,
     /// The two trees compared, for [`Repository::blob`].
@@ -147,8 +147,9 @@ pub struct Loaded {
 /// matches one in `known` are named, not sent.
 ///
 /// `since` is the last load and what a watch saw touched after it: when it
-/// was against `base` too, no fingerprint is taken and `update` reads again
-/// only the touched paths, unless it must read everything (ADR 0005 §3).
+/// was against `base` too, `update` reads again only the touched paths,
+/// unless it must read everything (ADR 0005 §3). No fingerprint is taken:
+/// with a watch, no poll compares one.
 ///
 /// # Errors
 /// As [`Repository::checkout`] and [`Repository::changes`].
@@ -200,17 +201,10 @@ fn load_with(
             let Updated { changes, reread } = update(repository, &base, loaded.changes, touched)?;
             (polled, changes, reread, loaded.signatures)
         }
-        // Taken first: a change landing between the two shows as a newer
-        // fingerprint on the next poll, never as a missed one.
-        _ => (
-            Some(match polled {
-                Some(fingerprint) => fingerprint,
-                None => repository.fingerprint(&base)?,
-            }),
-            repository.changes(&base)?,
-            None,
-            HashMap::new(),
-        ),
+        // The states' fingerprint, taken first: a change landing between the
+        // two shows as a newer one on the next poll, never as a missed one.
+        // Under a watch none is taken: no poll compares it (ADR 0029 §2).
+        _ => (polled, repository.changes(&base)?, None, HashMap::new()),
     };
     // A file not read again keeps its signature: hashing every file would
     // cost the whole diff on every watch event.
@@ -398,7 +392,7 @@ pub(crate) mod tests {
             resolved: None,
         };
         let (review, _) = load(&repo, Base::Uncommitted, vec![comment], vec![], None).unwrap();
-        assert_eq!(review.fingerprint.as_deref(), Some("f1"));
+        assert_eq!(review.fingerprint, None, "a watch takes no fingerprint");
         assert!(matches!(
             review.comments[0].target,
             Target::Lines { start: 2, .. }
@@ -625,7 +619,7 @@ pub(crate) mod tests {
         let (_, loaded) = load(&repo, Base::LastCommit, vec![], vec![], None).unwrap();
         let since = Some((loaded, Touched::default()));
         let (review, _) = load(&repo, Base::Uncommitted, vec![], vec![], since).unwrap();
-        assert_eq!(review.fingerprint.as_deref(), Some("f1"));
+        assert_eq!(review.fingerprint, None);
         assert_eq!(review.files.len(), 1);
     }
 }

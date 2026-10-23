@@ -38,7 +38,8 @@ each time. The developer chose rebuilding per changed path, 2026-10-13.
    signature (`Loaded`), so no step costs the whole diff.
    (Amended by ADR 0018 §2: an addition or deletion is read with the
    opposite kind already in the review. Amended by ADR 0023 §2: a load
-   with no watch carries its file states' fingerprint.)
+   with no watch carries its file states' fingerprint. Amended by ADR
+   0029 §2: no load under a watch takes one, a full one included.)
 4. **The app keeps the last load only while a watch runs** (`Session`):
    a new watch, another repository or a failed load drops it, and the
    next load reads everything. Loads are numbered as they begin, and only

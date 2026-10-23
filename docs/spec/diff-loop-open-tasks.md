@@ -66,20 +66,6 @@ contradicts) and the entry says so before it goes.
     single-instance channel asks the other window to focus where the
     desktop allows it, or the developer decides the notice is enough.
 
-26. **Git is looked for on every open, a project's included.** `locate`
-    (`crates/git/src/locate.rs`) runs for each `Git::open` and
-    `GitProject::open`, and the review switcher opens one per project
-    each time it opens (`check_project`, diff-loop-app.md Decision 33),
-    `open_review` opens one and then the worktree (`Git::for_branch`), and
-    a review shown from its commits opens one on each poll
-    (`worktree_of`).
-    Where git is not on `PATH` (an app opened from the macOS Finder),
-    each asks the login shell, which can take seconds. A cache would be
-    process-wide state, which quality-gate §5 rules out. The developer
-    chose to leave it for now (2026-10-19). Closes when the located git is
-    found once in the composition root and passed to the adapters, or the
-    developer decides the cost is fine.
-
 ## Distribution
 
 12. **macOS builds are not signed with a Developer ID or notarized**

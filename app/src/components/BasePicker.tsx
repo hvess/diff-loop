@@ -6,6 +6,7 @@ import type { Base } from "../bindings/Base";
 import type { BaseRef } from "../bindings/BaseRef";
 import type { LineCounts } from "../bindings/LineCounts";
 import { folded } from "../search";
+import { lineTotals } from "../rows";
 import { holdsReview, isLive, sameBase, useStore } from "../store";
 import { LineTotals } from "./LineTotals";
 import { Sym } from "./Icon";
@@ -42,6 +43,8 @@ export type Item = { kind: "choice"; choice: Choice } | { kind: "group"; group: 
 
 /** What the picker lists, and whether a search left some out. */
 type Listing = { items: Item[]; more: boolean };
+
+const NOTHING_LISTED: Listing = { items: [], more: false };
 
 /** Most refs listed at once; typing narrows to the rest. */
 const SHOWN = 50;
@@ -344,6 +347,13 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
       setNow(Date.now());
       return;
     }
+    // Compared with them already, the review's own files are the uncommitted changes: O(files), each cached.
+    const review = useStore.getState().review;
+    if (review?.base.kind === "uncommitted") {
+      setUncommitted(lineTotals(review.changes.files));
+      setNow(Date.now());
+      return;
+    }
     api.uncommittedLines().then(
       (counts) => {
         if (!asked) return;
@@ -363,8 +373,8 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
 
   const current = head?.kind === "branch" ? head.name : null;
   const committedOnly = live ? null : current;
-  // Per load of the refs: they can number in the thousands.
-  const groups = useMemo(() => groupsOf(choices.refs, current), [choices.refs, current]);
+  // Per load of the refs while open: they can number in the thousands.
+  const groups = useMemo(() => (open ? groupsOf(choices.refs, current) : []), [open, choices.refs, current]);
   const group = groups.find((g) => g.key === groupKey) ?? null;
   const listing = useMemo(
     () => (list: Group | null, search: string) =>
@@ -382,8 +392,8 @@ export function BasePicker({ open, onOpenChange }: { open: boolean; onOpenChange
       }),
     [groups, choices, base, uncommitted, commit, committedOnly, now],
   );
-  // Not per render: a search reads every ref, and moving the highlight renders again.
-  const { items, more } = useMemo(() => listing(group, query), [listing, group, query]);
+  // Not per render: a search reads every ref, and moving the highlight renders again. Closed, nothing is listed.
+  const { items, more } = useMemo(() => (open ? listing(group, query) : NOTHING_LISTED), [open, listing, group, query]);
 
   if (open !== wasOpen) {
     setWasOpen(open);

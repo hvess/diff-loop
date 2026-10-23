@@ -263,6 +263,14 @@ export function counts(file: FileDiff): LineCounts {
   return cached;
 }
 
+/** Added and removed lines in all of `files`, binaries none, as `uncommitted_lines` counts them; O(files) after each file's first call. */
+export function lineTotals(files: FileDiff[]): LineCounts {
+  return files.reduce((sum, file) => {
+    const c = counts(file);
+    return { added: sum.added + c.added, removed: sum.removed + c.removed };
+  }, { added: 0, removed: 0 });
+}
+
 /** Added and removed lines together in `file`. */
 export function changedLines(file: FileDiff): number {
   const c = counts(file);

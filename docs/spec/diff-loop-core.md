@@ -5,7 +5,7 @@ The domain: what changed on a checkout, review comments, and the instructions th
 **Status:** active — first version landed.
 **Scope:** `crates/core`. Excludes reading git (`diff-loop-git.md`) and the UI (`diff-loop-app.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-19
+**Last Updated:** 2026-10-23
 
 ## Why
 
@@ -99,9 +99,9 @@ Each is a pure function tested here.
     track; a new addition or deletion is read again with the opposite kind
     already held, so a staged addition pairs with a deletion as a rename,
     and past `MOST_PATHS` in all everything is read (ADR 0018 §2,
-    `halves`). It then takes
-    no fingerprint, and keeps the signatures of files it did not read
-    again. With no watch, `load_polled` takes the file states first and
+    `halves`). It keeps the signatures of files it did not read
+    again. `load`, which runs under a watch, takes no fingerprint
+    (ADR 0029 §2). With no watch, `load_polled` takes the file states first and
     names what changed by comparing them with those its last load kept
     (`FileStates::touched_since`, ADR 0023), and gives the states'
     fingerprint. `Loaded` is opaque: only `load` and `load_polled` make one.
@@ -214,6 +214,12 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-23, fewer reads per switch)
+
+`load` takes no fingerprint under a watch (Decision 12, ADR 0029 §2);
+`resume` takes the checkout its caller just read rather than reading it
+again.
 
 ## Progress (2026-10-19, reviews per branch)
 

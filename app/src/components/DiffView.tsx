@@ -526,7 +526,13 @@ function UnifiedLine(props: LineProps & { old: Cell | null; new: Cell | null }) 
       </Gutter>
       <span className="bar" />
       {/* Long lines wrap rather than run past the card (diff-loop-app.md Decision 35). */}
-      <Code cell={main} props={props} className="min-w-0 flex-1 pr-4 break-words whitespace-pre-wrap" />
+      <Code
+        cell={main}
+        highlights={props.highlights}
+        found={props.found}
+        currentMatch={props.currentMatch}
+        className="min-w-0 flex-1 pr-4 break-words whitespace-pre-wrap"
+      />
     </div>
   );
 }
@@ -540,7 +546,7 @@ function SplitHalf(props: LineProps & { cell: Cell | null }) {
         <Number cell={cell} props={props} className="n" />
       </Gutter>
       <span className="bar" />
-      <Code cell={cell} props={props} className="min-w-0 flex-1" />
+      <Code cell={cell} highlights={props.highlights} found={props.found} currentMatch={props.currentMatch} className="min-w-0 flex-1" />
     </div>
   );
 }
@@ -599,11 +605,21 @@ const FIND = {
   current: "rounded-sm bg-[var(--findcur)] text-[var(--findcurfg)] outline-1 outline-[var(--label)]",
 } as const;
 
-function Code({ cell, props, className }: { cell: Cell; props: LineProps; className: string }) {
-  const { highlights, currentMatch } = props;
-  const marks = props.found.get(lineKey(cell.side, cell.no));
+/**
+ * A line's code. It takes the diff's highlights and find's marks whole, not `LineProps`: those stay the same
+ * objects while a drag or hover re-renders the rows, so the compiler skips drawing their code again.
+ */
+function Code({
+  cell,
+  highlights,
+  found,
+  currentMatch,
+  className,
+}: Pick<LineProps, "highlights" | "found" | "currentMatch"> & { cell: Cell; className: string }) {
+  const at = lineKey(cell.side, cell.no);
+  const marks = found.get(at);
+  const here = currentMatch?.cell === at ? currentMatch : null;
   const tokens: Token[] = highlights?.[cell.side].get(cell.no) ?? [{ content: cell.text, color: undefined, italic: false }];
-  const here = currentMatch?.cell === lineKey(cell.side, cell.no) ? currentMatch : null;
   // O(matches in this line): the current one is told apart here, not in `found`.
   const spans = here ? (marks ?? []).map((m) => ({ ...m, current: m.from === here.from })) : (marks ?? []);
   return (

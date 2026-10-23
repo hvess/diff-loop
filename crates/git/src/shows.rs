@@ -2,13 +2,17 @@
 //! branch no working tree has checked out, read from its commits alone (ADR
 //! 0026 §3). Everything that differs between the two is here.
 
-use std::{fmt, path::PathBuf, slice};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+    slice,
+};
 
 use diff_loop_core::{Head, NewSide, OnChange, RepoError, WatchGuard};
 
 use crate::{
     command::{Outcome, Runner},
-    project, watch,
+    watch,
 };
 
 /// The behaviour that differs between a working tree and a branch's commits.
@@ -40,11 +44,17 @@ pub(crate) trait Shows: fmt::Debug + Send + Sync {
     /// [`RepoError::Failed`] when `git` cannot say.
     fn shown_ref(&self, run: &Runner) -> Result<Option<String>, RepoError>;
 
-    /// Watches what can change what is shown.
+    /// Watches what can change what is shown, in the repository whose
+    /// common git directory is `project`.
     ///
     /// # Errors
     /// [`RepoError::Failed`] when the platform refuses a watch.
-    fn watch(&self, run: &Runner, on_change: OnChange) -> Result<WatchGuard, RepoError>;
+    fn watch(
+        &self,
+        run: &Runner,
+        project: &Path,
+        on_change: OnChange,
+    ) -> Result<WatchGuard, RepoError>;
 }
 
 /// The working tree `git` runs in.
@@ -100,16 +110,28 @@ impl Shows for WorkingTree {
         })
     }
 
-    fn watch(&self, run: &Runner, on_change: OnChange) -> Result<WatchGuard, RepoError> {
+    fn watch(
+        &self,
+        run: &Runner,
+        project: &Path,
+        on_change: OnChange,
+    ) -> Result<WatchGuard, RepoError> {
         // A worktree's git directories live outside it: HEAD, the index and
         // refs change there.
-        let git_dir = run.stdout(&["rev-parse", "--absolute-git-dir"])?;
-        let git_dirs = [
-            project::common_dir(run)?,
-            PathBuf::from(git_dir.trim_end_matches('\n')),
-        ];
-        let index = run.stdout(&["rev-parse", "--path-format=absolute", "--git-path", "index"])?;
-        let index = PathBuf::from(index.trim_end_matches('\n'));
+        let out = run.stdout(&[
+            "rev-parse",
+            "--path-format=absolute",
+            "--absolute-git-dir",
+            "--git-path",
+            "index",
+        ])?;
+        let mut lines = out.lines().map(PathBuf::from);
+        let (Some(git_dir), Some(index)) = (lines.next(), lines.next()) else {
+            return Err(RepoError::Failed {
+                message: format!("git rev-parse named no git directory: {out}"),
+            });
+        };
+        let git_dirs = [project.to_path_buf(), git_dir];
         watch::watch(run.dir(), &git_dirs, Some(&index), on_change)
     }
 }
@@ -142,9 +164,14 @@ impl Shows for Branch {
         Ok(Some(self.refname.clone()))
     }
 
-    fn watch(&self, run: &Runner, on_change: OnChange) -> Result<WatchGuard, RepoError> {
+    fn watch(
+        &self,
+        _: &Runner,
+        project: &Path,
+        on_change: OnChange,
+    ) -> Result<WatchGuard, RepoError> {
         // Only refs move, and a worktree's `HEAD` when one checks the branch out.
-        let common = project::common_dir(run)?;
+        let common = project.to_path_buf();
         watch::watch(&common, slice::from_ref(&common), None, on_change)
     }
 }

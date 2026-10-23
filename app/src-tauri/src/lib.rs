@@ -22,12 +22,12 @@ mod reviews;
 
 use claims::{Claim, Claims, Refused};
 use diff_loop_core::{
-    Base, BaseChoices, CheckError, Comment, Content, InstructionsRequest, KnownFile, LineCounts,
-    Loaded, Opening, Place, Project, ProjectCheck, RepoError, Repository, Resumed, Review,
-    ReviewFile, ReviewKey, ReviewStore, ReviewSummary, RoundRequest, SavedReview, Side, Snapshot,
-    StoreError, Touched, WatchGuard, project_name,
+    Base, BaseChoices, CheckError, Checkout, Comment, Content, InstructionsRequest, KnownFile,
+    LineCounts, Loaded, Opening, Place, Project, ProjectCheck, RepoError, Repository, Resumed,
+    Review, ReviewFile, ReviewKey, ReviewStore, ReviewSummary, RoundRequest, SavedReview, Side,
+    Snapshot, StoreError, Touched, WatchGuard, project_name,
 };
-use diff_loop_git::{Git, GitProject};
+use diff_loop_git::{Git, GitProgram, GitProject};
 use serde::Serialize;
 use tauri::{
     AppHandle, Emitter, Error as TauriError, Manager, Result as TauriResult, State, WebviewWindow,
@@ -41,16 +41,35 @@ use ts_rs::TS;
 /// An open repository, shared with the blocking task that reads it.
 type Shared = Arc<dyn Repository + Send + Sync>;
 
-/// Opens the repository containing a folder.
-type Opener = fn(&Path) -> Result<Shared, RepoError>;
+/// How a session opens repositories: the adapter [`run`] chooses.
+trait Opens: Send + Sync {
+    /// The repository containing `path`.
+    fn repository(&self, path: &Path) -> Result<Shared, RepoError>;
 
-/// Opens a branch of the project whose common git directory is given: the
-/// working tree that has it checked out, or with none, its commits
-/// (ADR 0026 §3).
-type BranchOpener = fn(&Path, &str) -> Result<Shared, RepoError>;
+    /// Branch `name` of the project whose common git directory is `project`:
+    /// the working tree that has it checked out, or with none, its commits
+    /// (ADR 0026 §3).
+    fn branch(&self, project: &Path, name: &str) -> Result<Shared, RepoError>;
 
-/// Opens a repository as a whole, by its common git directory.
-type ProjectOpener = fn(&Path) -> Result<Arc<dyn Project + Send + Sync>, RepoError>;
+    /// The repository as a whole whose common git directory is `project`.
+    fn project(&self, project: &Path) -> Result<Arc<dyn Project + Send + Sync>, RepoError>;
+}
+
+/// The adapter this app reads repositories with (ADR 0001 §4), looking for
+/// `git` once for every repository it opens.
+impl Opens for GitProgram {
+    fn repository(&self, path: &Path) -> Result<Shared, RepoError> {
+        Ok(Arc::new(Git::open(self, path)?))
+    }
+
+    fn branch(&self, project: &Path, name: &str) -> Result<Shared, RepoError> {
+        Ok(Arc::new(Git::for_branch(self, project, name)?))
+    }
+
+    fn project(&self, project: &Path) -> Result<Arc<dyn Project + Send + Sync>, RepoError> {
+        Ok(Arc::new(GitProject::open(self, project)?))
+    }
+}
 
 /// The event the front end hears when the open checkout may have changed.
 const CHANGED: &str = "repository-changed";
@@ -69,9 +88,7 @@ const SHOW_ANYWAY: Duration = Duration::from_secs(3);
 ///
 /// Locks are taken in field order, `current` first, wherever two are held.
 struct Session {
-    open: Opener,
-    open_branch: BranchOpener,
-    open_project: ProjectOpener,
+    opens: Arc<dyn Opens>,
     current: Mutex<Option<Shared>>,
     watch: Mutex<Option<Watching>>,
     /// The last load: with a watch, what it saw touched since says what
@@ -238,11 +255,9 @@ impl From<CheckError> for CommandError {
 }
 
 impl Session {
-    fn new(open: Opener, open_branch: BranchOpener, open_project: ProjectOpener) -> Self {
+    fn new(opens: Arc<dyn Opens>) -> Self {
         Self {
-            open,
-            open_branch,
-            open_project,
+            opens,
             current: Mutex::new(None),
             watch: Mutex::new(None),
             loaded: Mutex::new(None),
@@ -407,9 +422,9 @@ async fn open_repository(
     session: State<'_, Session>,
     claims: State<'_, Claims>,
 ) -> Result<Opening, CommandError> {
-    let open = session.open;
+    let opens = Arc::clone(&session.opens);
     let (repository, opening) = blocking(move || {
-        let repository = open(&path)?;
+        let repository = opens.repository(&path)?;
         let opening = diff_loop_core::open(&*repository)?;
         Ok::<_, RepoError>((repository, opening))
     })
@@ -428,9 +443,9 @@ async fn open_review(
     session: State<'_, Session>,
     claims: State<'_, Claims>,
 ) -> Result<Opening, CommandError> {
-    let open = session.open_branch;
+    let opens = Arc::clone(&session.opens);
     let (repository, opening) = blocking(move || {
-        let repository = open(Path::new(&key.project), &key.branch)?;
+        let repository = opens.branch(Path::new(&key.project), &key.branch)?;
         let opening = diff_loop_core::open(&*repository)?;
         Ok::<_, RepoError>((repository, opening))
     })
@@ -497,24 +512,26 @@ async fn check_project(
     session: State<'_, Session>,
 ) -> Result<ProjectCheck, CommandError> {
     let store = Arc::clone(&reviews.0);
-    let open = session.open_project;
+    let opens = Arc::clone(&session.opens);
     blocking(move || -> Result<ProjectCheck, CheckError> {
-        let port = open(Path::new(&project))?;
+        let port = opens.project(Path::new(&project))?;
         diff_loop_core::check_kept(&*port, &*store, &project)
     })
     .await
 }
 
-/// `review` as the open checkout shows it now, at `at` (ADR 0026 §4).
+/// `review` as the open checkout, `checkout` as its opening read it, shows it
+/// now, at `at` (ADR 0026 §4).
 #[tauri::command]
 async fn resume_review(
     review: SavedReview,
+    checkout: Checkout,
     default: Base,
     at: i64,
     session: State<'_, Session>,
 ) -> Result<Resumed, CommandError> {
     let repository = session.current()?;
-    blocking(move || diff_loop_core::resume(&*repository, review, default, at)).await
+    blocking(move || diff_loop_core::resume(&*repository, &checkout, review, default, at)).await
 }
 
 /// The root of the working tree that has `key`'s branch checked out, if one does.
@@ -523,8 +540,13 @@ async fn worktree_of(
     key: ReviewKey,
     session: State<'_, Session>,
 ) -> Result<Option<String>, CommandError> {
-    let open = session.open_project;
-    blocking(move || open(Path::new(&key.project))?.worktree_of(&key.branch)).await
+    let opens = Arc::clone(&session.opens);
+    blocking(move || {
+        opens
+            .project(Path::new(&key.project))?
+            .worktree_of(&key.branch)
+    })
+    .await
 }
 
 /// Emits [`CHANGED`] whenever the open checkout may have changed, until
@@ -674,45 +696,32 @@ async fn save_review(
     blocking(move || store.save(&key, &review)).await
 }
 
-/// The review as instructions for a coding agent.
-#[tauri::command]
+/// The review as instructions for a coding agent. This and the three
+/// commands after it are `async`, so they run off the main thread, where
+/// Tauri runs a plain command.
+#[tauri::command(async)]
 fn instructions(request: InstructionsRequest) -> String {
     diff_loop_core::instructions(&request)
 }
 
 /// The review after a copy of the instructions: a round ended, every
 /// unresolved comment sent (ADR 0015 §1).
-#[tauri::command]
+#[tauri::command(async)]
 fn end_round(request: RoundRequest) -> SavedReview {
     diff_loop_core::end_round(request)
 }
 
 /// The round a commit on top of `previous` is followed for, seen at `now`
 /// (ADR 0017 §2, ADR 0022 §1).
-#[tauri::command]
+#[tauri::command(async)]
 fn round_to_follow(comments: Vec<Comment>, now: Place, previous: String) -> Option<u32> {
     diff_loop_core::round_to_follow(&comments, &now, &previous)
 }
 
 /// The saved review merged into the window's, once a failed read is read again (ADR 0004 §5).
-#[tauri::command]
+#[tauri::command(async)]
 fn merge_reviews(window: SavedReview, saved: SavedReview) -> SavedReview {
     diff_loop_core::merge(window, saved)
-}
-
-/// The adapter this app reads repositories with (ADR 0001 §4).
-fn open_git(path: &Path) -> Result<Shared, RepoError> {
-    Ok(Arc::new(Git::open(path)?))
-}
-
-/// [`open_git`] for a branch of a project ([`BranchOpener`]).
-fn open_git_branch(project: &Path, branch: &str) -> Result<Shared, RepoError> {
-    Ok(Arc::new(Git::for_branch(project, branch)?))
-}
-
-/// [`open_git`] for a project as a whole ([`ProjectOpener`]).
-fn open_git_project(project: &Path) -> Result<Arc<dyn Project + Send + Sync>, RepoError> {
-    Ok(Arc::new(GitProject::open(project)?))
 }
 
 /// Shows `window` after [`SHOW_ANYWAY`] if the front end has not, so a front
@@ -764,7 +773,7 @@ pub fn run() -> TauriResult<()> {
             }
             Ok(())
         })
-        .manage(Session::new(open_git, open_git_branch, open_git_project))
+        .manage(Session::new(Arc::new(GitProgram::default())))
         .manage(LaunchPath(Mutex::new(
             std::env::args_os().nth(1).map(PathBuf::from),
         )))
@@ -802,7 +811,7 @@ mod tests {
         sync::atomic::{AtomicBool, Ordering},
     };
 
-    use diff_loop_core::{Checkout, FileDiff, Head, Hunk, Line, Status};
+    use diff_loop_core::{FileDiff, Head, Hunk, Line, Status};
     use tauri::async_runtime::block_on;
     use tempfile::TempDir;
 
@@ -879,9 +888,17 @@ mod tests {
         );
     }
 
+    fn git_session() -> Session {
+        Session::new(Arc::new(GitProgram::default()))
+    }
+
+    fn open_git(path: &Path) -> Result<Shared, RepoError> {
+        GitProgram::default().repository(path)
+    }
+
     #[test]
     fn a_session_without_a_repository_says_so() {
-        let session = Session::new(open_git, open_git_branch, open_git_project);
+        let session = git_session();
         assert!(matches!(session.current(), Err(CommandError::NoRepository)));
     }
 
@@ -903,8 +920,8 @@ mod tests {
             .args(["init", "-q"])
             .status();
         assert!(init.unwrap().success());
-        let session = Session::new(open_git, open_git_branch, open_git_project);
-        session.replace((session.open)(dir.path()).unwrap(), None);
+        let session = git_session();
+        session.replace(session.opens.repository(dir.path()).unwrap(), None);
         let checkout = session.current().unwrap().checkout().unwrap();
         assert_eq!(
             Path::new(checkout.worktree.as_deref().unwrap())
@@ -972,7 +989,7 @@ mod tests {
     fn opening_another_repository_stops_the_old_watch() {
         let (_dir, first) = git_repository();
         let (_other, second) = git_repository();
-        let session = Session::new(open_git, open_git_branch, open_git_project);
+        let session = git_session();
         session.replace(Arc::clone(&first), None);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&first, watching(&stopped)));
@@ -985,7 +1002,7 @@ mod tests {
     fn a_watch_on_a_repository_no_longer_open_is_dropped() {
         let (_dir, first) = git_repository();
         let (_other, second) = git_repository();
-        let session = Session::new(open_git, open_git_branch, open_git_project);
+        let session = git_session();
         session.replace(second, None);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(!session.keep_watch(&first, watching(&stopped)));
@@ -1006,7 +1023,7 @@ mod tests {
     #[test]
     fn without_a_watch_the_last_load_is_kept_for_its_file_states() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git, open_git_branch, open_git_project);
+        let session = git_session();
         session.replace(Arc::clone(&repository), None);
         load_and_keep(&session, &repository);
         let (_, since) = session.begin_load(&repository, false);
@@ -1025,7 +1042,7 @@ mod tests {
     #[test]
     fn while_watching_a_load_takes_the_last_and_what_was_touched() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git, open_git_branch, open_git_project);
+        let session = git_session();
         session.replace(Arc::clone(&repository), None);
         let stopped = Arc::new(AtomicBool::new(false));
         let watch = watching(&stopped);
@@ -1048,7 +1065,7 @@ mod tests {
     #[test]
     fn a_full_load_reads_everything_and_takes_what_was_touched() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git, open_git_branch, open_git_project);
+        let session = git_session();
         session.replace(Arc::clone(&repository), None);
         let stopped = Arc::new(AtomicBool::new(false));
         let watch = watching(&stopped);
@@ -1067,7 +1084,7 @@ mod tests {
     #[test]
     fn a_new_watch_forgets_the_last_load() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git, open_git_branch, open_git_project);
+        let session = git_session();
         session.replace(Arc::clone(&repository), None);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&repository, watching(&stopped)));
@@ -1080,7 +1097,7 @@ mod tests {
     #[test]
     fn a_load_begun_before_the_watch_is_not_kept() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git, open_git_branch, open_git_project);
+        let session = git_session();
         session.replace(Arc::clone(&repository), None);
         let (before, _) = session.begin_load(&repository, false);
         let stopped = Arc::new(AtomicBool::new(false));
@@ -1093,7 +1110,7 @@ mod tests {
     fn a_load_of_a_repository_no_longer_open_is_not_kept() {
         let (_dir, first) = git_repository();
         let (_other, second) = git_repository();
-        let session = Session::new(open_git, open_git_branch, open_git_project);
+        let session = git_session();
         session.replace(Arc::clone(&second), None);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&second, watching(&stopped)));
@@ -1105,7 +1122,7 @@ mod tests {
     #[test]
     fn only_the_latest_load_begun_is_kept() {
         let (_dir, repository) = git_repository();
-        let session = Session::new(open_git, open_git_branch, open_git_project);
+        let session = git_session();
         session.replace(Arc::clone(&repository), None);
         let stopped = Arc::new(AtomicBool::new(false));
         assert!(session.keep_watch(&repository, watching(&stopped)));
@@ -1145,10 +1162,7 @@ mod tests {
         let (_dir, repository) = git_repository();
         let app_data = TempDir::new().unwrap();
         // Two windows: each its own session and claims, as each instance has.
-        let (one, other) = (
-            Session::new(open_git, open_git_branch, open_git_project),
-            Session::new(open_git, open_git_branch, open_git_project),
-        );
+        let (one, other) = (git_session(), git_session());
         let (claims, others) = (
             Claims::new(app_data.path().to_path_buf()),
             Claims::new(app_data.path().to_path_buf()),

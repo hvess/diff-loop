@@ -3,6 +3,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Base } from "./bindings/Base";
 import type { BaseChoices } from "./bindings/BaseChoices";
+import type { Checkout } from "./bindings/Checkout";
 import type { CommandError } from "./bindings/CommandError";
 import type { Comment } from "./bindings/Comment";
 import type { InstructionsRequest } from "./bindings/InstructionsRequest";
@@ -27,9 +28,9 @@ export const api = {
   openRepository: (path: string) => invoke<Opening>("open_repository", { path }),
   /** The review kept under `key`: live in the worktree that has its branch checked out, else its commits (ADR 0026 §3). */
   openReview: (key: ReviewKey) => invoke<Opening>("open_review", { key }),
-  /** `review` as the open checkout shows it now: its base, where its branch went since it was seen (ADR 0026 §4). */
-  resumeReview: (review: SavedReview, fallback: Base, at: number) =>
-    invoke<Resumed>("resume_review", { review, default: fallback, at }),
+  /** `review` as the open checkout, read as `checkout` on opening, shows it now: its base, where its branch went since it was seen (ADR 0026 §4). */
+  resumeReview: (review: SavedReview, checkout: Checkout, fallback: Base, at: number) =>
+    invoke<Resumed>("resume_review", { review, checkout, default: fallback, at }),
   /** Closes the open checkout, letting another window show its review (ADR 0026 §9). */
   closeRepository: () => invoke<null>("close_repository"),
   worktreeOf: (key: ReviewKey) => invoke<string | null>("worktree_of", { key }),

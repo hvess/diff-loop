@@ -193,6 +193,9 @@ before reopening a decision they cover.
   both workflows run only by hand; a release is built on the developer's
   Mac, its tag pushed and its files attached to a draft release with
   `gh`; which installers it carries is chosen per release.
+- **0029 — Watched before the first load.** `show` starts the watch,
+  and awaits it, before the first load, so that load is the one the
+  watch brings up to date; a load under a watch takes no fingerprint.
 
 ## Key Constraints (non-negotiable)
 

@@ -23,8 +23,8 @@ key: ReviewKey | null,
  */
 base: Base, 
 /**
- * [`Repository::fingerprint`] for `base`, taken before `files`; `None`
- * for a load since the last one against `base` under a watch, which
+ * [`Repository::fingerprint`] for `base`, taken before `files`, by a
+ * load with no watch ([`load_polled`]); `None` under a watch, which
  * takes none.
  */
 fingerprint: string | null, 

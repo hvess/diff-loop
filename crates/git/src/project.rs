@@ -9,8 +9,8 @@ use std::{
 use diff_loop_core::{Branch, Location, Project, RepoError};
 
 use crate::{
+    GitProgram,
     command::{Outcome, Runner},
-    locate,
 };
 
 /// A repository read from its common git directory, whatever worktrees it has.
@@ -21,13 +21,13 @@ pub struct GitProject {
 
 impl GitProject {
     /// The repository whose common git directory is `project`, as
-    /// [`diff_loop_core::Checkout::project`] names it.
+    /// [`diff_loop_core::Checkout::project`] names it, run with `git`.
     ///
     /// # Errors
     /// [`RepoError::NotARepository`] when `project` is no git directory;
     /// [`RepoError::Failed`] when `git` cannot run.
-    pub fn open(project: &Path) -> Result<Self, RepoError> {
-        let run = Runner::new(locate::locate(), project.to_path_buf());
+    pub fn open(git: &GitProgram, project: &Path) -> Result<Self, RepoError> {
+        let run = Runner::new(git.path(), project.to_path_buf());
         let not_a_repository = || RepoError::NotARepository {
             path: project.display().to_string(),
         };
@@ -41,6 +41,11 @@ impl GitProject {
     }
 
     /// What it runs `git` with, in the common git directory.
+    pub(crate) fn runner(&self) -> &Runner {
+        &self.run
+    }
+
+    /// [`GitProject::runner`], taking the project.
     pub(crate) fn into_runner(self) -> Runner {
         self.run
     }

@@ -44,7 +44,7 @@ vi.mock("./api", () => ({
       Promise.resolve({ ...window, comments: [...saved.comments, ...window.comments], rounds: [...saved.rounds, ...window.rounds] }),
     ),
     // As the core: seen now at the checkout's commit, compared with its own base, the branch where it was.
-    resumeReview: vi.fn((review: SavedReview, fallback: Base, at: number) =>
+    resumeReview: vi.fn((review: SavedReview, _checkout: Checkout, fallback: Base, at: number) =>
       Promise.resolve({ review: { ...review, seen: { commit: "abc", at } }, base: review.base ?? fallback, since: { kind: "unchanged" }, dropped: [] }),
     ),
     openReview: vi.fn(),
@@ -1564,5 +1564,52 @@ describe("the review switcher", () => {
     useStore.getState().updateComposer({ text: "and this" });
     useStore.getState().saveComposer();
     expect(useStore.getState().reviewSaved).toBe(false);
+  });
+});
+
+describe("showing a review", () => {
+  it("watches the checkout before its first load", async () => {
+    const order: string[] = [];
+    vi.mocked(api.watchRepository).mockImplementationOnce(() => {
+      order.push("watch");
+      return Promise.resolve(true);
+    });
+    vi.mocked(api.openRepository).mockResolvedValue(opening("/w"));
+    vi.mocked(api.savedReview).mockResolvedValue(keptReview([], []));
+    answerLoads("/w");
+    const load = vi.mocked(api.loadReview).getMockImplementation()!;
+    vi.mocked(api.loadReview).mockImplementation((...args) => {
+      order.push("load");
+      return load(...args);
+    });
+    await useStore.getState().open("/w");
+    expect(order.slice(0, 2)).toEqual(["watch", "load"]);
+    expect(useStore.getState().watching).toBe(true);
+  });
+
+  it("checks again once a first load that a watch event came during ends", async () => {
+    vi.mocked(api.openRepository).mockResolvedValue(opening("/e"));
+    vi.mocked(api.savedReview).mockResolvedValue(keptReview([], []));
+    answerLoads("/e");
+    const load = vi.mocked(api.loadReview).getMockImplementation()!;
+    let finish = () => {};
+    vi.mocked(api.loadReview).mockImplementationOnce((...args) => new Promise((resolve) => (finish = () => resolve(load(...args)))));
+    vi.mocked(api.loadReview).mockClear();
+    const opened = useStore.getState().open("/e");
+    await vi.waitFor(() => expect(api.loadReview).toHaveBeenCalledTimes(1));
+    await useStore.getState().poll();
+    expect(useStore.getState().recheck).toBe("changes");
+    finish();
+    await opened;
+    await vi.waitFor(() => expect(api.loadReview).toHaveBeenCalledTimes(2));
+  });
+
+  it("names the files a review shown before holds, so a return is not sent them again", async () => {
+    await openWith("/s", keptReview([], []));
+    answerWithFiles("/s", [added("a.ts", 2)]);
+    await useStore.getState().reload(true);
+    await openWith("/t", keptReview([], []));
+    await openWith("/s", keptReview([], []));
+    expect(vi.mocked(api.loadReview).mock.lastCall?.[2]).toEqual([{ path: "a.ts", signature: "a.ts" }]);
   });
 });

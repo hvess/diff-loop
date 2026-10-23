@@ -28,6 +28,7 @@ use diff_loop_core::{
 };
 
 use command::{Outcome, Runner};
+pub use locate::GitProgram;
 pub use project::GitProject;
 use shows::{Shows, WorkingTree};
 
@@ -35,30 +36,45 @@ use shows::{Shows, WorkingTree};
 #[derive(Debug, Clone)]
 pub struct Git {
     run: Runner,
+    /// The absolute common git directory, as [`Checkout::project`] names it.
+    project: PathBuf,
     shows: Arc<dyn Shows>,
 }
 
 impl Git {
-    /// The working tree containing `path`.
+    /// The working tree containing `path`, run with `git`.
     ///
     /// # Errors
     /// [`RepoError::NotARepository`] when `path` is in no working tree;
     /// [`RepoError::Failed`] when `git` cannot run.
-    pub fn open(path: &Path) -> Result<Self, RepoError> {
-        let probe = Runner::new(locate::locate(), path.to_path_buf());
+    pub fn open(git: &GitProgram, path: &Path) -> Result<Self, RepoError> {
+        let probe = Runner::new(git.path(), path.to_path_buf());
         let not_a_repository = || RepoError::NotARepository {
             path: path.display().to_string(),
         };
         if !path.is_dir() {
             return Err(not_a_repository());
         }
-        let inside = probe.outcome(&["rev-parse", "--is-inside-work-tree"])?;
-        if !matches!(inside, Outcome::Success(out) if out.trim() == "true") {
+        // One call: outside a working tree it prints `false`, or fails at
+        // `--show-toplevel`.
+        let Outcome::Success(out) = probe.outcome(&[
+            "rev-parse",
+            "--is-inside-work-tree",
+            "--show-toplevel",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ])?
+        else {
             return Err(not_a_repository());
-        }
-        let root = probe.stdout(&["rev-parse", "--show-toplevel"])?;
+        };
+        let mut lines = out.lines();
+        let (Some("true"), Some(root), Some(project)) = (lines.next(), lines.next(), lines.next())
+        else {
+            return Err(not_a_repository());
+        };
         Ok(Self {
-            run: probe.in_dir(PathBuf::from(root.trim_end_matches('\n'))),
+            run: probe.in_dir(PathBuf::from(root)),
+            project: PathBuf::from(project),
             shows: Arc::new(WorkingTree),
         })
     }
@@ -71,8 +87,8 @@ impl Git {
     /// [`RepoError::NoBranch`] when no branch has that name;
     /// [`RepoError::NotARepository`] when `project` is no git directory;
     /// [`RepoError::Failed`] when `git` cannot run.
-    pub fn for_branch(project: &Path, name: &str) -> Result<Self, RepoError> {
-        let project = GitProject::open(project)?;
+    pub fn for_branch(git: &GitProgram, project: &Path, name: &str) -> Result<Self, RepoError> {
+        let project = GitProject::open(git, project)?;
         let (branch, refname) = project
             .listed()?
             .into_iter()
@@ -81,8 +97,9 @@ impl Git {
                 name: name.to_owned(),
             })?;
         match branch.worktree() {
-            Some(root) => Self::open(Path::new(root)),
+            Some(root) => Self::open(git, Path::new(root)),
             None => Ok(Self {
+                project: project::common_dir(project.runner())?,
                 run: project.into_runner(),
                 shows: Arc::new(shows::Branch {
                     name: branch.name,
@@ -304,7 +321,7 @@ impl Git {
 
 impl Repository for Git {
     fn checkout(&self) -> Result<Checkout, RepoError> {
-        let project = project::common_dir(&self.run)?.display().to_string();
+        let project = self.project.display().to_string();
         let (head, worktree) = self.shows.head(&self.run)?;
         Ok(Checkout {
             name: project_name(&project),
@@ -414,7 +431,7 @@ impl Repository for Git {
     }
 
     fn watch(&self, on_change: OnChange) -> Result<WatchGuard, RepoError> {
-        self.shows.watch(&self.run, on_change)
+        self.shows.watch(&self.run, &self.project, on_change)
     }
 
     fn uncommitted_lines(&self) -> Result<LineCounts, RepoError> {

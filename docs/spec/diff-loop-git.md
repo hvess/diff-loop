@@ -5,7 +5,7 @@ The `Repository` and `Project` adapters over the `git` command line.
 **Status:** active — first version landed.
 **Scope:** `crates/git`. Excludes everything the core decides.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-19
+**Last Updated:** 2026-10-23
 
 ## Why
 
@@ -81,11 +81,17 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 7. **Stdin is written on its own thread** (`command.rs`): git can fill
    its stdout pipe before it has read all its input.
 8. **Git is found as a terminal finds it** (`locate.rs`), once per
-   `Git::open` and `GitProject::open` (open-tasks 26): the first `git` on `PATH`; else, on Unix, the file
+   `GitProgram`, which the composition root holds for every `Git` and
+   `GitProject` it opens: the first `git` on `PATH`; else, on Unix, the file
    `$SHELL -lc 'command -v git'` names, since an app opened from the
    macOS Finder gets a minimal `PATH`; else plain `git`, which fails with
    a message naming where it looked (`MISSING`). The developer's call,
-   2026-10-13.
+   2026-10-13. On macOS, when the one found is `/usr/bin/git` (`LAUNCHER`),
+   the `git` in its `--exec-path` is run instead, when there is one
+   (`past_launcher`): the launcher looks up Xcode's on every run, about
+   17 ms a call (measured 2026-10-23: 26 ms against 9 ms). Any other git is
+   run as found: its exec path can be a versioned folder an upgrade
+   removes (Homebrew's Cellar), while the one found is kept for the run.
 9. **The login shell gets 5 s to exit** (`SHELL_TIMEOUT`), then is
    killed, so a profile that waits on input cannot hang opening a
    repository. It writes to a temporary file, not a pipe: a background
@@ -147,6 +153,14 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 - `git diff --git` headers are ambiguous for paths with spaces; only an
   identical pair is split from the header, and renames take their paths
   from `rename from` / `rename to`.
+
+## Progress (2026-10-23, fewer git calls)
+
+`GitProgram` looks for git once per run (Decision 8; open-tasks 26
+closed), past macOS's launcher. `Git` keeps its common git directory
+from opening, where one `rev-parse` also tells the root, and its watch
+asks for both git paths in one call. One simulated branch switch on
+this repository went from about 720 ms to about 155 ms.
 
 ## Progress (2026-10-19, reviews per branch)
 

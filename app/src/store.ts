@@ -133,6 +133,8 @@ type State = {
   choices: BaseChoices;
   base: Base;
   review: LoadedReview | null;
+  /** The reviews last shown, by review and base (`recentKey`), oldest first, at most `RECENT`; nothing renders them. */
+  recent: Map<string, LoadedReview>;
   loading: boolean;
   /** A check asked for while loading, run when the load ends: a full read once ⌘/Ctrl-R asked for one. */
   recheck: "changes" | "everything" | null;
@@ -542,6 +544,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   choices: { refs: [], defaultBranch: null },
   base: { kind: "uncommitted" },
   review: null,
+  recent: new Map(),
   loading: false,
   recheck: null,
   opensCheckout: false,
@@ -591,11 +594,13 @@ export const useStore = create<State & Actions>()((set, get) => ({
     set({ busy: true, elsewhere: null });
     // A failure is this one's to say only while nothing was shown since it began.
     const began = shown;
+    // Read while the checkout opens: the review shown is kept under `key`.
+    const saved = readSaved(key);
     try {
       const opening = await api.openReview(key);
       // Live in another worktree, the review just moved there: only a fall back to its commits is said.
       const fellBack = switched && opening.checkout.worktree === null ? switchedBanner(key, switched.worktree, switched.head, switched.now, get().home) : null;
-      await show(opening, fellBack);
+      await show(opening, fellBack, sameKey(opening.key, key) ? saved : null);
     } catch (error) {
       if (shown !== began) return;
       // The review on screen stays: its context failed to change, or another window shows the one asked
@@ -703,14 +708,14 @@ export const useStore = create<State & Actions>()((set, get) => ({
     const stillFollowing = following !== null && sameBase(base, { kind: "ref", name: following.since });
     // Expanded lines were read from the old base's snapshot.
     set({ base, banner: null, expanded: new Map(), following: stillFollowing ? following : null });
-    get().refreshChoices();
     await get().reload();
   },
 
   refreshChoices() {
     const opening = get().opening;
     api.baseChoices().then(
-      (choices) => get().opening === opening && set({ choices }),
+      // The same refs keep the same object, so the picker groups them again only when they changed.
+      (choices) => get().opening === opening && JSON.stringify(choices) !== JSON.stringify(get().choices) && set({ choices }),
       () => {},
     );
   },
@@ -721,14 +726,15 @@ export const useStore = create<State & Actions>()((set, get) => ({
     try {
       const held = before && sameBase(before.base, base) ? before : null;
       const sent = get().comments;
-      const review = await fetchReview(base, sent, held, full);
+      const key = get().key;
+      // A review shown before against this base names the files it holds, so only what changed is sent.
+      const review = await fetchReview(base, sent, held ?? recentOf(get().recent, key, base), full);
       if (!sameBase(get().base, base) || get().opening !== opening) return;
       const { worktree, head } = review.checkout;
       const shows = review.key;
-      if (worktree !== null && !sameKey(shows, get().key)) {
+      if (worktree !== null && !sameKey(shows, key)) {
         // The worktree checked out something else, which is another review: this one goes
         // where its branch is now, or to its commits (ADR 0026 §3).
-        const key = get().key;
         if (key) void get().openReview(key, { worktree, head, now: shows });
         else if (shows) void get().openReview(shows);
         return;
@@ -763,7 +769,8 @@ export const useStore = create<State & Actions>()((set, get) => ({
       // What changed is now on the record: the last copy can no longer be taken back, and its popover goes.
       const copied = get().unsend ? null : get().copied;
       const closed = openedFor(review, selected, get().closed);
-      set({ review, comments, autoResolved, viewed, viewedLines, expanded, selected, openComment, loadProblem: null, unsend: null, copied, closed });
+      const recent = remembered(get().recent, key, review);
+      set({ review, comments, autoResolved, viewed, viewedLines, expanded, selected, openComment, loadProblem: null, unsend: null, copied, closed, recent });
       // Where the branch was last seen goes with the review, so a return can say what moved (ADR 0026 §4).
       const commit = review.checkout.commit;
       const seen = get().seen;
@@ -867,7 +874,12 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   async poll() {
     const { review, loading, base, opening, watching, key } = get();
-    if (!opening || !review) return;
+    if (!opening) return;
+    // A watch event during the first load: what it touched waits in Rust for the next.
+    if (!review) {
+      if (loading && get().recheck === null) set({ recheck: "changes" });
+      return;
+    }
     // Shown from its commits, a branch checked out since is live there (ADR 0026 §3); a watch
     // sees the worktree's `HEAD` change, as polling the fingerprint would not.
     if (key && review.checkout.worktree === null) {
@@ -1376,15 +1388,36 @@ const NOTHING_KEPT: SavedReview = { comments: [], rounds: [], base: null, seen: 
 /** Counts calls to `show`, so only the latest sets what it read. */
 let shown = 0;
 
+/** How many reviews `recent` keeps. */
+const RECENT = 4;
+
+const recentKey = (key: ReviewKey, base: Base) => `${idOf(key)}\u0000${JSON.stringify(base)}`;
+
+/** The review last shown under `key` against `base`, whose files a load need not send again. */
+function recentOf(recent: State["recent"], key: ReviewKey | null, base: Base): LoadedReview | null {
+  return key ? (recent.get(recentKey(key, base)) ?? null) : null;
+}
+
+/** `recent` with `review` as the latest shown under `key`, the oldest dropped past `RECENT`. */
+function remembered(recent: State["recent"], key: ReviewKey | null, review: LoadedReview): State["recent"] {
+  if (!key) return recent;
+  const at = recentKey(key, review.base);
+  const kept = new Map([...recent].filter(([k]) => k !== at)).set(at, review);
+  const oldest = kept.keys().next().value;
+  if (kept.size > RECENT && oldest !== undefined) kept.delete(oldest);
+  return kept;
+}
+
 /** The `refreshReviews` running, which another call joins. */
 let refreshing: Promise<void> | null = null;
 
 /**
  * Shows `opening`'s review: read, resumed where its branch went meanwhile (ADR 0026 §4), and set
- * with the checkout, so showing it is not a change to save; then loaded and watched. `banner`
+ * with the checkout, so showing it is not a change to save; then watched and loaded. `banner`
  * says what changed under it, when something did; else resuming may say where the branch went.
+ * `read` is its saved review, when reading it began already.
  */
-async function show(opening: Opening, banner: Banner | null): Promise<void> {
+async function show(opening: Opening, banner: Banner | null, read: ReturnType<typeof readSaved> | null = null): Promise<void> {
   const { getState: get, setState: set } = useStore;
   const at = ++shown;
   const { key } = opening;
@@ -1396,9 +1429,9 @@ async function show(opening: Opening, banner: Banner | null): Promise<void> {
   if (key) {
     // Read before the checkout shows, and set with it: loading is not a change
     // to save. Before the first load, so it moves the comments onto their code.
-    const saved = await readSaved(key);
+    const saved = await (read ?? readSaved(key));
     // Resuming reads git; if it cannot, the review shows as kept, and the load says what failed.
-    const resumed = await api.resumeReview(saved.review, opening.base, Date.now()).catch(() => null);
+    const resumed = await api.resumeReview(saved.review, opening.checkout, opening.base, Date.now()).catch(() => null);
     review = resumed?.review ?? saved.review;
     problem = saved.problem;
     base = resumed?.base ?? opening.base;
@@ -1449,14 +1482,15 @@ async function show(opening: Opening, banner: Banner | null): Promise<void> {
   });
   // What resuming changed is kept: where the branch is now, and the rounds a rewrite took with it.
   if (key) void save(key, keptOf(get()));
-  await get().reload();
+  // Watched first, so the first load is the one a watch event brings up to date: a watch
+  // started after it drops it, and the next event reads everything again (ADR 0029 §1).
+  const watching = await api.watchRepository().catch(() => false);
   // Only the answer for the checkout still open counts: a slow answer
   // for one opened before must not stop the fallback polling.
   const stillOpen = () => get().opening === opening;
-  api.watchRepository().then(
-    (kept) => kept && stillOpen() && set({ watching: true }),
-    () => stillOpen() && set({ watching: false }),
-  );
+  if (!stillOpen()) return;
+  set({ watching });
+  await get().reload();
 }
 
 /** How saving stands for one review. */

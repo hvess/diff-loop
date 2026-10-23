@@ -185,12 +185,14 @@ function CopyButton() {
   const setPreviewOpen = useStore((s) => s.setPreview);
   const unsendable = useStore(whyNotSent);
   const branch = useStore((s) => s.key?.branch);
-  // The preview's edit outlasts closing it (HIG `modality`). The review's key is worked out once per
-  // change of the comments, the base or a load, O(the comments' text), so typing costs a compare.
+  // The preview's edit outlasts closing it (HIG `modality`). The review's key is worked out only while an
+  // edit is kept, once per change of the comments, the base or a load, O(the comments' text), so typing costs a compare.
   const base = useStore((s) => s.base);
   const previewEdit = useStore((s) => s.previewEdit);
-  const key = useMemo(() => reviewKey(requestOf({ review, comments, base })), [review, comments, base]);
-  const edited = keptEdit(previewEdit, key);
+  const editing = previewEdit !== null;
+  const keyNow = () => reviewKey(requestOf({ review, comments, base }));
+  const key = useMemo(() => (editing ? reviewKey(requestOf({ review, comments, base })) : null), [editing, review, comments, base]);
+  const edited = key === null ? null : keptEdit(previewEdit, key);
   const setPreviewEdit = useStore((s) => s.setPreviewEdit);
   const count = comments.filter(isOpen).length;
   const sentCount = copied ? comments.filter((c) => c.sent?.round === copied.round).length : 0;
@@ -246,7 +248,7 @@ function CopyButton() {
         open={previewOpen}
         onOpenChange={setPreviewOpen}
         edited={edited}
-        onEdit={(text) => setPreviewEdit(text === null ? null : { key, text })}
+        onEdit={(text) => setPreviewEdit(text === null ? null : { key: key ?? keyNow(), text })}
       />
     </Popover.Root>
   );

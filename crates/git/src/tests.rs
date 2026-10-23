@@ -17,7 +17,7 @@ use diff_loop_core::{
 };
 use tempfile::TempDir;
 
-use super::{Git, GitProject};
+use super::{Git, GitProgram, GitProject};
 
 fn git(dir: &Path, args: &[&str]) {
     git_with(dir, args, &[]);
@@ -98,7 +98,17 @@ fn paths(git: &Git, base: &Base) -> Vec<(String, Status)> {
 #[test]
 fn open_refuses_a_folder_outside_any_repository() {
     let dir = TempDir::new().unwrap();
-    let error = Git::open(dir.path()).unwrap_err();
+    let error = Git::open(&GitProgram::default(), dir.path()).unwrap_err();
+    assert!(
+        matches!(error, RepoError::NotARepository { .. }),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn open_refuses_a_git_directory() {
+    let dir = repo();
+    let error = Git::open(&GitProgram::default(), &dir.path().join(".git")).unwrap_err();
     assert!(
         matches!(error, RepoError::NotARepository { .. }),
         "{error:?}"
@@ -108,7 +118,7 @@ fn open_refuses_a_folder_outside_any_repository() {
 #[test]
 fn open_finds_the_root_from_a_subfolder() {
     let dir = repo();
-    let git = Git::open(&dir.path().join("src")).unwrap();
+    let git = Git::open(&GitProgram::default(), &dir.path().join("src")).unwrap();
     let checkout = git.checkout().unwrap();
     assert_eq!(
         Path::new(checkout.worktree.as_deref().unwrap())
@@ -138,7 +148,7 @@ fn compares_committed_staged_unstaged_and_untracked_work_with_the_base() {
     git(root, &["mv", "old.txt", "new.txt"]);
     write(root, "src/rateLimit.ts", "export {}\n");
     fs::remove_file(root.join("logo.png")).unwrap();
-    let git = Git::open(root).unwrap();
+    let git = Git::open(&GitProgram::default(), root).unwrap();
     let main = Base::Ref {
         name: "main".into(),
     };
@@ -174,7 +184,7 @@ fn uncommitted_and_last_commit_bases_narrow_the_change() {
     write(root, "src/handler.ts", "a\nB\nc\n");
     git(root, &["commit", "-qam", "edit"]);
     write(root, "notes.md", "draft\n");
-    let git = Git::open(root).unwrap();
+    let git = Git::open(&GitProgram::default(), root).unwrap();
     assert_eq!(
         paths(&git, &Base::Uncommitted),
         [("notes.md".into(), Status::Added)]
@@ -193,7 +203,7 @@ fn uncommitted_and_last_commit_bases_narrow_the_change() {
 #[test]
 fn an_unknown_base_is_reported_by_name() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let error = git
         .changes(&Base::Ref {
             name: "nope".into(),
@@ -212,7 +222,7 @@ fn a_repository_with_no_commits_shows_its_files_as_uncommitted() {
     let dir = TempDir::new().unwrap();
     git(dir.path(), &["init", "-q", "-b", "main"]);
     write(dir.path(), "a.txt", "x\n");
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     assert_eq!(
         paths(&git, &Base::Uncommitted),
         [("a.txt".into(), Status::Added)]
@@ -228,7 +238,10 @@ fn a_repository_with_no_commits_shows_its_files_as_uncommitted() {
 fn refs_list_other_branches_and_tags_but_not_the_checked_out_branch() {
     let dir = repo();
     git(dir.path(), &["tag", "v1"]);
-    let refs = Git::open(dir.path()).unwrap().refs().unwrap();
+    let refs = Git::open(&GitProgram::default(), dir.path())
+        .unwrap()
+        .refs()
+        .unwrap();
     let refs: Vec<_> = refs.iter().map(|r| (r.name.as_str(), r.kind)).collect();
     assert_eq!(refs, [("main", RefKind::Branch), ("v1", RefKind::Tag)]);
 }
@@ -236,7 +249,7 @@ fn refs_list_other_branches_and_tags_but_not_the_checked_out_branch() {
 #[test]
 fn the_fingerprint_changes_with_an_edit_and_holds_without_one() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let base = Base::Ref {
         name: "main".into(),
     };
@@ -252,7 +265,7 @@ fn the_fingerprint_changes_with_an_edit_and_holds_without_one() {
 #[test]
 fn the_fingerprint_sees_a_changed_file_edited_again_to_the_same_length() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     write(dir.path(), "src/handler.ts", "one\n");
     let path = dir.path().join("src/handler.ts");
     let at = |secs| {
@@ -273,7 +286,7 @@ fn the_fingerprint_sees_a_changed_file_edited_again_to_the_same_length() {
 #[test]
 fn the_fingerprint_sees_a_same_size_rewrite_within_one_clock_tick() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let path = dir.path().join("src/handler.ts");
     let tick = SystemTime::now();
     let stamp = || {
@@ -295,7 +308,7 @@ fn the_fingerprint_sees_a_same_size_rewrite_within_one_clock_tick() {
 #[test]
 fn the_fingerprint_holds_while_a_file_just_written_is_left_alone() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     write(dir.path(), "src/handler.ts", "just written\n");
     write(dir.path(), "new.ts", "just written\n");
     let first = git.fingerprint(&Base::Uncommitted).unwrap();
@@ -305,7 +318,7 @@ fn the_fingerprint_holds_while_a_file_just_written_is_left_alone() {
 #[test]
 fn the_fingerprint_sees_an_untracked_file_rewritten_within_one_clock_tick() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let path = dir.path().join("new.ts");
     let tick = SystemTime::now();
     let stamp = || {
@@ -328,7 +341,7 @@ fn the_fingerprint_sees_an_untracked_file_rewritten_within_one_clock_tick() {
 #[test]
 fn the_fingerprint_sees_an_old_modification_time_restored() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let path = dir.path().join("src/handler.ts");
     let restore = || {
         fs::File::options()
@@ -362,7 +375,7 @@ fn the_fingerprint_follows_no_racy_link_even_to_a_pipe() {
             .success()
     );
     symlink(&fifo, dir.path().join("link")).unwrap();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let (done, finished) = mpsc::channel();
     // Opening the pipe through the link would block until a writer came.
     thread::spawn(move || {
@@ -374,7 +387,7 @@ fn the_fingerprint_follows_no_racy_link_even_to_a_pipe() {
 #[test]
 fn an_edit_changes_only_its_own_files_state() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     write(dir.path(), "src/handler.ts", "one\n");
     write(dir.path(), "new.ts", "x\n");
     let before = git.file_states(&Base::Uncommitted).unwrap();
@@ -397,7 +410,7 @@ fn an_edit_changes_only_its_own_files_state() {
 #[test]
 fn the_fingerprint_of_the_last_commit_is_its_ids() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let before = git.fingerprint(&Base::LastCommit).unwrap();
     write(dir.path(), "src/handler.ts", "edited, not committed\n");
     assert_eq!(git.fingerprint(&Base::LastCommit).unwrap(), before);
@@ -407,7 +420,7 @@ fn the_fingerprint_of_the_last_commit_is_its_ids() {
 fn blobs_come_from_the_base_commit_and_the_working_tree() {
     let dir = repo();
     write(dir.path(), "src/handler.ts", "new\n");
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let changes = git
         .changes(&Base::Ref {
             name: "main".into(),
@@ -435,7 +448,7 @@ fn blobs_come_from_the_base_commit_and_the_working_tree() {
 #[test]
 fn commits_between_counts_forward_and_detects_rewrites() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let first = git.checkout().unwrap().commit.unwrap();
     write(dir.path(), "a.txt", "1\n");
     self::git(dir.path(), &["add", "."]);
@@ -448,7 +461,7 @@ fn commits_between_counts_forward_and_detects_rewrites() {
 #[test]
 fn commits_between_refuses_an_option_for_a_commit() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let head = git.checkout().unwrap().commit.unwrap();
     assert!(git.commits_between("--all", &head).unwrap().is_none());
 }
@@ -475,7 +488,10 @@ fn a_worktree_is_named_after_its_main_repository() {
             "agent/y",
         ],
     );
-    let checkout = Git::open(&at).unwrap().checkout().unwrap();
+    let checkout = Git::open(&GitProgram::default(), &at)
+        .unwrap()
+        .checkout()
+        .unwrap();
     assert_eq!(checkout.name, main_name);
     assert_eq!(
         checkout.head,
@@ -489,7 +505,7 @@ fn a_worktree_is_named_after_its_main_repository() {
 fn a_file_removed_from_the_index_but_still_on_disk_is_listed_once() {
     let dir = repo();
     git(dir.path(), &["rm", "-q", "--cached", "old.txt"]);
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let files = git.changes(&Base::Uncommitted).unwrap().files;
     let old: Vec<_> = files
         .iter()
@@ -504,7 +520,7 @@ fn untracked_binary_and_empty_files_are_additions() {
     let dir = repo();
     fs::write(dir.path().join("pic.bin"), [1u8, 0, 2]).unwrap();
     fs::write(dir.path().join("empty.txt"), "").unwrap();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let files = git.changes(&Base::Uncommitted).unwrap().files;
     assert_eq!(files[0].content, Content::Text { hunks: vec![] });
     assert_eq!(
@@ -519,7 +535,7 @@ fn untracked_binary_and_empty_files_are_additions() {
 #[test]
 fn a_watch_reports_an_edit_and_stops_when_dropped() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let (changed, seen) = mpsc::channel();
     let guard = git
         .watch(Box::new(move |touched| {
@@ -540,7 +556,7 @@ fn a_watch_reports_an_edit_and_stops_when_dropped() {
 #[test]
 fn a_change_to_the_index_alone_touches_everything_but_a_read_does_not() {
     let dir = repo();
-    let git_repo = Git::open(dir.path()).unwrap();
+    let git_repo = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let (changed, seen) = mpsc::channel();
     let _guard = git_repo
         .watch(Box::new(move |touched| {
@@ -577,7 +593,7 @@ fn a_worktree_watch_sees_a_commit() {
             "agent/y",
         ],
     );
-    let watched = Git::open(&at).unwrap();
+    let watched = Git::open(&GitProgram::default(), &at).unwrap();
     let (changed, seen) = mpsc::channel();
     let _guard = watched
         .watch(Box::new(move |touched| {
@@ -598,7 +614,7 @@ fn a_blob_through_a_symlinked_directory_out_of_the_tree_is_refused() {
     let elsewhere = TempDir::new().unwrap();
     fs::write(elsewhere.path().join("secret"), "x").unwrap();
     symlink(elsewhere.path(), dir.path().join("link")).unwrap();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let snapshot = git.changes(&Base::Uncommitted).unwrap().snapshot;
     assert!(matches!(
         git.blob(&snapshot, Side::New, "link/secret"),
@@ -609,7 +625,7 @@ fn a_blob_through_a_symlinked_directory_out_of_the_tree_is_refused() {
 #[test]
 fn a_failed_read_names_the_file() {
     let dir = repo();
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let snapshot = git.changes(&Base::Uncommitted).unwrap().snapshot;
     let Err(RepoError::Failed { message }) = git.blob(&snapshot, Side::New, "gone.txt") else {
         panic!("a missing file fails");
@@ -632,7 +648,7 @@ fn changes_in_reads_only_the_paths_given_tracked_and_untracked() {
     write(dir.path(), "old.txt", "changed\n");
     write(dir.path(), "src/new/one.ts", "1\n");
     write(dir.path(), "notes.md", "n\n");
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let base = Base::Uncommitted;
     let some = git.changes_in(&base, &set(&["src"])).unwrap();
     assert_eq!(names(&some.files), ["src/handler.ts", "src/new/one.ts"]);
@@ -650,7 +666,7 @@ fn changes_in_reads_only_the_paths_given_tracked_and_untracked() {
 fn changes_in_no_paths_reads_no_files() {
     let dir = repo();
     write(dir.path(), "old.txt", "changed\n");
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let none = git
         .changes_in(&Base::Uncommitted, &BTreeSet::new())
         .unwrap();
@@ -665,7 +681,7 @@ fn changes_in_no_paths_reads_no_files() {
 fn changes_in_finds_a_rename_given_both_paths() {
     let dir = repo();
     git(dir.path(), &["mv", "old.txt", "moved.txt"]);
-    let git_ = Git::open(dir.path()).unwrap();
+    let git_ = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let both = git_
         .changes_in(&Base::Uncommitted, &set(&["moved.txt", "old.txt"]))
         .unwrap();
@@ -684,7 +700,7 @@ fn changes_in_reads_a_path_literally() {
     let dir = repo();
     write(dir.path(), "*.ts", "glob-looking\n");
     write(dir.path(), "x.ts", "x\n");
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let only = git.changes_in(&Base::Uncommitted, &set(&["*.ts"])).unwrap();
     assert_eq!(names(&only.files), ["*.ts"]);
 }
@@ -709,7 +725,10 @@ fn refs_come_most_recently_updated_first_with_their_dates() {
     git(root, &["switch", "-qc", "newer"]);
     commit_at(root, 1_800_000_000, "newer");
     git(root, &["switch", "-q", "agent/x"]);
-    let refs = Git::open(root).unwrap().refs().unwrap();
+    let refs = Git::open(&GitProgram::default(), root)
+        .unwrap()
+        .refs()
+        .unwrap();
     let listed: Vec<_> = refs.iter().map(|r| (r.name.as_str(), r.updated)).collect();
     assert_eq!(
         listed,
@@ -727,7 +746,10 @@ fn refs_before_the_first_commit_are_listed() {
     git(dir.path(), &["init", "-q", "-b", "main"]);
     let from = source.path().to_str().unwrap();
     git(dir.path(), &["fetch", "-q", from, "main:refs/heads/other"]);
-    let refs = Git::open(dir.path()).unwrap().refs().unwrap();
+    let refs = Git::open(&GitProgram::default(), dir.path())
+        .unwrap()
+        .refs()
+        .unwrap();
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].name, "other");
     assert!(refs[0].updated.is_some());
@@ -761,7 +783,7 @@ fn shown_lines(git: &Git) -> LineCounts {
 #[test]
 fn uncommitted_lines_count_tracked_and_untracked_changes() {
     let dir = repo();
-    let git_ = Git::open(dir.path()).unwrap();
+    let git_ = Git::open(&GitProgram::default(), dir.path()).unwrap();
     assert_eq!(git_.uncommitted_lines().unwrap(), LineCounts::default());
     write(dir.path(), "src/handler.ts", "a\nB\nc\nd\n");
     write(dir.path(), "new/a.ts", "1\n2\n");
@@ -791,7 +813,7 @@ fn uncommitted_lines_match_what_uncommitted_changes_show() {
     write(dir.path(), "src/handler.ts", "staged\n");
     git(dir.path(), &["add", "src/handler.ts"]);
     write(dir.path(), "src/handler.ts", "a\nb\nc\n");
-    let git_ = Git::open(dir.path()).unwrap();
+    let git_ = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let counts = git_.uncommitted_lines().unwrap();
     assert_eq!(counts, shown_lines(&git_));
     assert_eq!(
@@ -816,7 +838,7 @@ fn uncommitted_lines_count_long_files_and_links_as_shown() {
     );
     #[cfg(unix)]
     symlink("src/handler.ts", dir.path().join("link")).unwrap();
-    let git_ = Git::open(dir.path()).unwrap();
+    let git_ = Git::open(&GitProgram::default(), dir.path()).unwrap();
     let counts = git_.uncommitted_lines().unwrap();
     assert_eq!(counts, shown_lines(&git_));
     let link = if cfg!(unix) { 1 } else { 0 };
@@ -855,7 +877,7 @@ fn project_of(dir: &TempDir) -> PathBuf {
 #[test]
 fn a_branch_checked_out_in_a_worktree_opens_there() {
     let (dir, worktrees) = branches_apart();
-    let git = Git::for_branch(&project_of(&dir), "agent/y").unwrap();
+    let git = Git::for_branch(&GitProgram::default(), &project_of(&dir), "agent/y").unwrap();
     let checkout = git.checkout().unwrap();
     assert_eq!(
         Path::new(checkout.worktree.as_deref().unwrap())
@@ -873,7 +895,7 @@ fn a_branch_checked_out_in_a_worktree_opens_there() {
 #[test]
 fn a_branch_no_worktree_has_shows_only_its_commits() {
     let (dir, _worktrees) = branches_apart();
-    let git = Git::for_branch(&project_of(&dir), "agent/x").unwrap();
+    let git = Git::for_branch(&GitProgram::default(), &project_of(&dir), "agent/x").unwrap();
     let checkout = git.checkout().unwrap();
     assert_eq!(checkout.worktree, None);
     assert_eq!(
@@ -915,7 +937,7 @@ fn a_branch_no_worktree_has_shows_only_its_commits() {
 fn a_branch_that_does_not_exist_is_named_as_such() {
     let (dir, _worktrees) = branches_apart();
     assert_eq!(
-        Git::for_branch(&project_of(&dir), "agent/gone").unwrap_err(),
+        Git::for_branch(&GitProgram::default(), &project_of(&dir), "agent/gone").unwrap_err(),
         RepoError::NoBranch {
             name: "agent/gone".into()
         }
@@ -925,7 +947,7 @@ fn a_branch_that_does_not_exist_is_named_as_such() {
 #[test]
 fn a_project_lists_its_branches_with_where_each_is_checked_out() {
     let (dir, worktrees) = branches_apart();
-    let project = GitProject::open(&project_of(&dir)).unwrap();
+    let project = GitProject::open(&GitProgram::default(), &project_of(&dir)).unwrap();
     let branches = project.branches().unwrap();
     let at = |name: &str| {
         let branch = branches.iter().find(|b| b.name == name).unwrap();
@@ -966,7 +988,7 @@ fn a_clone_lists_a_remote_branch_without_its_remote_and_opens_it_from_its_commit
             clone.to_str().unwrap(),
         ],
     );
-    let project = GitProject::open(&clone.join(".git")).unwrap();
+    let project = GitProject::open(&GitProgram::default(), &clone.join(".git")).unwrap();
     let branches = project.branches().unwrap();
     let main = branches.iter().find(|b| b.name == "main").unwrap();
     assert!(
@@ -976,7 +998,7 @@ fn a_clone_lists_a_remote_branch_without_its_remote_and_opens_it_from_its_commit
     let x = branches.iter().find(|b| b.name == "agent/x").unwrap();
     assert!(matches!(&x.location, Location::Remote { remote } if remote == "origin"));
     assert!(!branches.iter().any(|b| b.name.ends_with("HEAD")));
-    let git = Git::for_branch(&clone.join(".git"), "agent/x").unwrap();
+    let git = Git::for_branch(&GitProgram::default(), &clone.join(".git"), "agent/x").unwrap();
     let checkout = git.checkout().unwrap();
     assert_eq!(checkout.worktree, None);
     assert_eq!(checkout.commit, x.commit);
@@ -988,7 +1010,7 @@ fn a_branch_with_no_commit_yet_is_listed_where_it_is_checked_out() {
     let dir = TempDir::new().unwrap();
     git(dir.path(), &["init", "-q", "-b", "main"]);
     write(dir.path(), "a.txt", "a\n");
-    let project = GitProject::open(&project_of(&dir)).unwrap();
+    let project = GitProject::open(&GitProgram::default(), &project_of(&dir)).unwrap();
     let branches = project.branches().unwrap();
     assert_eq!(branches.len(), 1);
     assert_eq!(branches[0].name, "main");
@@ -1006,12 +1028,12 @@ fn a_branch_with_no_commit_yet_is_listed_where_it_is_checked_out() {
 fn a_branch_is_named_as_the_project_lists_it_when_a_tag_has_its_name() {
     let dir = repo();
     git(dir.path(), &["tag", "agent/x"]);
-    let git = Git::open(dir.path()).unwrap();
+    let git = Git::open(&GitProgram::default(), dir.path()).unwrap();
     assert!(matches!(
         git.checkout().unwrap().head,
         Head::Branch { name } if name == "agent/x"
     ));
-    let project = GitProject::open(&project_of(&dir)).unwrap();
+    let project = GitProject::open(&GitProgram::default(), &project_of(&dir)).unwrap();
     assert!(
         project
             .branches()
@@ -1025,7 +1047,7 @@ fn a_branch_is_named_as_the_project_lists_it_when_a_tag_has_its_name() {
 fn a_project_is_refused_for_a_folder_that_is_no_git_directory() {
     let dir = repo();
     assert!(matches!(
-        GitProject::open(dir.path()),
+        GitProject::open(&GitProgram::default(), dir.path()),
         Err(RepoError::NotARepository { .. })
     ));
 }
@@ -1033,7 +1055,7 @@ fn a_project_is_refused_for_a_folder_that_is_no_git_directory() {
 #[test]
 fn a_watch_on_a_branch_no_worktree_has_sees_it_move() {
     let (dir, _worktrees) = branches_apart();
-    let git_x = Git::for_branch(&project_of(&dir), "agent/x").unwrap();
+    let git_x = Git::for_branch(&GitProgram::default(), &project_of(&dir), "agent/x").unwrap();
     let (changed, seen) = mpsc::channel();
     let _guard = git_x
         .watch(Box::new(move |touched| {

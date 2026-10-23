@@ -65,6 +65,7 @@ function Instructions({
   const rounds = useStore((s) => s.rounds.length);
   const branch = useStore((s) => s.key?.branch);
   const base = useStore((s) => s.base);
+  const head = useStore((s) => s.review?.checkout.head);
   const instructionsRequest = useStore((s) => s.instructionsRequest);
   const copyText = useStore((s) => s.copyText);
   const [generated, setGenerated] = useState("");
@@ -85,7 +86,8 @@ function Instructions({
     return () => {
       live = false;
     };
-  }, [comments, instructionsRequest]);
+    // The request's base and head too: a load or a new base while open writes it again.
+  }, [comments, base, head, instructionsRequest]);
 
   const copy = () => void copyText(edited ?? generated).then(onCopied);
 
