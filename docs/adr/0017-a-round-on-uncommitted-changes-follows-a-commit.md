@@ -1,6 +1,6 @@
 # 0017 — A round on the uncommitted changes follows a commit on top
 
-**Status:** accepted, 2026-10-16
+**Status:** accepted, 2026-10-16; superseded by ADR 0030
 **Amends:** ADR 0015 §8 (where a sent comment is judged)
 **Affects:** `docs/spec/diff-loop-core.md` Decision 14;
 `docs/spec/diff-loop-app.md` step 5 and Decision 16; `crates/core/src/anchor.rs`

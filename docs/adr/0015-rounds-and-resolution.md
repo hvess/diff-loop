@@ -3,6 +3,7 @@
 **Status:** accepted, 2026-10-15 (proposed earlier the same day; the
 design followed with a component sheet and six red-pen notes, each of
 which the developer answered, below)
+**Superseded in part:** §3, §8 and §9 by ADR 0030, which amends §1 and §4
 **Supersedes:** diff-loop-app Decision 16 (a comment whose code changed is
 removed, with Undo)
 **Amends:** ADR 0004 §1, §3 and §4 (what a saved review holds, and the
@@ -46,7 +47,7 @@ say where).
    the checkout's commit, and the Markdown as copied (a kept preview edit
    included); each sent comment records the code it was on with up to
    three lines either side of it, its text and suggestion as
-   sent, and its round. There is no other way to send. Until the next
+   sent, and its round. There is no other way to send. (Amended by ADR 0030 §6: Finish Round ends it.) Until the next
    load changes something, the Copied popover stays and offers "Not
    sent", which returns the review to what it was before the copy
    (red-pen note 02); dismissing the popover, or writing, editing,
@@ -80,7 +81,7 @@ say where).
    nothing, since a resolved draft would only vanish from every copy
    (note 03). One case resolves itself: a comment whose suggestion is now
    exactly in place, judged once on the way in, so an unresolved one is
-   not resolved again while it stays applied. The round strip says "N
+   not resolved again while it stays applied (since ADR 0030 §5, never). The round strip says "N
    resolved automatically" after that load, and the Resolved section
    labels it "Resolved · suggestion applied" (note 06). "On the way in"
    is from another verdict the comment carried: a suggestion applied

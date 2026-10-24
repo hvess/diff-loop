@@ -29,7 +29,8 @@ review in progress.
    `reviews.json` in the OS app-data directory (Tauri's
    `app_data_dir`), chosen in `run`'s setup. The developer chose the
    app-data directory over `.git/`, 2026-10-13: nothing is written into a
-   reviewed repository.
+   reviewed repository. (Superseded by ADR 0030 §1: a file per branch in
+   the project's common git directory, the developer's call, 2026-10-24.)
 3. **The format:** `{"version": 1, "reviews": {"<root>": SavedReview}}`,
    with `SavedReview` as its `serde` form (`comments` as `Comment`,
    `note`; no `note` since ADR 0013 §3). An empty review removes its entry. A file whose version is
@@ -40,7 +41,7 @@ review in progress.
    (Amended by ADR 0020: version 3, with when each tree was last seen;
    saves take turns across processes on `reviews.json.lock`. Amended by
    ADR 0026 §8: version 4, by project then branch; an earlier version's
-   reviews are dropped.)
+   reviews are dropped. Superseded by ADR 0030 §2: a new file, version 1.)
 4. **When:** the front end reads the saved review before a checkout
    shows, and sets it with the checkout, so `load` moves its comments
    onto their code and opening is not a change. It saves on every change

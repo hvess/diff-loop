@@ -85,6 +85,8 @@ on 2026-10-19, and the design's v3 drew it as flow 6.
    next save, so their reviews are dropped (the developer's call,
    2026-10-19: no migration). A project whose git directory has been
    missing for 30 days is dropped, as a tree was (ADR 0020 §2).
+   (Superseded by ADR 0030 §2 and §7: a file per branch, and
+   `reviews.json` no longer read.)
 9. **A review is open in one window at a time** (`claims.rs`): a window
    holds a lock on a file named for the review while it shows it, so
    another instance, its own process, is refused it. Picking one that

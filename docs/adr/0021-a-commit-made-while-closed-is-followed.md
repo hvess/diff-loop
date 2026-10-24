@@ -1,6 +1,6 @@
 # 0021 — A commit made while the window was closed is followed
 
-**Status:** accepted, 2026-10-16
+**Status:** accepted, 2026-10-16; superseded by ADR 0030
 **Amends:** ADR 0017 §1 (the commit named by its full id) and §2 (a
 commit made while the window was closed is not followed)
 **Affects:** `crates/core/src/anchor.rs` (`names`), `app/src/store.ts`

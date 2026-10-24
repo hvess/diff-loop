@@ -1,6 +1,6 @@
 # 0020 — Saved reviews are pruned when their tree is long gone, and saved in turn
 
-**Status:** accepted, 2026-10-16
+**Status:** accepted, 2026-10-16; superseded by ADR 0030
 **Amends:** ADR 0004 §3 (the format, and how a save writes it); ADR 0015
 §9 (`reviews.json` version 2)
 **Affects:** `app/src-tauri/src/reviews.rs`; open-tasks 9, closed

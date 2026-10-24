@@ -91,8 +91,9 @@ before reopening a decision they cover.
   tests sit beside their module as `<module>.test.ts`.
 - **0004 — Reviews kept between runs.** One per working tree (comments;
   a note until 0013; per branch since 0026), through the core's
-  `ReviewStore` port, in `reviews.json` in the app-data directory; a file
-  it cannot read is never overwritten.
+  `ReviewStore` port, in `reviews.json` in the app-data directory (a file
+  per branch in the git directory by 0030); a file it cannot read is never
+  overwritten.
 - **0005 — Read only what the watch saw touched.** The watch names
   touched paths; `Repository::changes_in` and the core's `update` read
   them again; the app keeps the last load while watching, with what the
@@ -138,7 +139,7 @@ before reopening a decision they cover.
   (untouched, nearby changed, changed, removed, applied), marks a draft
   whose code went lost rather than removing it, and the reviewer
   resolves with R; `reviews.json` is version 2, with rounds (3 since
-  ADR 0020).
+  ADR 0020). The judging and the format superseded by 0030.
 - **0016 — The sidebar folds, merges lone folders, and resizes.** Folders
   fold on a click, a chain of lone folders is one row, the edge drags
   the width, kept under `diff-loop.sidebar`; no guides, a disclosure
@@ -146,7 +147,8 @@ before reopening a decision they cover.
 - **0017 — A round on the uncommitted changes follows a commit on top.**
   Comments sent against the uncommitted changes are judged only at the
   commit they were sent on, or compared with it by name; when the agent
-  commits on top, the window compares with that commit and says so.
+  commits on top, the window compares with that commit and says so
+  (superseded by 0030).
 - **0018 — A change to the index, and a rename's other half.** A change
   to the working tree's index makes the watch report everything, and an
   update reads a new addition or deletion with the opposite kind it
@@ -159,14 +161,15 @@ before reopening a decision they cover.
   saved in turn.** `reviews.json` version 3 records when each tree was
   last seen (each project since 0026); a save drops a review whose tree
   has been missing for 30 days, and holds a lock beside the file so two
-  instances take turns.
+  instances take turns (superseded by 0030).
 - **0021 — A commit made while the window was closed is followed.** On
   opening, the newest round's commit stands in for the load before, and a
-  short id of seven or more hex digits names a round's commit.
+  short id of seven or more hex digits names a round's commit (superseded
+  by 0030).
 - **0022 — A follow outlives a later commit.** While the base follows a
   round, a later commit keeps it followed, counted from the round's
   commit, until another base, a switched or rewritten branch, or no open
-  comment ends it.
+  comment ends it (superseded by 0030).
 - **0023 — A load with no watch reads only what changed.** The port
   tells each changed file's state; with no watch a load keeps them, and
   the next reads again only the paths whose state changed.
@@ -182,7 +185,8 @@ before reopening a decision they cover.
   the worktree that has the branch checked out, or from its commits,
   never checking anything out; a detached `HEAD` keeps none; a deleted
   branch takes its reviews; a review switcher moves between them;
-  `reviews.json` is version 4, and earlier reviews are dropped.
+  `reviews.json` is version 4, and earlier reviews are dropped (a file
+  per branch by 0030).
 - **0027 — The redesign, drawn for Tauri.** The canvas "Diff Loop macOS
   Redesign" is the app's design, refined for Tauri: opaque layered
   surfaces instead of Liquid Glass; Lucide icons; SF Pro and SF Mono on
@@ -196,6 +200,14 @@ before reopening a decision they cover.
 - **0029 — Watched before the first load.** `show` starts the watch,
   and awaits it, before the first load, so that load is the one the
   watch brings up to date; a load under a watch takes no fingerprint.
+- **0030 — The review file, in the project's git directory.** One file
+  per branch at `<common git dir>/diff-loop/reviews/<name>.json`, a new
+  format with rounds the agent or the reviewer opens, each comment a
+  thread the agent answers; each round's snapshot is a commit of the
+  working tree kept by `refs/diff-loop/<name>/<number>`; app and MCP
+  server save in turn on a lock beside the file; nothing is guessed, and
+  `reviews.json` is no longer read. Takes effect as `diff-loop-mcp`'s
+  steps land.
 
 ## Key Constraints (non-negotiable)
 

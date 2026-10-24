@@ -1,6 +1,6 @@
 # 0022 — A follow outlives a later commit
 
-**Status:** accepted, 2026-10-16
+**Status:** accepted, 2026-10-16; superseded by ADR 0030
 **Amends:** ADR 0017 §2 (a follow is decided only on the uncommitted
 changes)
 **Affects:** `crates/core/src/anchor.rs` (`Sent::follows`),
