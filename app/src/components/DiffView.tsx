@@ -41,6 +41,8 @@ const FOLD = 32;
 const PAD_TOP = 6;
 const PAD_BOTTOM = 8;
 const COLHEAD = 26;
+/** A line number's width, `.row .o` and `.n`. */
+const GUTTER_PX = 40;
 /** A margin note's height, and the gap kept between two that would overlap. */
 const NOTE = 24;
 const NOTE_GAP = 4;
@@ -555,14 +557,32 @@ function SplitHalf(props: LineProps & { cell: Cell | null }) {
 
 /**
  * A row's numbers as one target: a drag over it keeps the side it started on. Under an open composer, the
- * range's first and last rows drag its ends (the canvas's 3c).
+ * range's first and last rows drag its ends, each marked by a mini handle on its number (the canvas's 3c).
  */
 function Gutter({ cells, props, children }: { cells: (Cell | null)[]; props: LineProps; children: React.ReactNode }) {
   const line = gutterLine(cells);
   if (!line || !props.commentable) return <>{children}</>;
   const { handles } = props;
   const end = handles ? cells.find((c) => c?.side === handles.side) : undefined;
-  const edge = end && end.no === handles?.bottom ? "bottom" : end && end.no === handles?.top ? "top" : null;
+  const top = end !== undefined && end?.no === handles?.top;
+  const bottom = end !== undefined && end?.no === handles?.bottom;
+  const edge = bottom ? "bottom" : top ? "top" : null;
+  // Centred on the end's own number: each number is 40 px wide, the old side's first in a unified row.
+  const left = cells.indexOf(end ?? null) * GUTTER_PX + GUTTER_PX / 2;
+  const handle = (at: "top" | "bottom") => (
+    <span
+      aria-hidden
+      className={`hdl ${at === "top" ? "top" : "bot"}`}
+      style={{ left }}
+      onMouseDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        // A one-line range has both handles on one row: each moves its own end.
+        e.stopPropagation();
+        props.pressHandle(at);
+      }}
+    />
+  );
   return (
     <span
       title={edge ? "Drag to change the lines" : undefined}
@@ -573,9 +593,11 @@ function Gutter({ cells, props, children }: { cells: (Cell | null)[]; props: Lin
         else props.pressNumber(line, e.shiftKey);
       }}
       onMouseEnter={(e) => cells.forEach((c) => c && !c.shown && props.enterNumber(c, (e.buttons & 1) === 1))}
-      className={`flex flex-none select-none ${edge ? "cursor-ns-resize" : ""}`}
+      className={`relative flex flex-none select-none ${edge ? "cursor-ns-resize" : ""}`}
     >
       {children}
+      {top && handle("top")}
+      {bottom && handle("bottom")}
     </span>
   );
 }
@@ -692,7 +714,7 @@ function MarginNote({
     );
   }
   return (
-    <button type="button" className={`mnote ${note.tone === "changed" ? "changed" : ""} ${hovered ? "hov" : ""}`} style={{ top: collapsed ? top - (NOTE - MARK) / 2 : top }} {...hover}>
+    <button type="button" className={`mnote ${hovered ? "hov" : ""}`} style={{ top: collapsed ? top - (NOTE - MARK) / 2 : top }} {...hover}>
       {lead}
       {/* While it waits on the reviewer, what the agent says it did; the reviewer's comment is on the card (ADR 0032 §2). */}
       <span className="t">

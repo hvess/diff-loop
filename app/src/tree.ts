@@ -4,7 +4,7 @@ import { nameOf } from "./path";
 import { folded } from "./search";
 
 export type TreeRow = { depth: number } & (
-  | { kind: "folder"; key: string; name: string }
+  | { kind: "folder"; key: string; name: string; /** Its path from the root, `src/api/share`, a long name's tooltip. */ path: string }
   | { kind: "file"; key: string; file: FileDiff }
 );
 
@@ -61,7 +61,7 @@ export function treeRows(files: FileDiff[]): TreeRow[] {
       rows.push({ kind: "file", key: `f:${entry.file.path}`, file: entry.file, depth: entry.depth });
       continue;
     }
-    rows.push({ kind: "folder", key: `d:${entry.path}`, name: entry.name, depth: entry.depth });
+    rows.push({ kind: "folder", key: `d:${entry.path}`, name: entry.name, path: entry.path.slice(0, -1), depth: entry.depth });
     const inside = entriesOf(entry.folder, entry.path, entry.depth + 1);
     // One at a time: a folder can hold more entries than a spread may pass.
     for (let i = inside.length - 1; i >= 0; i--) stack.push(inside[i]!);

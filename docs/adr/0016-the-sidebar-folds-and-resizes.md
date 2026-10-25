@@ -28,7 +28,10 @@ chose to follow the new design, 2026-10-15.
    is under (`folders` on the loaded review). A folder holding one folder
    and nothing else is one row with it, `a/b/c`. Names are not cut short:
    a long one runs past the edge, and the sidebar scrolls sideways or is
-   widened. Folding is per session.
+   widened. (Amended by ADR 0034 §1: a long name ends in an ellipsis,
+   its full path the row's tooltip, and the tree never scrolls
+   sideways.)
+   Folding is per session.
 2. **The sidebar's width is the viewer's,** dragged at its right edge
    between 200 and 560 px, a double-click going back to the design's
    272 px, and kept in the webview's `localStorage` under

@@ -40,6 +40,11 @@ describe("treeRows", () => {
     expect(shape(["a/b/x.ts", "a/y.ts"])).toEqual(["a/", "  b/", "    a/b/x.ts", "  a/y.ts"]);
   });
 
+  it("gives each folder row its path from the root, for its tooltip", () => {
+    const folders = treeRows(["a/b/c/x.ts", "a/d/y.ts"].map(file)).flatMap((r) => (r.kind === "folder" ? [r.path] : []));
+    expect(folders).toEqual(["a", "a/b/c", "a/d"]);
+  });
+
   it("folds a closed folder's rows away", () => {
     const rows = treeRows(["a/b/x.ts", "a/y.ts", "z.ts"].map(file));
     const shown = fold(rows, new Set(["d:a/b/"]));

@@ -2,20 +2,15 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { FileDiff } from "../bindings/FileDiff";
 import { showMenu } from "../contextMenu";
-import { idOf, sameKey } from "../key";
 import { nameOf } from "../path";
 import { isMac } from "../platform";
 import { DEFAULT_WIDTH } from "../sidebar";
 import { useStore } from "../store";
-import { recentReviews, reviewRow } from "../switcher";
 import { filterTree, fold, keptOrder, type TreeRow } from "../tree";
 import { Sym } from "./Icon";
-import { LiveDot } from "./LiveDot";
 
 /** Each tree row's height, the canvas's `.tr`. */
 const ROW_PX = 28;
-/** Most reviews Other Reviews lists, the 8 most recently shown (diff-loop-app.md Decision 35). */
-const OTHER_REVIEWS = 8;
 
 /** The letter for a file's change and its class; meaning is also in its label, never colour alone. */
 export function statusOf(file: FileDiff): { letter: string; label: string; tone: string } {
@@ -36,7 +31,7 @@ export function statusOf(file: FileDiff): { letter: string; label: string; tone:
 
 /**
  * The canvas's sidebar (ADR 0027; diff-loop-app.md Decision 35): Filter Files, the changed files as a tree
- * under "Changes" with the files left, then the other reviews kept. Virtualized: the arrows and J / K are O(1)
+ * under "Changes" with the files left. Virtualized: the arrows and J / K are O(1)
  * in the number of files, the files a filter keeps found once per query (`keptOrder`), and V's step passes only
  * the viewed files in a row; a filter walks the tree once (`filterTree`, O(rows · d)) per settled keystroke.
  */
@@ -110,7 +105,7 @@ export function Sidebar() {
             else return;
             e.preventDefault();
           }}
-          className="mt-0.5 min-h-0 shrink overflow-auto outline-none"
+          className="mt-0.5 min-h-0 shrink overflow-x-hidden overflow-y-auto outline-none"
         >
           {rows.length === 0 ? (
             <p className="mx-2.5 mt-1 text-xs text-[var(--sec)]">No files match</p>
@@ -138,7 +133,6 @@ export function Sidebar() {
           )}
         </div>
       )}
-      <OtherReviews />
       <ResizeEdge />
     </aside>
   );
@@ -183,6 +177,7 @@ function FolderRow({ row, open, fixed }: { row: Extract<TreeRow, { kind: "folder
       aria-expanded={open}
       aria-disabled={fixed || undefined}
       aria-label={row.name}
+      title={row.path}
       onClick={fixed ? undefined : () => toggleFolder(row.key)}
       className="tr"
       style={indent(row.depth)}
@@ -191,7 +186,7 @@ function FolderRow({ row, open, fixed }: { row: Extract<TreeRow, { kind: "folder
         <Sym name={open ? "down" : "right"} />
       </span>
       <Sym name="folder" />
-      <span>{row.name}</span>
+      <span className="min-w-0 truncate">{row.name}</span>
     </div>
   );
 }
@@ -227,7 +222,7 @@ const FileRow = memo(function FileRow({
     >
       <span className="dis" />
       <Sym name="doc" className={viewed || deleted ? "text-[var(--sec)]" : ""} />
-      <span className={deleted ? "text-[var(--sec)] line-through" : ""}>{nameOf(file.path)}</span>
+      <span className={`min-w-0 truncate ${deleted ? "text-[var(--sec)] line-through" : ""}`}>{nameOf(file.path)}</span>
       {apart && <span className="min-w-0 truncate text-[11px]">not a match</span>}
       {viewed ? (
         <Sym name="check" className="ml-auto text-[var(--sec)]" />
@@ -239,67 +234,6 @@ const FileRow = memo(function FileRow({
     </div>
   );
 });
-
-/** The other reviews kept, folded until opened; a click opens one, as the switcher's rows do. */
-function OtherReviews() {
-  const [open, setOpen] = useState(false);
-  const reviews = useStore((s) => s.reviews);
-  const home = useStore((s) => s.home);
-  const key = useStore((s) => s.key);
-  const refreshReviews = useStore((s) => s.refreshReviews);
-  const pickReview = useStore((s) => s.pickReview);
-  const busy = useStore((s) => s.busy);
-  // Per answer while open, not per render: each row reads its project's check.
-  const others = useMemo(
-    () =>
-      open
-        ? recentReviews(
-            (reviews.kept ?? []).filter((r) => !sameKey(r.key, key)),
-            OTHER_REVIEWS,
-          ).map((r) => ({ name: r.name, row: reviewRow(r, reviews.checks.get(r.key.project), home, Date.now()) }))
-        : [],
-    [open, reviews, key, home],
-  );
-  return (
-    <>
-      <button
-        type="button"
-        className="sechead"
-        aria-expanded={open}
-        onClick={() => {
-          if (!open) void refreshReviews();
-          setOpen(!open);
-        }}
-      >
-        <span>Other Reviews</span>
-        <span className="grow" />
-        <Sym name={open ? "down" : "right"} />
-      </button>
-      {open &&
-        (others.length === 0 ? (
-          <p className="mx-2.5 mt-1.5 text-xs text-[var(--sec)]">No other reviews</p>
-        ) : (
-          others.map(({ name, row }) => (
-            <button
-              key={idOf(row.key)}
-              type="button"
-              disabled={busy}
-              onClick={() => void pickReview(row.key)}
-              className="tr"
-              style={indent(0)}
-              title={row.where}
-            >
-              <span className="dis">
-                <LiveDot live={row.live} named />
-              </span>
-              <span className="truncate">{row.key.branch}</span>
-              {row.key.project !== key?.project && <span className="truncate text-[var(--sec)]">{name}</span>}
-            </button>
-          ))
-        ))}
-    </>
-  );
-}
 
 /** The sidebar's right edge: dragged, it sets the width; double-clicked, it goes back to the design's (ADR 0016 §2). */
 function ResizeEdge() {

@@ -269,6 +269,11 @@
   .fold:last-child { border-radius: 0 0 12px 12px; }
   .fold .ctx { font-size: 11px; margin-left: 6px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row { display: flex; align-items: stretch; min-height: 18px; font: 12px/18px var(--font-mono); }
+  /* The range's mini handles (the canvas's 3c), inside its end rows: each row is its own layer, so one hanging into the next would be painted over. */
+  .hdl { position: absolute; width: 12px; height: 4px; margin-left: -6px; border-radius: 2px; background: var(--accentfill); box-shadow: 0 0 0 1px var(--card), 0 1px 2px rgba(0, 0, 0, 0.22); cursor: ns-resize; z-index: 1; }
+  .hdl.top { top: 0; }
+  .hdl.bot { bottom: 0; }
+  .hdl:hover { width: 16px; margin-left: -8px; }
   .row .o, .row .n { width: 40px; flex: none; box-sizing: border-box; padding-right: 8px; text-align: right; color: var(--lnum); font-size: 11px; display: flex; align-items: center; justify-content: flex-end; }
   .row .bar { width: 2px; flex: none; margin-right: 14px; }
   .row code { white-space: pre; color: var(--label); font: inherit; }
@@ -307,7 +312,6 @@
   .mnote { position: absolute; right: 20px; width: 296px; height: 24px; box-sizing: border-box; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: none; border-radius: 12px; background: var(--pop); box-shadow: 0 0 0 0.5px var(--popbd), 0 2px 8px rgba(0, 0, 0, 0.12); text-align: left; font-size: 12px; color: var(--sec); z-index: 1; font-family: var(--font-sans); }
   .mnote .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mnote .dot { width: 6px; height: 6px; border-radius: 3px; background: var(--accentfill); flex: none; }
-  .mnote.changed { box-shadow: 0 0 0 0.5px var(--popbd), inset 3px 0 0 var(--amber), 0 2px 8px rgba(0, 0, 0, 0.12); }
   .mnote.hov { box-shadow: 0 0 0 1px var(--accentfill), 0 10px 26px rgba(0, 0, 0, 0.28); color: var(--label); z-index: 3; }
   .cmark { position: absolute; right: 10px; width: 22px; height: 20px; border: none; border-radius: 10px; background: var(--pop); box-shadow: 0 0 0 0.5px var(--popbd), 0 2px 6px rgba(0, 0, 0, 0.14); color: var(--accent); display: flex; align-items: center; justify-content: center; z-index: 2; }
   .tick { position: absolute; right: 4px; width: 8px; height: 3px; border-radius: 1.5px; background: var(--accentfill); }
@@ -385,9 +389,8 @@
   .sug .m .sg { color: var(--deltx); }
   .sug .p .sg { color: var(--addtx); }
 
-  /* Rows of reviews (the switcher, Other Reviews), of Welcome's projects, and of comments */
+  /* Rows of reviews (the switcher), of Welcome's projects, and of comments */
   .rv { display: flex; align-items: center; gap: 12px; border-radius: 10px; }
-  /* The canvas scopes the dots to `.rv`; the sidebar's Other Reviews draws them too. */
   .live { width: 8px; height: 8px; border-radius: 4px; background: var(--sta); flex: none; }
   .cold { width: 8px; height: 8px; border-radius: 4px; box-shadow: inset 0 0 0 1.5px var(--sec); flex: none; }
   .rv .k2 { color: var(--sec); }

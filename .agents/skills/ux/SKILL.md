@@ -176,12 +176,15 @@ own decisions to depart from it, each recorded with both halves.
   ring (HIG `focus-and-selection`); the highlighted row shows where
   Return goes. The review switcher's field is drawn the same way, so
   the two read alike (the developer's call, 2026-10-20).
-- **A range's ends drag from the gutter, with no handles** (diff-loop-app
-  Decision 35; the developer's direction, 2026-10-22): while the
-  composer is open, the range's first and last gutter rows take the
-  drag, with the resize cursor, as the canvas draws it. The HIG
+- **A range's ends drag from the gutter, marked by mini handles**
+  (diff-loop-app Decision 35; the developer's direction, 2026-10-22,
+  and the handles 2026-10-25, as the range's ends were not found
+  without them): while the composer is open, the range's first and
+  last gutter rows take the drag, with the resize cursor, and a small
+  accent capsule on each end's line number shows they can. The HIG
   `accessibility` page asks for controls that are easy to see and hit;
-  each is a whole row of the gutter, 80 px wide.
+  each is a whole row of the gutter, 80 px wide, the capsule only its
+  mark.
 - **The progress ring stays, in the bottom bar** (diff-loop-app
   Decisions 24 and 35; the developer's call, 2026-10-14). The HIG `progress-indicators` page keeps
   a determinate ring for an operation under way; the design uses one as

@@ -96,7 +96,8 @@ change, annotate, hand off to the agent, next round.
        capsules with the layout toggle, banners as chrome cards — done
        2026-10-22.
     2. The sidebar: Filter Files, the Changes header with the files
-       left, the tree's rows, Other Reviews (2a) — done 2026-10-22.
+       left, the tree's rows, Other Reviews (2a) — done 2026-10-22; Other
+       Reviews removed 2026-10-25 (Decision 35).
     3. The file's header, the diff's card and the split view (2a, 2c,
        2g) — done 2026-10-22.
     4. The floating bottom bar: the progress ring, files left, lines and
@@ -296,7 +297,8 @@ change, annotate, hand off to the agent, next round.
     many changed files it holds ("3 files"; since Decision 35 nothing,
     as the canvas draws), a chain of folders holding nothing but one folder reads
     as one row (`src/api/share`), a selected file opens the folders it is
-    under, names are not cut short, and the sidebar's edge drags its
+    under, names are not cut short (until ADR 0034: since 2026-10-25 a
+    long one ends in an ellipsis), and the sidebar's edge drags its
     width (200–560 px, a double-click back to 240, the canvas's; 272
     until 2026-10-22), kept per viewer in
     `localStorage`. Until then folders were labels that neither folded
@@ -412,7 +414,8 @@ change, annotate, hand off to the agent, next round.
     are built once per query. ⌘/Ctrl-F and Edit › Find… do nothing while
     a dialog is open (`dialogOpen`).
 28. **The composer's range has handles** (until Decision 35, which drags
-    its ends from the range's first and last gutter rows) at its first line's top edge and
+    its ends from the range's first and last gutter rows, marked by mini
+    handles again since 2026-10-25) at its first line's top edge and
     its last line's bottom edge, over the line numbers, while the
     composer is open on lines. Dragging one down the gutter moves that
     end, inside the hunk (Decision 6), past the other end too; the draft
@@ -421,9 +424,11 @@ change, annotate, hand off to the agent, next round.
     selection follows the pointer, and the composer reads the lines once,
     on release, as a drag-selection does. A drag released outside the
     window, where no mouseup reaches it, ends when the pointer comes back
-    over the gutter with no button down, a drag-selection too. Each handle is a 4 px bar in a
+    over the gutter with no button down, a drag-selection too. Each handle was a 4 px bar in a
     28 × 20 px target (HIG `accessibility`, minimum control size); the
-    bar keeps the design's look, the developer's call, 2026-10-14. The
+    bar kept the design's look, the developer's call, 2026-10-14. Since
+    2026-10-25 each is a 12 × 4 px capsule on its line number, the
+    whole 80 px gutter row its target (Decision 35). The
     header of the suggestion box says "Edit the + line" ("Edit the +
     lines" once the suggested code has more than one line), not the
     colour.
@@ -830,10 +835,11 @@ change, annotate, hand off to the agent, next round.
       to the next file not viewed going through the files it keeps (from
       an open file it does not match, to the first of them); "Changes" with the files left
       and a chevron that folds it; the tree's rows with the status letter,
-      or a check once viewed; Other Reviews, folded at first, the
-      switcher's reviews for the project's other branches and other
-      projects, the 8 most recently shown, each a sidebar row (the dot, the branch, and another
-      project's name) rather than the switcher's two lines.
+      or a check once viewed. A name too long for its row ends in an
+      ellipsis, its letter kept, the full path its tooltip; the tree
+      never scrolls sideways (the canvas's 2a; ADR 0034). Other
+      Reviews, the other reviews kept, is gone from the sidebar
+      (2026-10-25): other reviews are the switcher's.
     - **The bottom bar** (2a, 4a), floating over the diff: the progress
       ring of lines reviewed, the files left over the lines, drafts and
       round (`barLines`; a round's counts filter N / P as the strip's
@@ -852,7 +858,9 @@ change, annotate, hand off to the agent, next round.
       88 px under the card for the bar.
     - **Comments** (3a, 3c, 3f, 5a): a 4 px rail beside a comment's
       lines, accent for a draft, grey once sent, amber once its code
-      changed; its note in the margin centred on its first line, 4 px
+      changed; its note in the margin centred on its first line, with no
+      coloured stripe on its edge (2026-10-25; it bent round the note's
+      rounded end), 4 px
       under the note above where they would meet; in Split a mark that
       opens into the note on hover. Hovering a note rings its rail and
       tints its lines. A note opens the comment, and a range opens the
@@ -860,7 +868,9 @@ change, annotate, hand off to the agent, next round.
       on that line's edge (7 px under it, where the canvas leaves 12), 400 px wide,
       520 with suggested code, 560 for a changed card. While the
       composer is open, the range's first and last gutter rows drag its
-      ends, with the resize cursor, in place of handles; the "Comment on
+      ends, with the resize cursor, each marked by a mini handle on its
+      line number, a 12 × 4 px accent capsule, 16 px wide on hover
+      (the canvas's 3c and 3f, 2026-10-25; none until then); the "Comment on
       lines" pill is gone, as the canvas draws none: a range is
       commented on by releasing a drag, C, the context menu or the menu
       bar, and a lost draft is placed by clicking a line or Return.
@@ -908,6 +918,12 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-25, the canvas's sidebar and range changes)
+
+The sidebar loses Other Reviews and its tree no longer scrolls sideways,
+long names ending in an ellipsis; the range's ends get mini handles; margin
+notes lose their amber stripe (Decision 35, the canvas of 2026-10-25).
 
 ## Progress (2026-10-25, the welcome screen lists projects)
 

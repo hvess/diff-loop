@@ -1,4 +1,4 @@
-// What the review switcher and the sidebar's Other Reviews list (ADR 0026 §7; the design's flow 6 and 2a).
+// What the review switcher lists (ADR 0026 §7; the design's flow 6).
 import type { Branch } from "./bindings/Branch";
 import type { KeptReview } from "./bindings/KeptReview";
 import type { ProjectCheck } from "./bindings/ProjectCheck";
@@ -215,9 +215,4 @@ export function listing(at: {
   }
   groups.push({ key: "open", name: "", meta: "", rows: [open] });
   return { empty, groups };
-}
-
-/** The sidebar's Other Reviews (the canvas's 2a): every project's, most recently shown first, at most `limit`. */
-export function recentReviews(kept: KeptReview[], limit: number): KeptReview[] {
-  return [...kept].sort(byShown).slice(0, limit);
 }

@@ -116,7 +116,7 @@ type State = {
   switcher: boolean;
   /**
    * Every review kept, as last read (null before), and each project's last check, absent until
-   * its first answers: what the switcher and the sidebar's Other Reviews list.
+   * its first answers: what the switcher lists.
    */
   reviews: { kept: KeptReview[] | null; checks: Map<string, Check> };
   /** Reviews deleted with their branch since the switcher last said so (ADR 0026 §6). */

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Branch } from "./bindings/Branch";
 import type { KeptReview } from "./bindings/KeptReview";
 import type { ProjectCheck } from "./bindings/ProjectCheck";
-import { type Check, type Row, listing, recentReviews, reviewRow, roundOf } from "./switcher";
+import { type Check, type Row, listing, reviewRow, roundOf } from "./switcher";
 
 const NOW = Date.UTC(2026, 9, 19, 12);
 const P = "/home/me/code/drive-web/.git";
@@ -142,12 +142,5 @@ describe("a review's row", () => {
     done.summary.open = 0;
     expect(reviewRow(done, undefined, null, NOW)).toMatchObject({ comments: "All resolved", open: false, round: "No rounds yet" });
     expect(roundOf({ number: 3, at: NOW }, NOW)).toBe("Round 3 sent · Just now");
-  });
-});
-
-describe("the sidebar's other reviews", () => {
-  it("are every project's, most recently shown first, never shown last, up to the limit", () => {
-    const list = recentReviews([kept(P, "a", { at: 1 }), kept(Q, "b"), kept(P, "c", { at: 5 }), kept(Q, "d", { at: 3 })], 3);
-    expect(list.map((r) => r.key.branch)).toEqual(["c", "d", "a"]);
   });
 });

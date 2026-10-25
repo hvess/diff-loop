@@ -145,7 +145,8 @@ before reopening a decision they cover.
 - **0016 — The sidebar folds, merges lone folders, and resizes.** Folders
   fold on a click, a chain of lone folders is one row, the edge drags
   the width, kept under `diff-loop.sidebar`; no guides, a disclosure
-  chevron, and 240 px at first, by 0027.
+  chevron, and 240 px at first, by 0027; long names end in an ellipsis
+  rather than scroll sideways, by 0034.
 - **0017 — A round on the uncommitted changes follows a commit on top.**
   Comments sent against the uncommitted changes are judged only at the
   commit they were sent on, or compared with it by name; when the agent
@@ -226,6 +227,9 @@ before reopening a decision they cover.
   recently opened, by name and folder, each opening its main checkout,
   kept under `diff-loop.recent`; no review is listed there, and the
   switcher opens only once a project is shown.
+- **0034 — Long names in the sidebar end in an ellipsis.** The tree
+  never scrolls sideways; a name too long for its row is cut at its end,
+  its status letter kept and its full path the row's tooltip.
 
 ## Key Constraints (non-negotiable)
 
