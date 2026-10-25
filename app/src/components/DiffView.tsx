@@ -9,7 +9,7 @@ import { useDelayed } from "../delay";
 import { findTyped, type Mark, type Match, marked } from "../find";
 import { useHighlights, type Highlights, type Token } from "../highlight";
 import { isLineCommand, type LineCommand } from "../keys";
-import { awaitsReviewer, changed, hasCard, markOf, toneOf } from "../lifecycle";
+import { askOf, awaitsReviewer, changed, hasCard, markOf, toneOf } from "../lifecycle";
 import { shownNote } from "../note";
 import { nameOf } from "../path";
 import { bindingFor } from "../platform";
@@ -668,8 +668,8 @@ function noteLabel(note: Note): string {
   const c = note.comment;
   const kind = markOf(note.comment) || "Draft";
   const where = c.target.kind === "lines" ? targetLabel(c.target).toLowerCase() : "file";
-  const suggestion = c.suggestion !== null ? " with a suggested change" : "";
-  return `${kind} comment on ${where}${suggestion}${c.text === "" ? "" : `: ${c.text}`}`;
+  // The kind said in words, as the note draws every kind with the same dot (ADR 0036 §2).
+  return `${kind} ${askOf(c)} on ${where}${c.text === "" ? "" : `: ${c.text}`}`;
 }
 
 /** A comment's note in the margin, which opens it; in Split, a mark that shows the note on hover (the canvas's 3a and 3e). */

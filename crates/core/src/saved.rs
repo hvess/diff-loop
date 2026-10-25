@@ -92,6 +92,7 @@ impl SavedReview {
                 && comment.resolved.is_none()
                 && comment.text == mark.text
                 && comment.suggestion == mark.suggestion
+                && comment.question == mark.question
             {
                 comment.resolved = mark.resolved;
                 comment.note.clone_from(&mark.note);
@@ -222,6 +223,7 @@ mod tests {
             sent: None,
             resolved,
             note: None,
+            question: false,
         }
     }
 
@@ -278,6 +280,21 @@ mod tests {
         };
         let saved = window.keeping_agent_marks(&kept);
         assert_eq!(saved.comments, [marked, edited, comment("c", None)]);
+    }
+
+    #[test]
+    fn a_comment_whose_kind_changed_drops_the_agents_mark() {
+        let kept = SavedReview {
+            comments: vec![comment("a", Some(Resolution::ByAgent))],
+            ..SavedReview::default()
+        };
+        let mut asked = comment("a", None);
+        asked.question = true;
+        let window = SavedReview {
+            comments: vec![asked],
+            ..SavedReview::default()
+        };
+        assert_eq!(window.clone().keeping_agent_marks(&kept), window);
     }
 
     #[test]

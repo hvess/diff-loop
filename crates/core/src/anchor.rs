@@ -44,9 +44,37 @@ pub struct Comment {
     /// What the agent said when it resolved it (ADR 0032 §1).
     #[serde(default)]
     pub note: Option<String>,
+    /// Whether it asks the agent a question, to be answered rather than acted
+    /// on (ADR 0036 §1); a comment saved before then is not one.
+    #[serde(default)]
+    pub question: bool,
+}
+
+/// What a comment asks of the agent (ADR 0036 §1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Kind {
+    /// A change to make.
+    Comment,
+    /// A question to answer, changing no code.
+    Question,
+    /// Suggested code to put in the lines' place.
+    Suggestion,
 }
 
 impl Comment {
+    /// Its kind: a question as the reviewer marked it, else a suggestion
+    /// when it holds suggested code, else a comment.
+    #[must_use]
+    pub(crate) fn kind(&self) -> Kind {
+        if self.question {
+            Kind::Question
+        } else if self.suggestion.is_some() {
+            Kind::Suggestion
+        } else {
+            Kind::Comment
+        }
+    }
+
     /// Whether the comment was edited since it was sent: it is copied again
     /// as "Still: …" (ADR 0015 §5).
     #[must_use]
@@ -567,7 +595,24 @@ mod tests {
             sent: None,
             resolved: None,
             note: None,
+            question: false,
         }
+    }
+
+    #[test]
+    fn a_question_is_one_whatever_it_holds_and_suggested_code_makes_a_suggestion() {
+        let plain = on_lines("a.ts", 1, &["x"]);
+        assert_eq!(plain.kind(), Kind::Comment);
+        let code = Comment {
+            suggestion: Some("y".into()),
+            ..plain.clone()
+        };
+        assert_eq!(code.kind(), Kind::Suggestion);
+        let asked = Comment {
+            question: true,
+            ..code
+        };
+        assert_eq!(asked.kind(), Kind::Question);
     }
 
     /// `comment` as sent in round 1 at `here`, with `before` and `after` around its code.

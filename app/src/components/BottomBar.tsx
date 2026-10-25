@@ -1,6 +1,6 @@
 import * as Popover from "@radix-ui/react-popover";
 import { useEffect, useMemo } from "react";
-import { awaitsReviewer, notInDiff as isNotInDiff, open as isOpen } from "../lifecycle";
+import { answered, awaitsReviewer, notInDiff as isNotInDiff, open as isOpen, toAccept } from "../lifecycle";
 import { useNow } from "../now";
 import { barLines, progressText } from "../progress";
 import { roundStrip, type StripPart } from "../round";
@@ -136,11 +136,13 @@ function CommentCount() {
   const comments = useStore((s) => s.comments);
   const listOpen = useStore((s) => s.commentList);
   const list = orderedComments(review, comments);
-  // Counted with the open ones: what the agent resolved waits on the reviewer to accept it (ADR 0032 §2).
+  // Counted with the open ones: what the agent resolved waits on the reviewer to accept it, and a question it answered
+  // to read it (ADR 0032 §2, ADR 0036 §2).
   const open = list.filter((c) => isOpen(c) || awaitsReviewer(c));
   const notInDiff = open.filter(isNotInDiff).length;
-  const toAccept = open.filter(awaitsReviewer).length;
-  const label = `${open.length} ${open.length === 1 ? "comment" : "comments"}${toAccept > 0 ? `, ${toAccept} to accept` : ""}${notInDiff > 0 ? `, ${notInDiff} not in this diff` : ""}`;
+  const toRead = open.filter(answered).length;
+  const accepting = open.filter(toAccept).length;
+  const label = `${open.length} ${open.length === 1 ? "comment" : "comments"}${accepting > 0 ? `, ${accepting} to accept` : ""}${toRead > 0 ? `, ${toRead} to read` : ""}${notInDiff > 0 ? `, ${notInDiff} not in this diff` : ""}`;
   return (
     <>
       <Popover.Trigger asChild>

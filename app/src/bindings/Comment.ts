@@ -50,4 +50,9 @@ resolved: Resolution | null,
 /**
  * What the agent said when it resolved it (ADR 0032 §1).
  */
-note: string | null, };
+note: string | null, 
+/**
+ * Whether it asks the agent a question, to be answered rather than acted
+ * on (ADR 0036 §1); a comment saved before then is not one.
+ */
+question: boolean, };

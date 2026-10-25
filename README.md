@@ -24,8 +24,9 @@ a Rust core and a [Tauri](https://tauri.app) front end.
 1. **Open a repository.** Diff Loop shows what the checked-out branch
    changed compared with a base branch, or only the uncommitted changes,
    or only the last commit. It follows the files as the agent edits them.
-2. **Comment.** Click a line's number or drag down the numbers, write
-   what should change, and add suggested code if you have it.
+2. **Comment.** Click a line's number or drag down the numbers, and
+   write a comment saying what should change, a question for the agent
+   to answer, or the code you want in its place.
 3. **Copy the review and paste it into your agent.** When it has made its
    changes, the next round shows each comment you sent as untouched,
    changed, removed or applied. Resolve the ones that are done; the rest
@@ -34,19 +35,31 @@ a Rust core and a [Tauri](https://tauri.app) front end.
 ## What you paste into your agent
 
 ````text
-Please address these review comments on agent/share-rate-limit (compared with main).
+Review of agent/share-rate-limit (compared with main): 1 comment, 1 question and 1 suggestion.
+
+## 1. Address these comments
+Change the code so each comment is dealt with.
 
 ### config/limits.yaml
-- L5 `maxPerWindow: 20`: Make this configurable per plan.
+- L5 `maxPerWindow: 20`: Make this configurable per plan. (id `a2d7f419-…`)
+
+## 2. Answer these questions
+Answer each one. Don't change any code for them.
 
 ### src/api/share/handler.ts
-- L12 `log.warn('share rate limited', { userId });`: Don't log the raw userId. Hash it first.
-  Suggested change:
+- L9 `const limit = await checkShareLimit(userId);`: Should a failed share count against the limit? (id `e41b7c03-…`)
+
+## 3. Implement these suggestions
+Replace the lines named with the suggested code, as written. If it no longer fits the code around it, leave it and say why.
+
+### src/api/share/handler.ts
+- L12 `log.warn('share rate limited', { userId });`: Don't log the raw userId. Hash it first. (id `c94d0e57-…`)
   ```ts
   log.warn('share rate limited', { user: hashUserId(userId) });
   ```
 
-When done, reply with one line per comment saying what you changed.
+## When you're done
+These are kept in `/Users/you/code/drive-web/.git/diff-loop/reviews/agent%2Fshare-rate-limit.json`. Mark each one you dealt with resolved, with a one-line note saying what you changed or giving your answer: call `resolve_comment` on the `diff-loop` MCP server with its id and the note, or, without it, set its `"resolved"` to `"byAgent"` and its `"note"` to the note in that file, changing nothing else. Leave anything you did not do as it is.
 ````
 
 ## Install

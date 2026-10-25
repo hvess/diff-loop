@@ -223,7 +223,8 @@ before reopening a decision they cover.
   with a note; the comment stays, shown as resolved by the agent until
   the reviewer accepts it (R) or edits it to reopen it; a save keeps a
   mark the window has not seen, and the window watches the file. 0030's
-  snapshots, threads and handed rounds are withdrawn.
+  snapshots, threads and handed rounds are withdrawn. A question's
+  answer is its note, by 0036.
 - **0033 — The welcome screen lists projects.** The 8 projects most
   recently opened, by name and folder, each opening its main checkout,
   kept under `diff-loop.recent`; no review is listed there, and the
@@ -237,6 +238,11 @@ before reopening a decision they cover.
   and each remote opening in place; typing searches them all. No other
   projects, no live or committed-only marks; the core's summaries keep
   only what it shows.
+- **0036 — Comments, questions and suggestions.** A comment is one of
+  three kinds, picked in the composer; a question (`"question": true`)
+  is answered through the resolve note and waits as "Answered by agent";
+  the instructions have a numbered section per kind, then Still open and
+  When you're done.
 
 ## Key Constraints (non-negotiable)
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Comment } from "../bindings/Comment";
-import { awaitsReviewer, hasCard, kindOf, markOf, open as isOpen, toneOf } from "../lifecycle";
+import { answered, askOf, awaitsReviewer, hasCard, KINDS, kindOf, markOf, open as isOpen, toneOf } from "../lifecycle";
 import { shownNote } from "../note";
 import { nameOf } from "../path";
 import { lastLine } from "../rows";
@@ -98,7 +98,10 @@ function Entry({ comment: c }: { comment: Comment }) {
   const startReplace = useStore((s) => s.startReplace);
   const setListOpen = useStore((s) => s.setCommentList);
   const kind = kindOf(c);
-  const notes = [c.suggestion !== null && c.text !== "" ? "Suggested change" : "", markOf(c)].filter((n) => n !== "");
+  // The kind after the place (the canvas's 4a); suggested code alone already reads "Suggested change" as its text.
+  const asks = askOf(c);
+  const kindWord = asks === "comment" || (asks === "suggestion" && c.text === "") ? "" : (KINDS.find((k) => k.kind === asks)?.label ?? "");
+  const notes = [kindWord, markOf(c)].filter((n) => n !== "");
   const dot = <span aria-hidden className={`dot ${toneOf(c)}`} />;
   const loc = (
     <span className="loc block truncate">
@@ -153,10 +156,10 @@ function Entry({ comment: c }: { comment: Comment }) {
             // The agent's word stands until the reviewer accepts it, or edits the comment, which reopens it (ADR 0032 §2).
             <>
               <button type="button" className="btnplain" onClick={() => resolveComment(c.id)}>
-                Accept
+                {answered(c) ? "Mark Answered" : "Accept"}
               </button>
               <button type="button" className="btnplain" onClick={() => editComment(c.id)}>
-                Edit
+                {answered(c) ? "Reply" : "Edit"}
               </button>
             </>
           ) : c.resolved !== null ? (

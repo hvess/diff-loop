@@ -3,6 +3,7 @@ import type { Target } from "../bindings/Target";
 import { dedent } from "../indent";
 import { hasMod, modKey } from "../platform";
 import { lastLine } from "../rows";
+import { type Ask, askOf, KINDS } from "../lifecycle";
 import { canSave, suggestable, useStore } from "../store";
 import { Sym } from "./Icon";
 
@@ -14,9 +15,9 @@ export function targetLabel(target: Target): string {
 }
 
 /**
- * The comment popover's body, writing or editing a comment (the canvas's 3c, and 3f with suggested code); its
- * caller draws the popover. Return with the command key saves, with Alt (Option) turns Suggest Change on or off,
- * Esc cancels.
+ * The comment popover's body, writing or editing a comment, a question or a suggestion (the canvas's 3c, 3d and 3f);
+ * its caller draws the popover. Return with the command key saves, with Alt (Option) turns Suggestion on or off, Esc
+ * cancels.
  */
 export function Composer() {
   const composer = useStore((s) => s.composer);
@@ -39,8 +40,16 @@ export function Composer() {
   const canSuggest = target.kind === "lines" && target.side === "new";
   // Code that changes the lines saves without a reason (diff-loop-app.md Decision 22).
   const reasonOptional = composer.suggestion !== null && canSave({ ...composer, text: "" });
+  const asks = askOf(composer);
   const toggleSuggestion = () => {
-    if (target.kind === "lines") update({ suggestion: composer.suggestion === null ? suggestable(target.code) : null });
+    if (target.kind === "lines") update({ question: false, suggestion: composer.suggestion === null ? suggestable(target.code) : null });
+  };
+  const choose = (kind: Ask) => {
+    if (kind === "suggestion") {
+      if (target.kind === "lines") update({ question: false, suggestion: composer.suggestion ?? suggestable(target.code) });
+    } else {
+      update({ question: kind === "question", suggestion: null });
+    }
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -51,7 +60,7 @@ export function Composer() {
     } else if (e.key === "Enter" && hasMod(e)) {
       e.preventDefault();
       save();
-    } else if (e.key === "Enter" && e.altKey && canSuggest) {
+    } else if (e.key === "Enter" && e.altKey && canSuggest && sent === null) {
       e.preventDefault();
       toggleSuggestion();
     }
@@ -59,8 +68,24 @@ export function Composer() {
 
   return (
     <div onKeyDown={onKeyDown}>
-      <div className="mb-2.5 flex items-baseline gap-1.5">
-        <span className="text-[13px] font-semibold">Comment</span>
+      <div className="mb-2.5 flex items-center gap-2">
+        {/* A sent comment keeps its kind: what was sent is what it is judged against (ADR 0036 §1). */}
+        <div className="tseg" role="radiogroup" aria-label="Kind">
+          {KINDS.map(({ kind, label }) => (
+            <button
+              key={kind}
+              type="button"
+              role="radio"
+              aria-checked={asks === kind}
+              disabled={sent !== null || (kind === "suggestion" && !canSuggest)}
+              title={sent !== null ? "A sent comment keeps its kind" : kind === "suggestion" && !canSuggest ? "Suggested code goes on new lines" : undefined}
+              onClick={() => choose(kind)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="grow" />
         <span className="text-xs text-[var(--sec)]">{targetLabel(target)}</span>
       </div>
       {sent && <SentBefore round={sent.round} text={sent.text} />}
@@ -70,12 +95,19 @@ export function Composer() {
         minRows={composer.suggestion === null ? 3 : 2}
         value={composer.text}
         onChange={(value) => update({ text: value })}
-        aria-label="Comment"
+        aria-label={asks === "question" ? "Question" : "Comment"}
         placeholder={
-          reasonOptional ? "Why this change? (optional)" : composer.suggestion !== null ? "Change the code, or say why" : "Leave a comment for the agent"
+          asks === "question"
+            ? "Ask the agent a question"
+            : reasonOptional
+              ? "Why this change? (optional)"
+              : composer.suggestion !== null
+                ? "Change the code, or say why"
+                : "Leave a comment for the agent"
         }
         className="block w-full resize-none rounded-[7px] bg-[var(--card)] px-2 py-1.5 text-[13px] leading-[1.4] text-[var(--label)] shadow-[0_0_0_0.5px_var(--popbd)] outline-none placeholder:text-[var(--sec)] focus:shadow-[0_0_0_0.5px_var(--popbd),0_0_0_3.5px_var(--ring)]"
       />
+      {asks === "question" && <p className="m-0 mt-2 text-[11px] text-[var(--sec)]">The agent answers, without changing code.</p>}
       {canSuggest && composer.suggestion !== null && (
         <>
           <div className="mt-3.5 mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--sec)]">
@@ -111,24 +143,13 @@ export function Composer() {
         </>
       )}
       <div className="mt-3.5 flex items-center gap-2">
-        {canSuggest &&
-          (composer.suggestion === null ? (
-            <button type="button" className="btnplain" onClick={toggleSuggestion}>
-              <Sym name="suggest" />
-              Suggest Change
-            </button>
-          ) : (
-            <button type="button" className="btnplain" onClick={toggleSuggestion}>
-              Remove Suggestion
-            </button>
-          ))}
         {sent && <span className="text-[11px] text-[var(--sec)]">Copies as “Still: …”</span>}
         <span className="grow" />
         <button type="button" className="btn" onClick={cancel}>
           Cancel
         </button>
         <button type="button" className="btnp" onClick={save} disabled={!canSave(composer)} title={`${modKey}Return`}>
-          {composer.editing ? "Save" : "Comment"}
+          {composer.editing ? "Save" : KINDS.find((k) => k.kind === asks)?.save}
         </button>
       </div>
     </div>

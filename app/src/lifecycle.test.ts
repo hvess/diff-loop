@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Comment } from "./bindings/Comment";
-import { footOf, hasCard, kindOf, markOf, notInDiff, reopened, resolvable, toneOf } from "./lifecycle";
+import { answered, askOf, footOf, hasCard, kindOf, markOf, notInDiff, reopened, resolvable, toAccept, toneOf } from "./lifecycle";
 
 const draft: Comment = {
   id: "c",
@@ -13,6 +13,7 @@ const draft: Comment = {
   sent: null,
   resolved: null,
   note: null,
+  question: false,
 };
 
 const sent = (verdict: Comment["sent"] extends infer S ? (S extends { verdict: infer V } ? V : never) : never): Comment => ({
@@ -99,6 +100,17 @@ describe("the words for a comment", () => {
     expect(markOf({ ...sent("untouched"), resolved: "byReviewer" })).toBe("Resolved");
     expect(markOf({ ...sent("applied"), resolved: "suggestionApplied" })).toBe("Resolved · suggestion applied");
     expect(markOf({ ...sent("untouched"), resolved: "byAgent", note: "Done." })).toBe("Resolved by agent");
+    expect(markOf({ ...sent("untouched"), question: true, resolved: "byAgent", note: "Yes." })).toBe("Answered by agent");
+  });
+
+  it("read a comment's kind as the core does: a question whatever it holds, else a suggestion by its code", () => {
+    expect(askOf(draft)).toBe("comment");
+    expect(askOf({ ...draft, suggestion: "y" })).toBe("suggestion");
+    expect(askOf({ ...draft, suggestion: "y", question: true })).toBe("question");
+    expect(answered({ ...draft, question: true, resolved: "byAgent" })).toBe(true);
+    expect(answered({ ...draft, resolved: "byAgent" })).toBe(false);
+    expect(toAccept({ ...draft, resolved: "byAgent" })).toBe(true);
+    expect(toAccept({ ...draft, question: true, resolved: "byAgent" })).toBe(false);
   });
 
   it("say what became of sent code in the card's footer", () => {

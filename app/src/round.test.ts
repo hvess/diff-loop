@@ -14,6 +14,7 @@ const draft = (id: string): Comment => ({
   sent: null,
   resolved: null,
   note: null,
+  question: false,
 });
 
 const inRound = (id: string, round: number, verdict: "untouched" | "changed" | "applied" | null, resolved = false): Comment => ({
@@ -75,6 +76,15 @@ describe("the round strip", () => {
     });
   });
 
+  it("counts the questions the agent answered apart from what it resolved", () => {
+    const fixed = { ...inRound("f", 1, "untouched"), resolved: "byAgent" as const };
+    const asked = { ...inRound("q", 1, "untouched"), question: true, resolved: "byAgent" as const };
+    expect(roundStrip([round(1)], [fixed, asked], 0, 0).parts).toEqual([
+      { filter: "byAgent", text: "1 resolved by agent, to accept" },
+      { filter: "answered", text: "1 answered, to read" },
+    ]);
+  });
+
   it("counts a reopened comment as neither changed nor untouched", () => {
     const reopened = { ...inRound("r", 1, "untouched"), text: "edited" };
     expect(roundStrip([round(1)], [inRound("a", 1, "changed"), reopened], 0, 0).parts).toEqual([{ filter: "changed", text: "1 changed" }]);
@@ -88,8 +98,10 @@ describe("the round strip", () => {
 });
 
 describe("the preview's subtitle", () => {
-  it("counts comments and files before any round, then new against still open", () => {
-    expect(previewSubtitle([draft("a"), { ...draft("b"), path: "b.ts" }], 0)).toBe("2 comments across 2 files");
+  it("counts each kind before any round, then new against still open", () => {
+    expect(previewSubtitle([draft("a"), { ...draft("b"), path: "b.ts" }], 0)).toBe("2 comments");
+    const kinds = [draft("a"), { ...draft("q"), question: true }, { ...draft("s"), suggestion: "x" }, { ...draft("t"), suggestion: "y" }];
+    expect(previewSubtitle(kinds, 0)).toBe("1 comment · 1 question · 2 suggestions");
     const reopened = { ...inRound("r", 1, "untouched"), text: "edited" };
     expect(previewSubtitle([draft("a"), reopened, inRound("s", 1, "untouched"), inRound("x", 1, "untouched", true)], 1)).toBe("2 new · 1 still open");
   });

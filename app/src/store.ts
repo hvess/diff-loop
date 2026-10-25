@@ -21,7 +21,7 @@ import type { Seen } from "./bindings/Seen";
 import type { Snapshot } from "./bindings/Snapshot";
 import type { Side } from "./bindings/Side";
 import type { Target } from "./bindings/Target";
-import { awaitsReviewer, changed, hasCard, open as isOpen, resolvable } from "./lifecycle";
+import { answered, awaitsReviewer, changed, hasCard, open as isOpen, resolvable, toAccept } from "./lifecycle";
 import { dedent } from "./indent";
 import { shortId } from "./format";
 import { idOf, sameKey } from "./key";
@@ -55,8 +55,10 @@ export type Composer = {
   path: string;
   target: Target;
   text: string;
-  /** Replacement code while "Suggest Change" is on. */
+  /** Replacement code while the kind is Suggestion. */
   suggestion: string | null;
+  /** Whether the kind is Question (ADR 0036 §1). */
+  question: boolean;
   /** The comment being edited, if any. */
   editing: string | null;
 };
@@ -100,7 +102,7 @@ export type Banner = { title: string; body: string | null; action: BannerAction 
 export type Following = { round: number; since: string };
 
 /** The comments N / P step through: every one with a card, or only those a round strip count names (sent ones judged changed or untouched, or any the agent resolved). */
-export type CommentFilter = "changed" | "untouched" | "byAgent" | null;
+export type CommentFilter = "changed" | "untouched" | "byAgent" | "answered" | null;
 
 type Undo = { label: string; comments: Comment[] };
 
@@ -437,7 +439,9 @@ export function bannerDetail(notInDiff: number): string {
 export function inFilter(c: Comment, filter: CommentFilter): boolean {
   if (filter === null) return true;
   // What the agent resolved waits on the reviewer, sent or not (ADR 0032 §2).
-  if (filter === "byAgent") return awaitsReviewer(c);
+  if (filter === "byAgent") return toAccept(c);
+  // A question the agent answered waits on the reviewer to read it (ADR 0036 §2).
+  if (filter === "answered") return answered(c);
   if (c.sent === null || c.resolved !== null) return false;
   return filter === "changed" ? changed(c) : c.sent.verdict === "untouched" || c.sent.verdict === "nearbyChanged";
 }
@@ -756,7 +760,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         const m = moved.get(c.id);
         if (!m || !unchanged.has(c)) return c;
         if (c.resolved === null && m.resolved === "suggestionApplied") autoResolved++;
-        return { ...m, text: c.text, suggestion: c.suggestion };
+        return { ...m, text: c.text, suggestion: c.suggestion, question: c.question };
       });
       // A watch event often changes nothing reviewed (a build writing ignored
       // files): then the window keeps its state, and nothing re-renders.
@@ -1089,7 +1093,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
     end = withinHunk(file, side, start, end);
     const code = linesOn(file, side, start, end);
     set({
-      composer: { path, target: { kind: "lines", side, start, code }, text: "", suggestion: null, editing: null },
+      composer: { path, target: { kind: "lines", side, start, code }, text: "", suggestion: null, question: false, editing: null },
       selection: { path, side, anchor: start, head: end, dragging: false },
       openComment: null,
     });
@@ -1097,7 +1101,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   composeOnFile(path) {
     if (!canComment(get())) return;
-    set({ composer: { path, target: { kind: "file" }, text: "", suggestion: null, editing: null }, openComment: null });
+    set({ composer: { path, target: { kind: "file" }, text: "", suggestion: null, question: false, editing: null }, openComment: null });
   },
 
   editComment(id) {
@@ -1114,6 +1118,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         target: c.target,
         text: c.text,
         suggestion: c.suggestion === null ? null : dedent(c.suggestion.split("\n")).join("\n"),
+        question: c.question,
         editing: id,
       },
       selection,
@@ -1134,7 +1139,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
     const composer = get().composer;
     const place = placeOf(get());
     if (!composer || !canSave(composer) || !place) return;
-    const written = { target: composer.target, text: composer.text.trim(), suggestion: composer.suggestion };
+    const written = { target: composer.target, text: composer.text.trim(), suggestion: composer.suggestion, question: composer.question };
     // An edited sent comment keeps its round, and is reopened by its text differing from what was sent.
     const comments = composer.editing
       ? get().comments.map((c) => (c.id === composer.editing ? { ...c, ...written, ...reopenedMark(c, written) } : c))
@@ -1407,8 +1412,8 @@ export const useStore = create<State & Actions>()((set, get) => ({
 }));
 
 /** What editing `c` into `written` does to a mark the agent left: a changed comment is open again (ADR 0032 §2). */
-function reopenedMark(c: Comment, written: Pick<Comment, "text" | "suggestion">): Partial<Comment> {
-  const edited = written.text !== c.text || written.suggestion !== c.suggestion;
+function reopenedMark(c: Comment, written: Pick<Comment, "text" | "suggestion" | "question">): Partial<Comment> {
+  const edited = written.text !== c.text || written.suggestion !== c.suggestion || written.question !== c.question;
   return awaitsReviewer(c) && edited ? { resolved: null, note: null } : {};
 }
 

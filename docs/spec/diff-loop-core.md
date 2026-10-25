@@ -76,6 +76,18 @@ Each is a pure function tested here.
    (`kept_at`), each comment ends with its id, "(id `…`)", and in place
    of "When done, reply…" the agent is told where the comments are kept
    and how to mark one resolved, through `resolve_comment` or the file.
+   Since ADR 0036: a comment is a comment, a question (`Comment::question`)
+   or a suggestion (holding suggested code), read by `Comment::kind`. The
+   first line counts what is new by kind ("Review of agent/x (compared
+   with main): 2 comments, 1 question and 1 suggestion", "; 3 still open
+   from earlier rounds"); what is new has a numbered `##` section per kind
+   with one instruction ("Address these comments", "Answer these
+   questions", "Implement these suggestions", a kind with nothing left
+   out), each file under `###`, a suggestion's code under its item
+   without a label; then "## Still open", where a question says
+   "Question: " and a suggestion "Suggested change:"; then "## When
+   you're done", the review file and how to mark each one resolved, or
+   without it, to reply and answer each question.
 7. **`open` and `load` take any `Repository`, sized or not**, so the app
    can hold its adapter as `dyn Repository`.
 8. **`load` returns only what the caller lacks.** Each file carries a
@@ -221,6 +233,11 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-25, questions and suggestions)
+
+ADR 0036: `Comment::question` and `Kind`; `instructions` writes a
+numbered section per kind, then "Still open" and "When you're done".
 
 ## Progress (2026-10-25, the agent's marks)
 

@@ -1,7 +1,7 @@
 import type { Comment } from "../bindings/Comment";
 import { shortId, when } from "../format";
 import { dedent } from "../indent";
-import { awaitsReviewer, changed, footOf, kindOf, markOf, resolvable, verdictOf } from "../lifecycle";
+import { answered, awaitsReviewer, changed, footOf, kindOf, markOf, resolvable, verdictOf } from "../lifecycle";
 import { shownNote } from "../note";
 import { useNow } from "../now";
 import { useStore } from "../store";
@@ -123,9 +123,9 @@ export function CommentCard({ comment }: { comment: Comment }) {
       )}
       {/* One footer for every comment, so Edit is in one place whether it is a draft or sent (ux gate 7). */}
       <div className="mt-3.5 flex items-center gap-2">
-        {sent !== null && (
+        {(sent !== null || answered(comment)) && (
           <span className="text-[11px] text-[var(--sec)]">
-            {kind === "reopened" ? "Copies as “Still: …”" : footOf(comment)}
+            {answered(comment) ? "Reply to ask again; it reopens the question." : kind === "reopened" ? "Copies as “Still: …”" : footOf(comment)}
           </span>
         )}
         <span className="grow" />
@@ -135,7 +135,7 @@ export function CommentCard({ comment }: { comment: Comment }) {
           </button>
         )}
         <button type="button" className="btn" onClick={() => editComment(comment.id)}>
-          Edit
+          {answered(comment) ? "Reply" : "Edit"}
         </button>
         {resolvable(comment) && (
           <button
@@ -145,7 +145,7 @@ export function CommentCard({ comment }: { comment: Comment }) {
             onClick={() => resolveComment(comment.id)}
           >
             <Sym name="resolved" />
-            {awaitsReviewer(comment) ? "Accept" : "Resolve"}
+            {answered(comment) ? "Mark Answered" : awaitsReviewer(comment) ? "Accept" : "Resolve"}
           </button>
         )}
       </div>

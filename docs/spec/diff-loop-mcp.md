@@ -1,6 +1,6 @@
 # diff-loop-mcp
 
-A stdio MCP server through which a coding agent reads a branch's review and marks the comments it fixed as resolved.
+A stdio MCP server through which a coding agent reads a branch's review and marks the comments it fixed, or the questions it answered, as resolved.
 
 **Status:** active — steps 1 to 5 landed; bundling and removing the guessing remain.
 **Scope:** `crates/mcp` (new), the review file it shares with the app (`docs/spec/diff-loop-store.md`), and the app's side of an agent's marks.
@@ -21,7 +21,8 @@ comment stays, so the reviewer can still see what was asked.
 2. Copy puts the instructions on the clipboard, naming the review file
    and each comment's id, and saying how to mark one resolved.
 3. The agent fixes what it can and marks each fixed comment resolved,
-   with a short note: through the MCP tool `resolve_comment`, or by
+   with a short note, and answers each question the same way, its note
+   the answer (ADR 0036 §2): through the MCP tool `resolve_comment`, or by
    editing the file.
 4. The window sees the file change and shows the comment as resolved by
    the agent, with its note. R accepts it; editing the comment reopens it.

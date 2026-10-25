@@ -347,7 +347,7 @@ change, annotate, hand off to the agent, next round.
     dialog, against the HIG `modality` page; the developer's call,
     2026-10-15, for the design's header), an "Edited" dot in its header, the
     text full-bleed between hairlines, its subtitle "5 comments across 3
-    files" before any round and "3 new · 2 still open" after one
+    files" before any round (the kinds counted since Decision 36) and "3 new · 2 still open" after one
     (`previewSubtitle`, `app/src/round.ts`); the wording above stays
     rather than the design's "Click into the text to edit before
     copying." and "Changes apply to this copy only. Reset", the
@@ -375,9 +375,10 @@ change, annotate, hand off to the agent, next round.
     suggestion saved before this, indent and all, is shown on its card and
     opened for editing without its shared indent too, so its − and +
     lines line up and unchanged code still needs a reason. While on,
-    the button reads Remove Suggestion where it read Suggest Change, so
-    its state is told by more than shade (HIG `accessibility`; the
-    canvas's 3f since Decision 35). The editable + line has the canvas's
+    the button read Remove Suggestion where it read Suggest Change, so
+    its state was told by more than shade (HIG `accessibility`; the
+    canvas's 3f since Decision 35); since ADR 0036 Suggestion is a kind in
+    the composer's segmented control (Decision 36), its segment pressed. The editable + line has the canvas's
     accent ring, its corners rounded, and the header's "Edit the + line" and the caret say it
     takes typing; until Decision 35 it had none, as the v2 design drew
     it (the developer's call, 2026-10-14). The agent
@@ -467,9 +468,9 @@ change, annotate, hand off to the agent, next round.
     | Shift-↓ / Shift-↑ | Extend the range |
     | Alt-↓ / Alt-↑ (Option) | Next / previous change |
     | C, or Return | Comment on the cursor or range; placing a lost draft, Return places it there |
-    | Alt-Return (Option), in the composer | Suggest Change on or off |
+    | Alt-Return (Option), in the composer | Suggestion on or off (Suggest Change until ADR 0036) |
     | E | Edit the open comment |
-    | R | Resolve the open comment, which closes its card; R again unresolves it and opens the card; on one the agent resolved, accepts it (ADR 0032 §2); nothing on a draft never sent and never resolved (ADR 0015 §4); a draft the agent resolved it accepts, and once accepted unresolves |
+    | R | Resolve the open comment, which closes its card; R again unresolves it and opens the card; on one the agent resolved, accepts it (ADR 0032 §2), and on a question it answered, marks it answered (Mark Answered, ADR 0036 §2); nothing on a draft never sent and never resolved (ADR 0015 §4); a draft the agent resolved it accepts, and once accepted unresolves |
     | ⌘/Ctrl-Backspace | Delete the open comment, with Undo |
     | ⌘/Ctrl-Z | Undo the last delete, Delete Drafts or Re-place |
     | Shift-X | Show every unchanged line of the file |
@@ -894,6 +895,30 @@ change, annotate, hand off to the agent, next round.
       as the bottom bar's progress ring keeps a visible track.
 
 
+36. **Comments, questions and suggestions** (ADR 0036; the canvas's 3c,
+    3d, 3f, 4a, 4c and 5c). The composer opens with a segmented control,
+    Comment | Question | Suggestion (`.tseg`), Comment pressed; Question
+    sets `question` and says under the field "The agent answers, without
+    changing code.", Suggestion fills the + lines as Suggest Change did,
+    and Comment or Question drops them. Its main button follows: Comment,
+    Ask Question, Suggest Change (Save while editing). A sent comment's
+    kind cannot change, so what it is judged against stays what was sent;
+    Suggestion is offered only on a range of new lines; a kind that
+    cannot be picked says why on hover ("A sent comment keeps its kind",
+    "Suggested code goes on new lines"). Every kind keeps
+    the plain dot on its margin note and list row; the list says
+    "Question" or "Suggestion" after the place (suggested code with no
+    reason already reads "Suggested change" as its text, so takes no
+    word), and a note's spoken label
+    names its kind. A question the agent answered is "Answered by agent",
+    its card's buttons Reply and Mark Answered (R), its footer "Reply to
+    ask again; it reopens the question."; a kind changed is an edit, which
+    drops an agent's mark (`reopenedMark`, `keeping_agent_marks`); the round strip counts it apart
+    ("1 answered, to read", the `answered` filter, the agent's other marks
+    `byAgent`), and the comment count adds "N to read". Before any round
+    the preview's subtitle counts the kinds ("2 comments · 1 question · 1
+    suggestion", `previewSubtitle`), where it counted comments and files.
+
 ## Pitfalls
 
 - A load answers for the comments it was sent. One changed while it ran
@@ -915,6 +940,12 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-25, questions and suggestions)
+
+ADR 0036, Decision 36: the composer's kinds, questions answered by the
+agent and marked answered, and the instructions in a section per kind
+(the core's `instructions`).
 
 ## Progress (2026-10-25, the branch switcher)
 

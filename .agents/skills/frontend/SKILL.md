@@ -15,7 +15,9 @@ comparison, the seam the ADR 0015 build chose; `holdsReview` repeats
 `SavedReview::is_empty`, the seam the ADR 0026 build chose, since the
 window asks it on every comment; the store's `reopenedMark` repeats
 `SavedReview::keeping_agent_marks`'s test of an unedited comment, the
-seam the ADR 0032 build chose, since the composer decides on save; the store's `seen`, which a load moves
+seam the ADR 0032 build chose, since the composer decides on save;
+`askOf` repeats `Comment::kind`, the seam the ADR 0036 build chose,
+since every row asks it; the store's `seen`, which a load moves
 to the branch's new commit between the core's `resume` calls, Decision
 33), what to send and when (`canSend`
 says whether Copy is offered at all: not where no worktree has the

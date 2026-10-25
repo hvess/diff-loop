@@ -28,6 +28,8 @@ app share them; ADR 0031 §3 makes the store a crate both can depend on.
    beside it (`<file>.lock`), and every write goes to `<file>.next` and is
    renamed over it. Reads take no lock. A file of another version, or
    that does not parse, is reported and never overwritten, nor removed.
+   A comment's `question` (ADR 0036 §1) reads as false where a file
+   written before it has none, so the format stays at version 1.
 2. **A branch's file name** (`name.rs`): `%` written `%25`, `/` written
    `%2F`, then `.json`; a name that does not decode is not a review file,
    so locks and writes in progress are never read as one.

@@ -50,9 +50,10 @@ contradicts) and the entry says so before it goes.
     their first `/` (`remoteOf`, `app/src/components/BasePicker.tsx`), as
     `default_branch` splits `origin/main` (`crates/core/src/base.rs`); a
     remote named `team/fork` lists as `team`, its branches as `fork/…`.
-    git's short name cannot tell the two apart. Since 2026-10-19 the review
+    git's short name cannot tell the two apart. Since 2026-10-19 the
     switcher names such a branch the same way (`fold`,
-    `crates/git/src/project.rs`), so both read one rule. Closes when
+    `crates/git/src/project.rs`), and since ADR 0035 lists it under that
+    remote (`listsOf`), so both read one rule. Closes when
     `BaseRef` and `Branch` name a remote branch's remote (read with `git
     remote`), or the developer decides it is fine.
 

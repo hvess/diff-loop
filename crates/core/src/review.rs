@@ -391,6 +391,7 @@ pub(crate) mod tests {
             sent: None,
             resolved: None,
             note: None,
+            question: false,
         };
         let (review, _) = load(&repo, Base::Uncommitted, vec![comment], vec![], None).unwrap();
         assert_eq!(review.fingerprint, None, "a watch takes no fingerprint");
@@ -436,6 +437,7 @@ pub(crate) mod tests {
             }),
             resolved: None,
             note: None,
+            question: false,
         };
         let verdict = |base: Base| {
             let (review, _) = load(&repo, base, vec![comment.clone()], vec![], None).unwrap();

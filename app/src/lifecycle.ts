@@ -35,6 +35,30 @@ export function notInDiff(c: Comment): boolean {
   return c.resolved === null && kindOf(c) === "outdated";
 }
 
+/** Every kind, in the canvas's order, with its label and the composer's button that saves it (ADR 0036 §1). */
+export const KINDS = [
+  { kind: "comment", label: "Comment", save: "Comment" },
+  { kind: "question", label: "Question", save: "Ask Question" },
+  { kind: "suggestion", label: "Suggestion", save: "Suggest Change" },
+] as const;
+
+export type Ask = (typeof KINDS)[number]["kind"];
+
+/** What a comment asks of the agent, as the core's `Comment::kind` reads it (ADR 0036 §1); its value is its noun. */
+export function askOf(c: Pick<Comment, "question" | "suggestion">): Ask {
+  return c.question ? "question" : c.suggestion !== null ? "suggestion" : "comment";
+}
+
+/** Whether the agent answered a question, which waits on the reviewer to read it, then mark it answered or reply (ADR 0036 §2). */
+export function answered(c: Comment): boolean {
+  return c.question && awaitsReviewer(c);
+}
+
+/** Whether the agent resolved a comment or suggestion, which waits on the reviewer to accept it (ADR 0032 §2). */
+export function toAccept(c: Comment): boolean {
+  return !c.question && awaitsReviewer(c);
+}
+
 /** Whether the agent resolved the comment and it waits on the reviewer to accept it or reopen it (ADR 0032 §2). */
 export function awaitsReviewer(c: Comment): boolean {
   return c.resolved === "byAgent";
@@ -79,6 +103,7 @@ export function toneOf(c: Comment): "" | "sent" | "changed" {
 /** The list entry's mark; empty for a draft. */
 export function markOf(c: Comment): string {
   if (c.resolved === "suggestionApplied") return "Resolved · suggestion applied";
+  if (answered(c)) return "Answered by agent";
   if (awaitsReviewer(c)) return "Resolved by agent";
   if (c.resolved !== null) return "Resolved";
   switch (kindOf(c)) {

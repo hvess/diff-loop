@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    anchor::{AnchorState, Comment, Target, Verdict},
+    anchor::{AnchorState, Comment, Kind, Target, Verdict},
     base::Base,
     code::dedent,
     diff::Side,
@@ -30,57 +30,135 @@ pub struct InstructionsRequest {
 /// Longest quoted code before it is cut with `…`, in characters.
 const QUOTE_MAX: usize = 60;
 
-/// The review as Markdown instructions an agent can act on: what is new,
-/// then what was sent before and is still open (ADR 0015 §6). With
-/// `kept_at`, the file the review is kept in, each comment names its id and
-/// the agent is told to mark the ones it fixed resolved there (ADR 0032 §1).
+/// The review as Markdown instructions an agent can act on: what is new, in
+/// a numbered section per kind (ADR 0036 §3), then what was sent before and
+/// is still open (ADR 0015 §6). With `kept_at`, the file the review is kept
+/// in, each comment names its id and the agent is told to mark the ones it
+/// dealt with resolved there (ADR 0032 §1).
 #[must_use]
 pub fn instructions(request: &InstructionsRequest, kept_at: Option<&str>) -> String {
     let mut out = String::new();
-    // `write!` to a String cannot fail.
-    let _ = writeln!(
-        out,
-        "Please address these review comments on {}{}.",
-        head_label(&request.head),
-        base_label(&request.base)
-    );
+    let with_id = kept_at.is_some();
     let (still, new): (Vec<&Comment>, Vec<&Comment>) = request
         .comments
         .iter()
         .filter(|c| c.resolved.is_none())
         .partition(|c| c.sent.is_some() && !c.reopened());
-    for (path, comments) in by_file(&new) {
-        let _ = write!(out, "\n### {path}\n");
-        for comment in comments {
-            write_comment(&mut out, comment, kept_at.is_some());
-        }
-    }
-    if !still.is_empty() {
-        let _ = write!(out, "\n### Still open\n{}\n", still_open(&still));
-        for (path, comments) in by_file(&still) {
-            let _ = write!(out, "\n#### {path}\n");
+    let counted = counts(&new, still.len());
+    // `write!` to a String cannot fail.
+    let _ = writeln!(
+        out,
+        "Review of {}{}{}{counted}.",
+        head_label(&request.head),
+        base_label(&request.base),
+        if counted.is_empty() { "" } else { ": " },
+    );
+    let sections = KINDS
+        .iter()
+        .map(|words| {
+            let of_kind: Vec<&Comment> = new
+                .iter()
+                .copied()
+                .filter(|c| c.kind() == words.kind)
+                .collect();
+            (words, of_kind)
+        })
+        .filter(|(_, comments)| !comments.is_empty());
+    for (number, (words, comments)) in (1..).zip(sections) {
+        let _ = write!(out, "\n## {number}. {}\n{}\n", words.title, words.ask);
+        for (path, comments) in by_file(&comments) {
+            let _ = write!(out, "\n### {path}\n");
             for comment in comments {
-                write_comment(&mut out, comment, kept_at.is_some());
+                write_comment(&mut out, comment, with_id, false);
             }
         }
     }
-    match kept_at {
-        Some(path) => {
-            let _ = write!(
-                out,
-                "\nThese comments are kept in `{path}`. When you have fixed one, mark it \
-                 resolved with a one-line note saying what you changed: call \
-                 `resolve_comment` on the `diff-loop` MCP server with its id and the \
-                 note, or, without it, set the comment's `\"resolved\"` to `\"byAgent\"` \
-                 and its `\"note\"` to the note in that file, changing nothing else. \
-                 Leave a comment you did not fix as it is.\n"
-            );
-        }
-        None => {
-            out.push_str("\nWhen done, reply with one line per comment saying what you changed.\n")
+    if !still.is_empty() {
+        let _ = write!(out, "\n## Still open\n{}\n", still_open(&still));
+        for (path, comments) in by_file(&still) {
+            let _ = write!(out, "\n### {path}\n");
+            for comment in comments {
+                // Among every kind, a question and a suggestion say what they are.
+                write_comment(&mut out, comment, with_id, true);
+            }
         }
     }
+    out.push_str("\n## When you're done\n");
+    match kept_at {
+        Some(path) => {
+            let _ = writeln!(
+                out,
+                "These are kept in `{path}`. Mark each one you dealt with resolved, with a \
+                 one-line note saying what you changed or giving your answer: call \
+                 `resolve_comment` on the `diff-loop` MCP server with its id and the note, or, \
+                 without it, set its `\"resolved\"` to `\"byAgent\"` and its `\"note\"` to the \
+                 note in that file, changing nothing else. Leave anything you did not do as it is."
+            );
+        }
+        None => out.push_str(
+            "Reply with one line per comment saying what you changed, and answer each question.\n",
+        ),
+    }
     out
+}
+
+/// A kind's words: its noun, and its section's title and one instruction.
+struct Words {
+    kind: Kind,
+    one: &'static str,
+    many: &'static str,
+    title: &'static str,
+    ask: &'static str,
+}
+
+/// Every kind's words, in the order the instructions take them (the canvas's 4c).
+const KINDS: [Words; 3] = [
+    Words {
+        kind: Kind::Comment,
+        one: "comment",
+        many: "comments",
+        title: "Address these comments",
+        ask: "Change the code so each comment is dealt with.",
+    },
+    Words {
+        kind: Kind::Question,
+        one: "question",
+        many: "questions",
+        title: "Answer these questions",
+        ask: "Answer each one. Don't change any code for them.",
+    },
+    Words {
+        kind: Kind::Suggestion,
+        one: "suggestion",
+        many: "suggestions",
+        title: "Implement these suggestions",
+        ask: "Replace the lines named with the suggested code, as written. If it no longer \
+              fits the code around it, leave it and say why.",
+    },
+];
+
+/// "2 comments, 1 question and 1 suggestion", and how many are still open.
+fn counts(new: &[&Comment], still: usize) -> String {
+    let mut parts: Vec<String> = KINDS
+        .iter()
+        .filter_map(|words| {
+            let n = new.iter().filter(|c| c.kind() == words.kind).count();
+            (n > 0).then(|| format!("{n} {}", if n == 1 { words.one } else { words.many }))
+        })
+        .collect();
+    let listed = match parts.len() {
+        0 => String::new(),
+        1 => parts.remove(0),
+        _ => {
+            let last = parts.pop().unwrap_or_default();
+            format!("{} and {last}", parts.join(", "))
+        }
+    };
+    match (listed.is_empty(), still) {
+        (_, 0) => listed,
+        (true, n) => format!("{n} still open from earlier rounds"),
+        (false, n) => format!("{listed}; {n} still open from earlier rounds"),
+    }
 }
 
 /// The sentence under "Still open": which rounds the comments were sent in.
@@ -138,15 +216,21 @@ fn by_file<'a>(comments: &[&'a Comment]) -> Vec<(&'a str, Vec<&'a Comment>)> {
     files
 }
 
-/// `comment` as one item, with its id when `with_id`.
-fn write_comment(out: &mut String, comment: &Comment, with_id: bool) {
+/// `comment` as one item, with its id when `with_id`, and when `labelled`, among
+/// other kinds, a question's and a suggestion's kind said.
+fn write_comment(out: &mut String, comment: &Comment, with_id: bool, labelled: bool) {
     let text = comment.text.trim();
     let still = if comment.reopened() { "Still: " } else { "" };
+    let asked = if labelled && comment.question {
+        "Question: "
+    } else {
+        ""
+    };
     // Suggested code may stand without a reason; reopened, it still says so.
     let text = match (text.is_empty(), comment.reopened()) {
         (true, true) => ": Still: see the suggested change.".to_owned(),
         (true, false) => String::new(),
-        (false, _) => format!(": {still}{text}"),
+        (false, _) => format!(": {still}{asked}{text}"),
     };
     let id = if with_id {
         format!(" (id `{}`)", comment.id)
@@ -155,11 +239,12 @@ fn write_comment(out: &mut String, comment: &Comment, with_id: bool) {
     };
     let _ = writeln!(out, "- {}{text}{id}", where_label(comment));
     if let Some(suggestion) = &comment.suggestion {
-        let _ = writeln!(
-            out,
-            "  Suggested change:\n  ```{}",
-            fence_language(&comment.path)
-        );
+        let label = if labelled {
+            "  Suggested change:\n"
+        } else {
+            ""
+        };
+        let _ = writeln!(out, "{label}  ```{}", fence_language(&comment.path));
         for line in dedent(suggestion) {
             let _ = writeln!(out, "  {line}");
         }
@@ -292,6 +377,7 @@ mod tests {
             sent: None,
             resolved: None,
             note: None,
+            question: false,
         }
     }
 
@@ -333,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn writes_the_review_grouped_by_file_with_code_and_suggestions() {
+    fn writes_each_kind_in_its_own_numbered_section_grouped_by_file() {
         let handler = "src/api/share/handler.ts";
         let mut hash = comment(
             handler,
@@ -343,6 +429,13 @@ mod tests {
         );
         hash.suggestion =
             Some("    log.warn('share rate limited', { user: hashUserId(userId) });".into());
+        let mut ask = comment(
+            handler,
+            17,
+            &["  const limit = await checkShareLimit(userId);"],
+            "Should a failed share count against the limit?",
+        );
+        ask.question = true;
         let comments = vec![
             hash,
             comment(
@@ -351,6 +444,7 @@ mod tests {
                 &["  maxPerWindow: 20"],
                 "Make it 50.",
             ),
+            ask,
             comment(
                 handler,
                 21,
@@ -365,23 +459,52 @@ mod tests {
             ),
         ];
         let expected = "\
-Please address these review comments on agent/share-rate-limit (compared with main).
+Review of agent/share-rate-limit (compared with main): 3 comments, 1 question and 1 suggestion.
 
-### src/api/share/handler.ts
-- L18 `res.setHeader('X-RateLimit-Remaining', x);`: Send the limit too.
-- L20 `log.warn('share rate limited', { userId });`: Don't log the raw userId. Hash it first.
-  Suggested change:
-  ```ts
-  log.warn('share rate limited', { user: hashUserId(userId) });
-  ```
-- L21–22 `return res.status(429).json({…`: Share the 429 body.
+## 1. Address these comments
+Change the code so each comment is dealt with.
 
 ### config/limits.yaml
 - L7 `maxPerWindow: 20`: Make it 50.
 
-When done, reply with one line per comment saying what you changed.
+### src/api/share/handler.ts
+- L18 `res.setHeader('X-RateLimit-Remaining', x);`: Send the limit too.
+- L21–22 `return res.status(429).json({…`: Share the 429 body.
+
+## 2. Answer these questions
+Answer each one. Don't change any code for them.
+
+### src/api/share/handler.ts
+- L17 `const limit = await checkShareLimit(userId);`: Should a failed share count against the limit?
+
+## 3. Implement these suggestions
+Replace the lines named with the suggested code, as written. If it no longer fits the code around it, leave it and say why.
+
+### src/api/share/handler.ts
+- L20 `log.warn('share rate limited', { userId });`: Don't log the raw userId. Hash it first.
+  ```ts
+  log.warn('share rate limited', { user: hashUserId(userId) });
+  ```
+
+## When you're done
+Reply with one line per comment saying what you changed, and answer each question.
 ";
         assert_eq!(instructions(&request(comments), None), expected);
+    }
+
+    #[test]
+    fn a_kind_with_nothing_new_has_no_section_and_the_rest_are_numbered_on() {
+        let mut ask = comment("a.rs", 1, &["x"], "Why?");
+        ask.question = true;
+        let text = instructions(&request(vec![ask]), None);
+        assert!(
+            text.starts_with(
+                "Review of agent/share-rate-limit (compared with main): 1 question.\n"
+            ),
+            "{text}"
+        );
+        assert!(text.contains("\n## 1. Answer these questions\n"), "{text}");
+        assert!(!text.contains("Address these comments"), "{text}");
     }
 
     #[test]
@@ -399,7 +522,7 @@ When done, reply with one line per comment saying what you changed.
             "{text}"
         );
         assert!(text.contains("`resolve_comment`"), "{text}");
-        assert!(!text.contains("When done, reply"), "{text}");
+        assert!(!text.contains("Reply with one line"), "{text}");
     }
 
     #[test]
@@ -477,7 +600,10 @@ When done, reply with one line per comment saying what you changed.
             )
         };
         let expected = "\
-Please address these review comments on agent/share-rate-limit (compared with main).
+Review of agent/share-rate-limit (compared with main): 3 comments; 3 still open from earlier rounds.
+
+## 1. Address these comments
+Change the code so each comment is dealt with.
 
 ### src/api/share/handler.ts
 - L19 `res.setHeader('X-RateLimit-Limit', …)`: Send limit.max.
@@ -488,15 +614,16 @@ Please address these review comments on agent/share-rate-limit (compared with ma
 ### config/limits.yaml
 - L7 `maxPerWindow: 20`: Still: Make it 50 for team accounts.
 
-### Still open
+## Still open
 Sent in earlier rounds and not resolved yet.
 
-#### src/api/share/handler.ts
+### src/api/share/handler.ts
 - L18 `res.setHeader('X-RateLimit-Remaining', …)`: Also send X-RateLimit-Limit.
 - L23 `return tooManyRequests(res, limit.resetAt);`, was L21–22: Pull this into a helper.
 - Code removed since sent, was L31 `throw new Error('rate limiter unavailable');`: Return a 503 here.
 
-When done, reply with one line per comment saying what you changed.
+## When you're done
+Reply with one line per comment saying what you changed, and answer each question.
 ";
         let comments = vec![new, lost, reopened, untouched, changed, removed, resolved];
         assert_eq!(instructions(&request(comments), None), expected);
@@ -513,7 +640,22 @@ When done, reply with one line per comment saying what you changed.
         );
         let text = instructions(&request(vec![one]), None);
         assert!(
-            text.contains("### Still open\nSent in round 3 and not resolved yet.\n"),
+            text.contains("## Still open\nSent in round 3 and not resolved yet.\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_question_or_suggestion_still_open_says_what_it_is() {
+        let mut ask = comment("a.rs", 1, &["x"], "Why?");
+        ask.question = true;
+        let mut code = comment("a.rs", 2, &["y"], "Use z.");
+        code.suggestion = Some("z".into());
+        let still = [ask, code].map(|c| sent(c, 1, 1, &["x"], Verdict::Untouched));
+        let text = instructions(&request(still.to_vec()), None);
+        assert!(text.contains("- L1 `x`: Question: Why?\n"), "{text}");
+        assert!(
+            text.contains("- L2 `y`: Use z.\n  Suggested change:\n  ```rust\n"),
             "{text}"
         );
     }
@@ -536,10 +678,7 @@ When done, reply with one line per comment saying what you changed.
         let mut only_code = comment("a.rs", 3, &["let x = 1;"], "");
         only_code.suggestion = Some("let x = 2;".into());
         let text = instructions(&request(vec![only_code]), None);
-        assert!(
-            text.contains("\n- L3 `let x = 1;`\n  Suggested change:\n"),
-            "{text}"
-        );
+        assert!(text.contains("\n- L3 `let x = 1;`\n  ```rust\n"), "{text}");
     }
 
     #[test]
@@ -550,9 +689,7 @@ When done, reply with one line per comment saying what you changed.
         reopened.suggestion = Some("let x = 3;".into());
         let text = instructions(&request(vec![reopened]), None);
         assert!(
-            text.contains(
-                "\n- L3 `let x = 1;`: Still: see the suggested change.\n  Suggested change:\n"
-            ),
+            text.contains("\n- L3 `let x = 1;`: Still: see the suggested change.\n  ```rust\n"),
             "{text}"
         );
     }
@@ -600,8 +737,10 @@ When done, reply with one line per comment saying what you changed.
             commit: "4e1b2a0".into(),
         };
         request.base = Base::Uncommitted;
-        assert!(instructions(&request, None).starts_with(
-            "Please address these review comments on the detached HEAD at 4e1b2a0 (uncommitted changes only)."
-        ));
+        assert!(
+            instructions(&request, None).starts_with(
+                "Review of the detached HEAD at 4e1b2a0 (uncommitted changes only).\n"
+            )
+        );
     }
 }

@@ -221,6 +221,7 @@ mod tests {
             sent: None,
             resolved: None,
             note: None,
+            question: false,
         };
         (
             ReviewKey {

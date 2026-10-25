@@ -92,6 +92,7 @@ const comment = (id: string): Comment => ({
   sent: null,
   resolved: null,
   note: null,
+  question: false,
 });
 
 /** `c` as sent in round `round`, untouched. */
@@ -785,6 +786,7 @@ describe("what the composer can save", () => {
     target: { kind: "lines", side: "new", start: 3, code: ["let x = 1;"] },
     text,
     suggestion,
+    question: false,
     editing: null,
   });
 
@@ -815,6 +817,7 @@ describe("suggested code", () => {
     target: { kind: "lines", side: "new", start: 3, code: ["    if (a) {", "      b();"] },
     text: "",
     suggestion,
+    question: false,
     editing: null,
   });
 
@@ -1282,6 +1285,13 @@ describe("rounds", () => {
     expect(useStore.getState().copied).toBeNull();
   });
 
+  it("saves a question as one, with no suggested code", () => {
+    useStore.getState().composeOnFile("a.ts");
+    useStore.getState().updateComposer({ text: "Why?", question: true });
+    useStore.getState().saveComposer();
+    expect(useStore.getState().comments.at(-1)).toMatchObject({ text: "Why?", question: true, suggestion: null });
+  });
+
   it("ends the offer to take a round back once a comment is resolved", async () => {
     await useStore.getState().copyReview();
     expect(useStore.getState().unsend).not.toBeNull();
@@ -1335,6 +1345,15 @@ describe("resolving", () => {
     useStore.getState().updateComposer({ text: "Not quite: rename the type too." });
     useStore.getState().saveComposer();
     expect(useStore.getState().comments[1]).toMatchObject({ resolved: null, note: null });
+  });
+
+  it("reopens what the agent resolved once its kind changes", () => {
+    const marked: Comment = { ...open, resolved: "byAgent", note: "Renamed it." };
+    useStore.setState({ comments: [draft, marked], review: null });
+    useStore.getState().editComment("s");
+    useStore.getState().updateComposer({ question: true });
+    useStore.getState().saveComposer();
+    expect(useStore.getState().comments[1]).toMatchObject({ question: true, resolved: null, note: null });
   });
 
   it("unresolves a comment with no card without showing it", () => {

@@ -2,7 +2,7 @@
 import type { Comment } from "./bindings/Comment";
 import type { Round } from "./bindings/Round";
 import { when } from "./format";
-import { awaitsReviewer, changed, open as isOpen, reopened } from "./lifecycle";
+import { answered, askOf, changed, KINDS, open as isOpen, reopened, toAccept } from "./lifecycle";
 import { type CommentFilter, inFilter } from "./store";
 
 /** What the strip says of the last round: its title, its counts, and what goes at the right. */
@@ -22,10 +22,12 @@ export function roundStrip(
   const open = sent.filter((c) => c.resolved === null && !reopened(c));
   const changedN = open.filter(changed).length;
   const untouchedN = open.filter((c) => inFilter(c, "untouched")).length;
-  // What the agent says it fixed waits on the reviewer, from any round or none, as the `byAgent` filter steps through it (ADR 0032 §2).
-  const byAgentN = comments.filter(awaitsReviewer).length;
+  // What the agent says it fixed, or answered, waits on the reviewer, from any round or none, as the `byAgent` and
+  // `answered` filters step through them (ADR 0032 §2, ADR 0036 §2).
+  const answeredN = comments.filter(answered).length;
+  const byAgentN = comments.filter(toAccept).length;
   // Until the agent's work shows, the round reads as what was just sent.
-  if (changedN === 0 && autoResolved === 0 && byAgentN === 0 && open.length === sent.length) {
+  if (changedN === 0 && autoResolved === 0 && byAgentN === 0 && answeredN === 0 && open.length === sent.length) {
     const n = sent.length;
     return {
       title: `Round ${last.number} sent`,
@@ -38,6 +40,7 @@ export function roundStrip(
   if (changedN > 0) parts.push({ filter: "changed", text: `${changedN} changed` });
   if (untouchedN > 0) parts.push({ filter: "untouched", text: `${untouchedN} untouched` });
   if (byAgentN > 0) parts.push({ filter: "byAgent", text: `${byAgentN} resolved by agent, to accept` });
+  if (answeredN > 0) parts.push({ filter: "answered", text: `${answeredN} answered, to read` });
   if (autoResolved > 0) parts.push({ filter: null, text: `${autoResolved} resolved automatically` });
   return { title: `Round ${last.number}`, stage: "answered", parts, meta: "" };
 }
@@ -49,12 +52,14 @@ export type StripPart = { filter: CommentFilter; text: string };
 export type Strip = { title: string; stage: "none" | "sent" | "answered"; parts: StripPart[]; meta: string };
 
 
-/** "5 comments across 3 files" before any round; "3 new · 2 still open" once one was sent. */
+/** "2 comments · 1 question · 1 suggestion" before any round (the canvas's 4c); "3 new · 2 still open" once one was sent. */
 export function previewSubtitle(comments: Comment[], rounds: number): string {
   const open = comments.filter(isOpen);
   if (rounds === 0) {
-    const files = new Set(open.map((c) => c.path)).size;
-    return `${open.length} ${open.length === 1 ? "comment" : "comments"} across ${files} ${files === 1 ? "file" : "files"}`;
+    const kinds = KINDS.map(({ kind }) => [kind, open.filter((c) => askOf(c) === kind).length] as const)
+      .filter(([, n]) => n > 0)
+      .map(([kind, n]) => `${n} ${kind}${n === 1 ? "" : "s"}`);
+    return kinds.length > 0 ? kinds.join(" · ") : "0 comments";
   }
   const fresh = open.filter((c) => c.sent === null || reopened(c)).length;
   return `${fresh} new · ${open.length - fresh} still open`;

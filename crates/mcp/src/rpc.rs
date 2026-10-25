@@ -90,19 +90,21 @@ fn tool_list() -> Value {
     json!([
         {
             "name": "get_review",
-            "description": "The open review comments the developer left in Diff Loop on the branch \
-                checked out here, each with its file, lines and id, and the review file they are kept in.",
+            "description": "The open review comments, questions and suggestions the developer left in \
+                Diff Loop on the branch checked out here, each with its file, lines and id, and the review \
+                file they are kept in.",
             "inputSchema": { "type": "object", "properties": {} },
         },
         {
             "name": "resolve_comment",
-            "description": "Marks a review comment you fixed as resolved, with a one-line note saying \
-                what you changed. The comment stays in the review, so the developer can see what was asked.",
+            "description": "Marks a review comment you dealt with as resolved, with a one-line note: what \
+                you changed, or for a question, your answer. The comment stays in the review, so the \
+                developer can see what was asked.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "id": { "type": "string", "description": "The comment's id, as get_review gives it." },
-                    "note": { "type": "string", "description": "What you changed, in one line." },
+                    "note": { "type": "string", "description": "What you changed, or your answer, in one line." },
                 },
                 "required": ["id", "note"],
             },
@@ -152,6 +154,7 @@ mod tests {
             sent: None,
             resolved: None,
             note: None,
+            question: false,
         };
         let review = SavedReview {
             comments: vec![comment],

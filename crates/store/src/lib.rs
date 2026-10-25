@@ -300,6 +300,7 @@ mod tests {
                 sent: None,
                 resolved: None,
                 note: None,
+                question: false,
             }],
             ..SavedReview::default()
         }
@@ -329,6 +330,23 @@ mod tests {
         assert_eq!(written["version"], 1);
         assert_eq!(written["branch"], "agent/share-retry");
         assert_eq!(written["comments"][0]["text"], "one");
+    }
+
+    #[test]
+    fn a_comment_written_before_questions_reads_as_no_question() {
+        let fixture = Fixture::new();
+        let p = fixture.project("p");
+        let store = fixture.store();
+        store.save(&key(&p, "b"), &with_comment("one")).unwrap();
+        let path = reviews_in(&p).join("b.json");
+        let mut file: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        file["comments"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("question");
+        fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
+        assert_eq!(store.saved(&key(&p, "b")).unwrap(), with_comment("one"));
     }
 
     #[test]

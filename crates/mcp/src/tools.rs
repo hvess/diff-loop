@@ -44,7 +44,7 @@ pub(crate) fn get_review(store: &dyn ReviewStore, key: &ReviewKey) -> Result<Str
 }
 
 /// Resolves the open comment `id` in `key`'s review as the agent's, with
-/// `note` saying what it changed.
+/// `note` saying what it changed, or a question's answer (ADR 0036 §2).
 pub(crate) fn resolve_comment(
     store: &dyn ReviewStore,
     key: &ReviewKey,
@@ -91,6 +91,7 @@ mod tests {
             sent: None,
             resolved: None,
             note: None,
+            question: false,
         }
     }
 

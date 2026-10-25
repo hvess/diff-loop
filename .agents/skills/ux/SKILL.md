@@ -129,7 +129,7 @@ own decisions to depart from it, each recorded with both halves.
 - **Two notes in popovers, as the design draws them** (diff-loop-app
   Decision 33; the developer's call, 2026-10-19). The HIG `popovers`
   page advises against a warning in a popover and against one covering
-  content: a deleted branch's notice (6k) is said at the review
+  content: a deleted branch's notice (6k) is said at the branch
   switcher's top, which Esc closes, and "Review Saved" (6e) hangs from
   the title bar's chip over the sidebar's head for 6 s or until
   Dismiss. The deletion is git's, already made. "Review Saved" draws
@@ -147,10 +147,11 @@ own decisions to depart from it, each recorded with both halves.
   24 px fade at its edge, which says it goes on, and its comment marks
   sit at the right edge over the code; Unified, which wraps, shows the
   whole line.
-- **Long places are cut at their end** (the canvas's 1a and 6a; the
-  developer's direction, 2026-10-22). macOS cuts a path in the middle;
-  the canvas cuts a review's place line at its end, and the whole of it
-  is in the line's tooltip.
+- **Long names and places are cut at their end** (the canvas's 1a and
+  2a; the developer's directions, 2026-10-22 and 2026-10-25, ADR 0034).
+  macOS cuts a path in the middle; the canvas cuts a Welcome row's folder
+  and the file tree's names at their end, and the whole of each is in its
+  tooltip. (Until ADR 0035 a switcher row's place line was cut so too.)
 - **A review open in another window is not brought forward** (ADR 0026
   §9; the developer's call, 2026-10-19; open-tasks 25). Desktop apps
   bring forward a document already open; each Diff Loop window is its
@@ -269,7 +270,16 @@ against other wording that would also do.
   as "Agent: …" and Accept in place of Resolve, the margin note reading
   "Agent: <note>" ("Agent: Resolved" with none), and the round strip's
   "2 resolved by agent, to accept", which the comment count's "2
-  comments, 2 to accept" repeats (the developer's call, 2026-10-25). On a card: the chip repeats the mark, and the footer says
+  comments, 2 to accept" repeats (the developer's call, 2026-10-25). A
+  question the agent answered (ADR 0036): "Answered by agent", "Mark
+  Answered" where Accept is, "Reply" where Edit is, "Reply to ask again;
+  it reopens the question.", the strip's "1 answered, to read" and the
+  count's "…, 1 to read". The composer's kinds: Comment, Question and
+  Suggestion, its button "Comment", "Ask Question" or "Suggest Change",
+  a question's hint "The agent answers, without changing code.", a kind
+  that cannot be picked saying why on hover ("A sent comment keeps its
+  kind", "Suggested code goes on new lines"); a list
+  row says "Question" or "Suggestion" after its place. On a card: the chip repeats the mark, and the footer says
   "Untouched since sent", "Untouched since sent · nearby lines changed",
   "The code changed after you sent this. Resolve it if the change
   answers you." (the canvas's; "Accept it" once the agent resolved
