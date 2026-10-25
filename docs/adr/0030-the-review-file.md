@@ -101,6 +101,7 @@ that, 2026-10-24.
   share a file and a ref, as git's own loose refs do.
 - An agent without MCP can be pointed at the file.
 - The app-data directory keeps only the window's own state, `open/`'s
-  claims (ADR 0026 §9) among it.
+  claims (ADR 0026 §9) among it. (Amended by ADR 0031 §2: and
+  `projects.json`, the list of projects that hold a review.)
 - An earlier build finds no reviews; a later build never reads what an
   earlier one wrote to `reviews.json`.

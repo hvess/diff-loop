@@ -77,9 +77,10 @@ contradicts) and the entry says so before it goes.
 
 ## Store
 
-28. **On Windows, a branch whose name has `"`, `<`, `>` or `|`, or ends
-    in `.`, cannot be saved.** git allows those characters in a branch
-    name, Windows refuses them in a file name, and `name::file_name`
+28. **On Windows, a branch whose name has `"`, `<`, `>` or `|`, or is a
+    reserved device name (`con`, `nul`, `aux`, `com1`…), cannot be
+    saved.** git allows them in a branch name, Windows refuses them in a
+    file name (`CON.json` included), and `name::file_name`
     (`crates/store/src/name.rs`) escapes only `%` and `/` (ADR 0030 §1).
     Closes when the escape covers them, or the developer decides
     otherwise.
