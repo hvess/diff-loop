@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use diff_loop_core::{OnChange, RepoError, Touched, WatchGuard};
+use diff_loop_core::{OWN_FOLDER, OnChange, RepoError, Touched, WatchGuard};
 use notify::{
     Error as NotifyError, Event, EventKind, RecursiveMode, Watcher,
     event::{AccessKind, AccessMode, ModifyKind},
@@ -24,7 +24,8 @@ const SETTLE: Duration = Duration::from_millis(250);
 /// with it; none of its paths are reported, but a change to `index`, the
 /// working tree's, touches everything: a change to the index alone names no
 /// working-tree path (`git rm --cached`; ADR 0018 §1). A branch with no
-/// working tree has no index.
+/// working tree has no index. Events in `project`'s [`OWN_FOLDER`] are Diff
+/// Loop's own saves and call nothing.
 ///
 /// # Errors
 /// [`RepoError::Failed`] when the platform refuses a watch (on Linux, the
@@ -33,6 +34,7 @@ pub(crate) fn watch(
     root: &Path,
     git_dirs: &[PathBuf],
     index: Option<&Path>,
+    project: &Path,
     on_change: OnChange,
 ) -> Result<WatchGuard, RepoError> {
     let failed = |e: NotifyError| RepoError::Failed {
@@ -42,9 +44,13 @@ pub(crate) fn watch(
         root: root.to_path_buf(),
         git_dirs: git_dirs.to_vec(),
         index: index.map(Path::to_path_buf),
+        own: project.join(OWN_FOLDER),
     };
     let (events, bursts) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |event: Result<Event, NotifyError>| {
+        if watched.only_own(&event) {
+            return;
+        }
         // The receiver is gone only after the guard dropped.
         let _ = events.send(watched.touched(event));
     })
@@ -91,9 +97,21 @@ struct WatchedPaths {
     /// The working tree's index; the app's own git calls never write it
     /// (`GIT_OPTIONAL_LOCKS`), so its changes are someone else's.
     index: Option<PathBuf>,
+    /// The project's [`OWN_FOLDER`]: a save of a review there would
+    /// otherwise reload the window that made it.
+    own: PathBuf,
 }
 
 impl WatchedPaths {
+    /// Whether `event` touched nothing but Diff Loop's own files.
+    fn only_own(&self, event: &Result<Event, NotifyError>) -> bool {
+        event.as_ref().is_ok_and(|event| {
+            !event.need_rescan()
+                && !event.paths.is_empty()
+                && event.paths.iter().all(|path| path.starts_with(&self.own))
+        })
+    }
+
     /// The working-tree paths `event` touched. Git's own files name none,
     /// except the index, which touches everything; so do lost events and a
     /// path that is not UTF-8.
@@ -166,6 +184,7 @@ mod tests {
             root: PathBuf::from("/repo"),
             git_dirs: vec![PathBuf::from("/repo/.git"), PathBuf::from("/elsewhere/wt")],
             index: Some(PathBuf::from("/elsewhere/wt/index")),
+            own: PathBuf::from("/repo/.git/diff-loop"),
         }
     }
 
@@ -196,6 +215,24 @@ mod tests {
             "/repo",
         ])));
         assert_eq!(touched, Touched::default());
+    }
+
+    #[test]
+    fn only_diff_loops_own_files_call_nothing() {
+        let watched = watched();
+        let own = event(&[
+            "/repo/.git/diff-loop/reviews/b.json",
+            "/repo/.git/diff-loop/reviews/b.json.next",
+        ]);
+        assert!(watched.only_own(&Ok(own.clone())));
+        assert!(!watched.only_own(&Ok(own.set_flag(Flag::Rescan))));
+        assert!(!watched.only_own(&Ok(event(&[
+            "/repo/.git/diff-loop/reviews/b.json",
+            "/repo/.git/HEAD",
+        ]))));
+        assert!(!watched.only_own(&Ok(event(&["/repo/.git/diff-loopy"]))));
+        assert!(!watched.only_own(&Ok(event(&[]))));
+        assert!(!watched.only_own(&Err(NotifyError::generic("overflow"))));
     }
 
     #[test]
@@ -235,6 +272,7 @@ mod tests {
             root: dir.path().to_path_buf(),
             git_dirs: vec![dir.path().join(".git")],
             index: Some(dir.path().join(".git/index")),
+            own: dir.path().join(".git/diff-loop"),
         };
         let src = dir.path().join("src");
         let at = |kind| Event {

@@ -17,6 +17,7 @@ Shape (quality-gate §2):
 | `diff-loop-core` | `crates/core` | Domain and its ports, `Repository`, `Project` and `ReviewStore`; no I/O | `docs/spec/diff-loop-core.md` |
 | `diff-loop-git` | `crates/git` | `Repository` and `Project` over the `git` command line | `docs/spec/diff-loop-git.md` |
 | `diff-loop-app` | `app/src-tauri` | Composition root and Tauri commands | `docs/spec/diff-loop-app.md` |
+| `diff-loop-store` | `crates/store` | `ReviewStore` as a file per branch in each project's git directory | `docs/spec/diff-loop-store.md` |
 | `diff-loop-review` | `crates/review` | The review loop's commit gate; dev-only | `docs/spec/diff-loop-review.md` |
 
 The front end is `app/src` (React). Each new crate gets a spec in
@@ -208,6 +209,11 @@ before reopening a decision they cover.
   server save in turn on a lock beside the file; nothing is guessed, and
   `reviews.json` is no longer read. Takes effect as `diff-loop-mcp`'s
   steps land.
+- **0031 — The review file is built in steps, and the projects with one
+  are listed.** The file grows to 0030's shape step by step at version 1;
+  `projects.json` in the app-data directory lists the projects that hold
+  a review; the store is the `diff-loop-store` crate; the watch ignores
+  Diff Loop's own folder; a listing leaves out a review it cannot read.
 
 ## Key Constraints (non-negotiable)
 

@@ -5,7 +5,7 @@ Work that is known, understood and not done. Each entry says what was seen, wher
 **Status:** active — a ledger, not a spec. Nothing here blocks anything else.
 **Scope:** everything outstanding.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-23
+**Last Updated:** 2026-10-25
 
 An entry leaves this file by being done, or by being decided against — in
 which case the decision goes where it belongs (an ADR, or the spec it
@@ -74,6 +74,15 @@ contradicts) and the entry says so before it goes.
     release build ran beside the review loop; it passed five runs after.
     Why the lock outlived the dropped handle is not known. Closes when the
     cause is found and fixed, or the test is shown not to flake.
+
+## Store
+
+28. **On Windows, a branch whose name has `"`, `<`, `>` or `|`, or ends
+    in `.`, cannot be saved.** git allows those characters in a branch
+    name, Windows refuses them in a file name, and `name::file_name`
+    (`crates/store/src/name.rs`) escapes only `%` and `/` (ADR 0030 §1).
+    Closes when the escape covers them, or the developer decides
+    otherwise.
 
 ## Distribution
 

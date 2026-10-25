@@ -5,7 +5,7 @@ The desktop app: Tauri commands around `diff-loop-core`, and the React front end
 **Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15, and flow 6, reviews per branch, since 2026-10-19 (step 15); the redesign (step 16) landed 2026-10-22.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-23
+**Last Updated:** 2026-10-25
 
 ## Why
 
@@ -899,6 +899,12 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-25, the review file)
+
+The composition root wires `diff_loop_store::FileReviews` over
+`projects.json` in the app-data directory (ADR 0031 §2), in place of
+`JsonReviews` and `reviews.json`, whose module is removed.
 
 ## Progress (2026-10-23, faster switching and panels)
 

@@ -1,7 +1,7 @@
 [package]
 name         = "diff-loop-app"
 version      = "0.10.0"
-description  = "Diff Loop's desktop app: Tauri commands around diff-loop-core, wired to diff-loop-git."
+description  = "Diff Loop's desktop app: Tauri commands around diff-loop-core, wired to diff-loop-git and diff-loop-store."
 edition.workspace      = true
 rust-version.workspace = true
 license.workspace      = true
@@ -17,8 +17,8 @@ tauri-build = { version = "2.7.2", features = [] }
 [dependencies]
 diff-loop-core                 = { workspace = true }
 diff-loop-git                  = { workspace = true }
+diff-loop-store                = { workspace = true }
 serde                          = { workspace = true }
-serde_json                     = { workspace = true }
 thiserror                      = { workspace = true }
 ts-rs                          = { workspace = true }
 tauri                          = { version = "2.12.3", features = [] }

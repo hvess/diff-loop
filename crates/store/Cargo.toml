@@ -1,0 +1,19 @@
+[package]
+name         = "diff-loop-store"
+version      = "0.1.0"
+description  = "Diff Loop's ReviewStore adapter: a file per branch in each project's git directory."
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+publish.workspace      = true
+
+[dependencies]
+diff-loop-core = { workspace = true }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

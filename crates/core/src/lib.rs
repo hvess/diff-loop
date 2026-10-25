@@ -37,5 +37,5 @@ pub use review::{
 };
 pub use rounds::{Round, RoundRequest, end_round, merge, round_to_follow};
 pub use saved::{
-    ReviewKey, ReviewStore, ReviewSummary, RoundSummary, SavedReview, Seen, StoreError,
+    OWN_FOLDER, ReviewKey, ReviewStore, ReviewSummary, RoundSummary, SavedReview, Seen, StoreError,
 };

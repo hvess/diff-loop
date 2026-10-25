@@ -5,7 +5,7 @@ The domain: what changed on a checkout, review comments, and the instructions th
 **Status:** active — first version landed.
 **Scope:** `crates/core`. Excludes reading git (`diff-loop-git.md`) and the UI (`diff-loop-app.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-23
+**Last Updated:** 2026-10-25
 
 ## Why
 
@@ -214,6 +214,11 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-25, the review file)
+
+`OWN_FOLDER` names the folder in a project's common git directory that
+holds Diff Loop's files (ADR 0030 §1), for the store and the watch.
 
 ## Progress (2026-10-23, fewer reads per switch)
 

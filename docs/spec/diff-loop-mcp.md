@@ -2,10 +2,10 @@
 
 A stdio MCP server through which a coding agent hands rounds to Diff Loop and answers the reviewer's comments, so a round's boundary and each comment's outcome are stated rather than guessed.
 
-**Status:** active — designed, nothing built.
+**Status:** active — step 1 landed (`diff-loop-store`); the rest designed, not built.
 **Scope:** `crates/mcp` (new), the review file it shares with the app, and the app's side of rounds. Excludes the diff view itself.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-24
+**Last Updated:** 2026-10-25
 
 ## Why
 
@@ -19,7 +19,9 @@ and what it did with each comment.
 
 1. **Review file** (ADR 0030). One file per branch at
    `<common git dir>/diff-loop/reviews/<name>.json`, read and written by app and
-   server under a lock beside it; replaces `reviews.json` — not started.
+   server under a lock beside it; replaces `reviews.json` — done
+   2026-10-25, holding today's review (ADR 0031 §1), in
+   `diff-loop-store`.
 2. **Snapshots.** A round records the tree the agent handed over: the
    working tree, untracked files included, written to git's object store
    through a temporary index, never touching the checkout — not started.
@@ -59,7 +61,8 @@ and what it did with each comment.
    2026-10-24.
 6. **A separate stdio binary.** It works with the app closed and opens the
    app itself; the app learns of changes by watching the review file. The
-   developer's call, 2026-10-24.
+   developer's call, 2026-10-24. (Since ADR 0031 §4 the watch ignores
+   Diff Loop's folder; step 6 decides how the app sees the server's saves.)
 7. **Reviews live in the git directory.** Every worktree sees them, they
    are never committed, and an agent can read one without MCP. Reviews in
    `reviews.json` version 4 are dropped, the file left untouched. The
@@ -77,6 +80,12 @@ and what it did with each comment.
 ## Pitfalls
 
 None yet.
+
+## Progress (2026-10-25, the review file)
+
+Step 1 landed as `diff-loop-store` (ADR 0031): a file per branch in
+the project's git directory, holding today's review; `projects.json`
+lists the projects that hold one.
 
 ## Progress (2026-10-24, ADR 0030)
 

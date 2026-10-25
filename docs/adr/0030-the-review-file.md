@@ -63,7 +63,8 @@ that, 2026-10-24.
    `fixed`, `declined` or `question`. `target` and `code` are `Comment`'s
    as today. A file of another version, or that does not parse, is
    reported and never overwritten (as ADR 0004 §3). The last 20 rounds are
-   kept, as ADR 0015 §9 kept them.
+   kept, as ADR 0015 §9 kept them. (Amended by ADR 0031 §1: the shape
+   grows with the spec's steps, at version 1.)
 3. **A snapshot is a commit of the working tree, kept by a ref.** Taken
    through a temporary index, untracked files included and the checkout
    untouched, its parent the round's `HEAD`; kept by
@@ -74,7 +75,8 @@ that, 2026-10-24.
    held across read, change and write, by the app and the server alike;
    each save writes `<name>.json.next` and renames it over the file.
    Reads take no lock. The app watches `diff-loop/reviews/` for the
-   server's saves.
+   server's saves. (Amended by ADR 0031 §4: the watch ignores the folder
+   until the MCP spec's step 6.)
 5. **Nothing is guessed.** A comment's outcome is the agent's reply and the
    reviewer's resolution; `Verdict`, its judgement at every load and the
    follow of ADRs 0017, 0021 and 0022 go. A comment moves to its new lines
@@ -86,7 +88,8 @@ that, 2026-10-24.
 7. **`reviews.json` is no longer read.** Its reviews are dropped and the
    file left as it is (the developer's call, 2026-10-24: no migration);
    nothing prunes reviews, since they go with their project, and a deleted
-   branch's file and refs go with it (ADR 0026 §6).
+   branch's file and refs go with it (ADR 0026 §6). (Amended by ADR 0031
+   §2: the projects that hold a review are listed in `projects.json`.)
 
 ## Consequences
 

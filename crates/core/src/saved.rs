@@ -11,6 +11,10 @@ use crate::{
     rounds::Round,
 };
 
+/// The folder in a project's common git directory that holds Diff Loop's
+/// own files, its reviews among them (ADR 0030 §1).
+pub const OWN_FOLDER: &str = "diff-loop";
+
 /// What a review is kept under: one branch of one project, whichever
 /// working tree has it checked out, if any (ADR 0026 §1).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
@@ -145,7 +149,9 @@ pub trait ReviewStore {
     /// kept cannot be read, so writing would lose it.
     fn save(&self, key: &ReviewKey, review: &SavedReview) -> Result<(), StoreError>;
 
-    /// Every review kept, in key order.
+    /// Every review kept, in key order. A store keeping reviews apart may
+    /// leave out one it cannot read, so that it hides no other; [`Self::saved`]
+    /// reports it.
     ///
     /// # Errors
     /// [`StoreError::Failed`] when what is kept cannot be read.

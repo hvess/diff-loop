@@ -132,7 +132,7 @@ impl Shows for WorkingTree {
             });
         };
         let git_dirs = [project.to_path_buf(), git_dir];
-        watch::watch(run.dir(), &git_dirs, Some(&index), on_change)
+        watch::watch(run.dir(), &git_dirs, Some(&index), project, on_change)
     }
 }
 
@@ -172,6 +172,6 @@ impl Shows for Branch {
     ) -> Result<WatchGuard, RepoError> {
         // Only refs move, and a worktree's `HEAD` when one checks the branch out.
         let common = project.to_path_buf();
-        watch::watch(&common, slice::from_ref(&common), None, on_change)
+        watch::watch(&common, slice::from_ref(&common), None, &common, on_change)
     }
 }

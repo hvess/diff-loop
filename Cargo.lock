@@ -614,10 +614,10 @@ version = "0.10.0"
 dependencies = [
  "diff-loop-core",
  "diff-loop-git",
+ "diff-loop-store",
  "gio",
  "gtk",
  "serde",
- "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
@@ -654,6 +654,16 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "diff-loop-store"
+version = "0.1.0"
+dependencies = [
+ "diff-loop-core",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

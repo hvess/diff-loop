@@ -18,7 +18,6 @@ mod appearance;
 mod claims;
 #[cfg(target_os = "linux")]
 mod renderer;
-mod reviews;
 
 use claims::{Claim, Claims, Refused};
 use diff_loop_core::{
@@ -28,6 +27,7 @@ use diff_loop_core::{
     Snapshot, StoreError, Touched, WatchGuard, project_name,
 };
 use diff_loop_git::{Git, GitProgram, GitProject};
+use diff_loop_store::FileReviews;
 use serde::Serialize;
 use tauri::{
     AppHandle, Emitter, Error as TauriError, Manager, Result as TauriResult, State, WebviewWindow,
@@ -758,10 +758,11 @@ pub fn run() -> TauriResult<()> {
                 .build(),
         )
         .setup(|app| {
-            // The review store's adapter (ADR 0004 §2), and the reviews each window holds (ADR 0026 §9).
+            // The review store's adapter (ADR 0030 §1, ADR 0031 §2), and the
+            // reviews each window holds (ADR 0026 §9).
             let app_data = app.path().app_data_dir()?;
-            app.manage(Reviews(Arc::new(reviews::JsonReviews::new(
-                app_data.join("reviews.json"),
+            app.manage(Reviews(Arc::new(FileReviews::new(
+                app_data.join("projects.json"),
             ))));
             app.manage(Claims::new(app_data.join("open")));
             if let Some(window) = app.get_webview_window("main") {

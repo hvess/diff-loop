@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members  = ["crates/core", "crates/git", "crates/review", "app/src-tauri"]
+members  = ["crates/core", "crates/git", "crates/review", "crates/store", "app/src-tauri"]
 
 [workspace.package]
 edition      = "2024"
@@ -11,6 +11,7 @@ publish      = false
 [workspace.dependencies]
 diff-loop-core = { path = "crates/core" }
 diff-loop-git  = { path = "crates/git" }
+diff-loop-store = { path = "crates/store" }
 serde          = { version = "1.0.229", features = ["derive"] }
 serde_json     = "1.0.154"
 notify         = "8.2.0"

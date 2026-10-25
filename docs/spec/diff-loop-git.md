@@ -5,7 +5,7 @@ The `Repository` and `Project` adapters over the `git` command line.
 **Status:** active — first version landed.
 **Scope:** `crates/git`. Excludes everything the core decides.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-23
+**Last Updated:** 2026-10-25
 
 ## Why
 
@@ -77,7 +77,8 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
    (ADR 0005 §1), or everything when the working tree's index changed
    (ADR 0018 §1). Dropping the guard stops it and its thread. A branch
    no worktree has checked out watches its common directory alone
-   (Decision 12).
+   (Decision 12). A burst whose events touched only the project's
+   `OWN_FOLDER` calls nothing (`WatchedPaths::only_own`, ADR 0031 §4).
 7. **Stdin is written on its own thread** (`command.rs`): git can fill
    its stdout pipe before it has read all its input.
 8. **Git is found as a terminal finds it** (`locate.rs`), once per
@@ -153,6 +154,11 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
 - `git diff --git` headers are ambiguous for paths with spaces; only an
   identical pair is split from the header, and renames take their paths
   from `rename from` / `rename to`.
+
+## Progress (2026-10-25, the review file)
+
+A watch burst that touched only the project's `diff-loop/` folder, where
+reviews are saved, calls nothing (`WatchedPaths::only_own`, ADR 0031 §4).
 
 ## Progress (2026-10-23, fewer git calls)
 
