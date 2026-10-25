@@ -269,7 +269,8 @@ against other wording that would also do.
   comments, 2 to accept" repeats (the developer's call, 2026-10-25). On a card: the chip repeats the mark, and the footer says
   "Untouched since sent", "Untouched since sent · nearby lines changed",
   "The code changed after you sent this. Resolve it if the change
-  answers you." (the canvas's), "Code removed since sent", "Suggestion
+  answers you." (the canvas's; "Accept it" once the agent resolved
+  it, the developer's call, 2026-10-25), "Code removed since sent", "Suggestion
   applied" or "Copies as “Still: …”". In the round strip: "Nothing sent
   yet", "Round 2 sent", "N changed", "N untouched", "N resolved
   automatically". The copy says "Copied · round 2 sent" and "… copied

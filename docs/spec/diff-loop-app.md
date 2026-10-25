@@ -926,7 +926,9 @@ Resolve is, on the card and R, with no hint in the window pointing at it;
 and it is amber, as a changed comment is, both asking the reviewer to
 look, told apart by the check and "Agent:" (the developer's calls,
 2026-10-25). One the agent
-resolved before it was ever sent is accepted the same way.
+resolved before it was ever sent is accepted the same way. On a changed
+card the footer names the button it shows, "Accept it if the change
+answers you." (the canvas's 5b; the developer's call, 2026-10-25).
 
 ## Progress (2026-10-25, the review file)
 

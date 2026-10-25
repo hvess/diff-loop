@@ -105,6 +105,9 @@ describe("the words for a comment", () => {
     expect(footOf(sent("untouched"))).toBe("Untouched since sent");
     expect(footOf(sent("nearbyChanged"))).toBe("Untouched since sent · nearby lines changed");
     expect(footOf(sent("changed"))).toBe("The code changed after you sent this. Resolve it if the change answers you.");
+    expect(footOf({ ...sent("changed"), resolved: "byAgent", note: "Done." })).toBe(
+      "The code changed after you sent this. Accept it if the change answers you.",
+    );
     expect(footOf(sent("removed"))).toBe("Code removed since sent");
     expect(footOf(sent(null))).toBe("");
   });

@@ -105,8 +105,8 @@ export function footOf(c: Comment): string {
     case "nearbyChanged":
       return "Untouched since sent · nearby lines changed";
     case "changed":
-      // The canvas's words for the card that most needs the reviewer (5a).
-      return "The code changed after you sent this. Resolve it if the change answers you.";
+      // The canvas's words for the card that most needs the reviewer (5a), naming the button the card shows (5b).
+      return `The code changed after you sent this. ${awaitsReviewer(c) ? "Accept" : "Resolve"} it if the change answers you.`;
     case "removed":
       return "Code removed since sent";
     case "applied":
