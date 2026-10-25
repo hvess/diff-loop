@@ -65,7 +65,7 @@ These are kept in `/Users/you/code/drive-web/.git/diff-loop/reviews/agent%2Fshar
 ## Install
 
 A release on this repository's Releases page carries some of these, as
-chosen for it (0.9.0 and 0.10.0 carry only the `.dmg`):
+chosen for it (0.9.0 to 0.11.0 carry only the `.dmg`):
 
 | File | For |
 |---|---|

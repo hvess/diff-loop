@@ -222,7 +222,7 @@ change, annotate, hand off to the agent, next round.
     which still builds an AppImage and a `.deb` on Ubuntu 22.04 when
     started by hand on a tag matching `tauri.conf.json`): an ad-hoc
     signed Apple Silicon `.dmg`, attached to a draft release with `gh`
-    (ADR 0009). 0.9.0 and 0.10.0 carry only the `.dmg`.
+    (ADR 0009). 0.9.0 to 0.11.0 carry only the `.dmg`.
 16. **Nothing removes a comment but the reviewer** (ADR 0015, which
     supersedes the removal this Decision held from 2026-10-13 to
     2026-10-15). A comment's lifecycle is read off its fields
