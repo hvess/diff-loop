@@ -95,6 +95,32 @@ or clear the quarantine flag once:
 xattr -dr com.apple.quarantine "/Applications/Diff Loop.app"
 ```
 
+## Connect your agent
+
+The copied instructions name the review file, so an agent can mark what it
+dealt with without any setup. With the `diff-loop` MCP server it does so
+through `get_review` and `resolve_comment` instead. The server is not in
+the installers yet; build it from source (see Run from source):
+
+```sh
+cargo build --release -p diff-loop-mcp
+```
+
+Then register `target/release/diff-loop-mcp` with your agent. Claude Code:
+
+```sh
+claude mcp add diff-loop -- /path/to/diff-loop/target/release/diff-loop-mcp
+```
+
+Codex:
+
+```sh
+codex mcp add diff-loop -- /path/to/diff-loop/target/release/diff-loop-mcp
+```
+
+The server reads the review of the branch checked out where it starts,
+so start the agent in the repository you are reviewing.
+
 ## Release
 
 Releases are built on a Mac, not by Actions (ADR 0028). Set the new
