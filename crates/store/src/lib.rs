@@ -11,7 +11,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use diff_loop_core::{OWN_FOLDER, ReviewKey, ReviewStore, SavedReview, StoreError};
+use diff_loop_core::{
+    OWN_FOLDER, OnReviewChange, ReviewKey, ReviewStore, SavedReview, StoreError, WatchGuard,
+};
+use notify::{
+    Error as NotifyError, Event, EventKind, RecursiveMode, Watcher,
+    event::{AccessKind, AccessMode},
+    recommended_watcher,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{file::failed, projects::Projects};
@@ -48,21 +55,23 @@ impl FileReviews {
             projects: Projects::new(projects),
         }
     }
-}
 
-impl ReviewStore for FileReviews {
-    fn saved(&self, key: &ReviewKey) -> Result<SavedReview, StoreError> {
-        Ok(read(&reviews_in(&key.project), &key.branch)?.unwrap_or_default())
-    }
-
-    fn save(&self, key: &ReviewKey, review: &SavedReview) -> Result<(), StoreError> {
+    /// Writes `make` of what is kept for `key` in its place, under the
+    /// file's lock, so no other save comes between the read and the write
+    /// (ADR 0030 §4); returns what was written.
+    fn replace(
+        &self,
+        key: &ReviewKey,
+        make: impl FnOnce(SavedReview) -> SavedReview,
+    ) -> Result<SavedReview, StoreError> {
         let project = Path::new(&key.project);
         if !project.is_dir() {
             // Never create a git directory that is gone; an empty review has
             // nothing left there to remove. The list still drops it.
             self.projects.note(&key.project, || Ok(false))?;
+            let review = make(SavedReview::default());
             return if review.is_empty() {
-                Ok(())
+                Ok(review)
             } else {
                 Err(StoreError::Failed {
                     message: format!("{} no longer exists", project.display()),
@@ -72,10 +81,14 @@ impl ReviewStore for FileReviews {
         let dir = reviews_in(&key.project);
         fs::create_dir_all(&dir).map_err(|e| failed(&dir, &e))?;
         let path = dir.join(name::file_name(&key.branch));
-        {
+        let written = {
             let _lock = file::lock(&path)?;
             // What cannot be read is never overwritten (ADR 0004 §3).
-            file::read::<Kept>(&path, VERSION)?;
+            let kept = file::read::<Kept>(&path, VERSION)?
+                .filter(|kept| kept.branch == key.branch)
+                .map(|kept| kept.review)
+                .unwrap_or_default();
+            let review = make(kept);
             if review.is_empty() {
                 file::remove(&path)?;
             } else {
@@ -88,8 +101,62 @@ impl ReviewStore for FileReviews {
                     },
                 )?;
             }
+            review
+        };
+        self.projects.note(&key.project, || holds_a_review(&dir))?;
+        Ok(written)
+    }
+}
+
+impl ReviewStore for FileReviews {
+    fn saved(&self, key: &ReviewKey) -> Result<SavedReview, StoreError> {
+        Ok(read(&reviews_in(&key.project), &key.branch)?.unwrap_or_default())
+    }
+
+    fn save(&self, key: &ReviewKey, review: &SavedReview) -> Result<(), StoreError> {
+        self.replace(key, |kept| review.clone().keeping_agent_marks(&kept))
+            .map(drop)
+    }
+
+    fn change(
+        &self,
+        key: &ReviewKey,
+        change: &mut dyn FnMut(&mut SavedReview),
+    ) -> Result<SavedReview, StoreError> {
+        self.replace(key, |mut kept| {
+            change(&mut kept);
+            kept
+        })
+    }
+
+    fn location(&self, key: &ReviewKey) -> Option<String> {
+        reviews_in(&key.project)
+            .join(name::file_name(&key.branch))
+            .to_str()
+            .map(str::to_owned)
+    }
+
+    fn watch(&self, key: &ReviewKey, on_change: OnReviewChange) -> Result<WatchGuard, StoreError> {
+        let project = Path::new(&key.project);
+        if !project.is_dir() {
+            return Err(StoreError::Failed {
+                message: format!("{} no longer exists", project.display()),
+            });
         }
-        self.projects.note(&key.project, || holds_a_review(&dir))
+        let dir = reviews_in(&key.project);
+        // A folder that does not exist cannot be watched; nothing else is written.
+        fs::create_dir_all(&dir).map_err(|e| failed(&dir, &e))?;
+        let file = name::file_name(&key.branch);
+        let mut watcher = recommended_watcher(move |event: Result<Event, NotifyError>| {
+            if event.map_or(true, |event| touches(&event, &file)) {
+                on_change();
+            }
+        })
+        .map_err(|e| failed(&dir, &e))?;
+        watcher
+            .watch(&dir, RecursiveMode::NonRecursive)
+            .map_err(|e| failed(&dir, &e))?;
+        Ok(Box::new(watcher))
     }
 
     fn kept(&self) -> Result<Vec<(ReviewKey, SavedReview)>, StoreError> {
@@ -152,6 +219,23 @@ fn branches(dir: &Path) -> Result<Vec<String>, StoreError> {
         .collect()
 }
 
+/// Whether `event` may have changed the file named `file`. By name alone:
+/// macOS reports a path with its links resolved. Reading the file changes
+/// nothing, and the window reads it on every change, so a read must not
+/// count or each would bring the next.
+fn touches(event: &Event, file: &str) -> bool {
+    let written = match event.kind {
+        EventKind::Access(AccessKind::Close(AccessMode::Write)) => true,
+        EventKind::Access(_) => false,
+        _ => true,
+    };
+    written
+        && event
+            .paths
+            .iter()
+            .any(|path| path.file_name().is_some_and(|name| name == file))
+}
+
 /// Whether `dir` holds any review file.
 fn holds_a_review(dir: &Path) -> Result<bool, StoreError> {
     Ok(!branches(dir)?.is_empty())
@@ -159,9 +243,14 @@ fn holds_a_review(dir: &Path) -> Result<bool, StoreError> {
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
+    use std::{
+        sync::mpsc,
+        thread,
+        time::{Duration, Instant},
+    };
 
-    use diff_loop_core::{AnchorState, Comment, Target};
+    use diff_loop_core::{AnchorState, Comment, Resolution, Target};
+    use notify::event::{EventAttributes, ModifyKind};
     use tempfile::TempDir;
 
     use super::*;
@@ -210,6 +299,7 @@ mod tests {
                 place: None,
                 sent: None,
                 resolved: None,
+                note: None,
             }],
             ..SavedReview::default()
         }
@@ -290,6 +380,98 @@ mod tests {
         assert_eq!(store.projects.listed().unwrap().len(), 1);
         store.save(&key(&p, "a"), &SavedReview::default()).unwrap();
         assert!(!Path::new(&p).exists());
+    }
+
+    #[test]
+    fn a_save_keeps_a_mark_the_agent_left_meanwhile() {
+        let fixture = Fixture::new();
+        let p = fixture.project("p");
+        let store = fixture.store();
+        let window = with_comment("one");
+        store.save(&key(&p, "b"), &window).unwrap();
+        let mut marked = window.clone();
+        marked.comments[0].resolved = Some(Resolution::ByAgent);
+        marked.comments[0].note = Some("Done.".into());
+        fixture.store().save(&key(&p, "b"), &marked).unwrap();
+        store.save(&key(&p, "b"), &window).unwrap();
+        assert_eq!(store.saved(&key(&p, "b")).unwrap(), marked);
+    }
+
+    #[test]
+    fn a_watch_hears_its_reviews_file_change_and_no_other() {
+        let fixture = Fixture::new();
+        let p = fixture.project("p");
+        let store = fixture.store();
+        let (sender, heard) = mpsc::channel();
+        let _guard = store
+            .watch(
+                &key(&p, "a/b"),
+                Box::new(move || {
+                    let _ = sender.send(());
+                }),
+            )
+            .unwrap();
+        store.save(&key(&p, "other"), &with_comment("one")).unwrap();
+        let quiet = Instant::now() + Duration::from_millis(300);
+        while Instant::now() < quiet {
+            assert!(heard.try_recv().is_err(), "another review's save was heard");
+        }
+        store.save(&key(&p, "a/b"), &with_comment("two")).unwrap();
+        heard.recv_timeout(Duration::from_secs(5)).unwrap();
+    }
+
+    #[test]
+    fn a_change_to_another_file_or_a_read_touches_nothing() {
+        let event = |kind, path: &str| Event {
+            kind,
+            paths: vec![PathBuf::from(path)],
+            attrs: EventAttributes::default(),
+        };
+        let modify = EventKind::Modify(ModifyKind::Any);
+        assert!(touches(
+            &event(modify, "/private/p/.git/diff-loop/reviews/b.json"),
+            "b.json"
+        ));
+        assert!(!touches(
+            &event(modify, "/p/.git/diff-loop/reviews/b.json.lock"),
+            "b.json"
+        ));
+        assert!(!touches(
+            &event(modify, "/p/.git/diff-loop/reviews/a.json"),
+            "b.json"
+        ));
+        let read = EventKind::Access(AccessKind::Open(AccessMode::Read));
+        assert!(!touches(
+            &event(read, "/p/.git/diff-loop/reviews/b.json"),
+            "b.json"
+        ));
+        let written = EventKind::Access(AccessKind::Close(AccessMode::Write));
+        assert!(touches(
+            &event(written, "/p/.git/diff-loop/reviews/b.json"),
+            "b.json"
+        ));
+    }
+
+    #[test]
+    fn a_change_reads_and_writes_in_one_step_keeping_what_another_saved() {
+        let fixture = Fixture::new();
+        let p = fixture.project("p");
+        let store = fixture.store();
+        store.save(&key(&p, "b"), &with_comment("one")).unwrap();
+        // The app saves a second comment while the server holds an older copy.
+        let mut two = with_comment("one");
+        two.comments.push(Comment {
+            id: "d".into(),
+            ..two.comments[0].clone()
+        });
+        fixture.store().save(&key(&p, "b"), &two).unwrap();
+        let changed = store
+            .change(&key(&p, "b"), &mut |review| {
+                review.comments[0].resolved = Some(Resolution::ByAgent);
+            })
+            .unwrap();
+        assert_eq!(changed.comments.len(), 2);
+        assert_eq!(store.saved(&key(&p, "b")).unwrap(), changed);
     }
 
     #[test]

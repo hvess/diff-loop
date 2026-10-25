@@ -1,13 +1,15 @@
 //! What of a review outlasts a run of the app, and the port to where it is kept.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use ts_rs::TS;
 
 use crate::{
-    anchor::Comment,
+    anchor::{Comment, Resolution},
     base::Base,
-    repository::{Checkout, Head},
+    repository::{Checkout, Head, WatchGuard},
     rounds::Round,
 };
 
@@ -71,6 +73,31 @@ impl SavedReview {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.comments.is_empty() && self.rounds.is_empty()
+    }
+
+    /// This review, about to replace `kept`, with each mark the agent left
+    /// in `kept` that this one has not seen: a comment `kept` holds resolved
+    /// by the agent stays so while this one's copy is open and unedited
+    /// (ADR 0032 §3). O(comments).
+    #[must_use]
+    pub fn keeping_agent_marks(mut self, kept: &Self) -> Self {
+        let marked: HashMap<&str, &Comment> = kept
+            .comments
+            .iter()
+            .filter(|c| c.resolved == Some(Resolution::ByAgent))
+            .map(|c| (c.id.as_str(), c))
+            .collect();
+        for comment in &mut self.comments {
+            if let Some(mark) = marked.get(comment.id.as_str())
+                && comment.resolved.is_none()
+                && comment.text == mark.text
+                && comment.suggestion == mark.suggestion
+            {
+                comment.resolved = mark.resolved;
+                comment.note.clone_from(&mark.note);
+            }
+        }
+        self
     }
 
     /// What the review switcher says of it (ADR 0026 §7). O(comments).
@@ -142,12 +169,38 @@ pub trait ReviewStore {
     fn saved(&self, key: &ReviewKey) -> Result<SavedReview, StoreError>;
 
     /// Keeps `review` for `key` in place of any before it; an empty review
-    /// removes the entry.
+    /// removes the entry. A store an agent also writes to keeps the marks
+    /// it left meanwhile that `review` has not seen (ADR 0032 §3,
+    /// [`SavedReview::keeping_agent_marks`]).
     ///
     /// # Errors
     /// [`StoreError::Failed`] when it cannot be written, or when what is
     /// kept cannot be read, so writing would lose it.
     fn save(&self, key: &ReviewKey, review: &SavedReview) -> Result<(), StoreError>;
+
+    /// Changes the review kept for `key` with `change` and keeps the result,
+    /// as one step no other save comes between; returns what was kept.
+    ///
+    /// # Errors
+    /// As [`ReviewStore::save`].
+    fn change(
+        &self,
+        key: &ReviewKey,
+        change: &mut dyn FnMut(&mut SavedReview),
+    ) -> Result<SavedReview, StoreError>;
+
+    /// Where the review for `key` is kept, as a path an agent can edit;
+    /// `None` when that cannot be named as text.
+    fn location(&self, key: &ReviewKey) -> Option<String>;
+
+    /// Calls `on_change` soon after the review for `key` may have changed,
+    /// by this process or another (an agent marking a comment resolved, ADR
+    /// 0032 §4), until the returned guard is dropped. Calls can be spurious.
+    ///
+    /// # Errors
+    /// [`StoreError::Failed`] when it cannot be watched: the platform
+    /// refuses, or the place it is kept in is gone or cannot be made.
+    fn watch(&self, key: &ReviewKey, on_change: OnReviewChange) -> Result<WatchGuard, StoreError>;
 
     /// Every review kept, in key order. A store keeping reviews apart may
     /// leave out one it cannot read, so that it hides no other; [`Self::saved`]
@@ -157,6 +210,9 @@ pub trait ReviewStore {
     /// [`StoreError::Failed`] when what is kept cannot be read.
     fn kept(&self) -> Result<Vec<(ReviewKey, SavedReview)>, StoreError>;
 }
+
+/// What [`ReviewStore::watch`] calls; from a background thread.
+pub type OnReviewChange = Box<dyn Fn() + Send + Sync>;
 
 /// Why a [`ReviewStore`] could not answer.
 #[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize, TS)]
@@ -174,7 +230,7 @@ pub enum StoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::anchor::{AnchorState, Place, Resolution, Target};
+    use crate::anchor::{AnchorState, Place, Target};
 
     fn comment(id: &str, resolved: Option<Resolution>) -> Comment {
         Comment {
@@ -187,6 +243,7 @@ mod tests {
             place: None,
             sent: None,
             resolved,
+            note: None,
         }
     }
 
@@ -225,6 +282,37 @@ mod tests {
             commit: "4e1b2a0".into(),
         };
         assert_eq!(ReviewKey::of(&checkout), None);
+    }
+
+    #[test]
+    fn a_mark_the_agent_left_is_kept_until_the_window_has_seen_it() {
+        let mut marked = comment("a", Some(Resolution::ByAgent));
+        marked.note = Some("Renamed it.".into());
+        let kept = SavedReview {
+            comments: vec![marked.clone(), comment("b", Some(Resolution::ByAgent))],
+            ..SavedReview::default()
+        };
+        let mut edited = comment("b", None);
+        edited.text = "Not quite.".into();
+        let window = SavedReview {
+            comments: vec![comment("a", None), edited.clone(), comment("c", None)],
+            ..SavedReview::default()
+        };
+        let saved = window.keeping_agent_marks(&kept);
+        assert_eq!(saved.comments, [marked, edited, comment("c", None)]);
+    }
+
+    #[test]
+    fn a_mark_the_reviewer_accepted_stays_theirs() {
+        let kept = SavedReview {
+            comments: vec![comment("a", Some(Resolution::ByAgent))],
+            ..SavedReview::default()
+        };
+        let window = SavedReview {
+            comments: vec![comment("a", Some(Resolution::ByReviewer))],
+            ..SavedReview::default()
+        };
+        assert_eq!(window.clone().keeping_agent_marks(&kept), window);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # 0030 — The review file, in the project's git directory
 
-**Status:** accepted, 2026-10-24; takes effect as `docs/spec/diff-loop-mcp.md`'s steps 1, 2 and 7 land
+**Status:** accepted, 2026-10-24; takes effect as `docs/spec/diff-loop-mcp.md`'s steps land; snapshots, threads and handed rounds withdrawn by ADR 0032
 **Supersedes:** ADR 0017, ADR 0020, ADR 0021, ADR 0022; ADR 0015 §3, §8 and §9
 **Amends:** ADR 0004 §2 and §3 (where reviews are kept, and their format); ADR 0015 §1 (what ends a round) and §4 (a suggestion applied resolves itself); ADR 0026 §8 (`reviews.json` version 4)
 **Affects:** `docs/spec/diff-loop-mcp.md`, `docs/spec/diff-loop-core.md`, `docs/spec/diff-loop-app.md`; `crates/core` (`saved.rs`, `anchor.rs`, `rounds.rs`, `resume.rs`), `app/src-tauri/src/reviews.rs`; `crates/mcp` (new)
@@ -26,7 +26,8 @@ that, 2026-10-24.
    `%2F`, so that every review is one file and `a` and `a/b` never collide.
    Every worktree of the project sees it, it is never committed, and it is
    gone with the project. The developer's call, 2026-10-24.
-2. **The format**, version 1 of a new file:
+2. **The format**, version 1 of a new file (amended by ADR 0032: no
+   threads, comment states or handed rounds; a comment gains `note`):
 
    ```json
    {
@@ -65,7 +66,8 @@ that, 2026-10-24.
    reported and never overwritten (as ADR 0004 §3). The last 20 rounds are
    kept, as ADR 0015 §9 kept them. (Amended by ADR 0031 §1: the shape
    grows with the spec's steps, at version 1.)
-3. **A snapshot is a commit of the working tree, kept by a ref.** Taken
+3. **A snapshot is a commit of the working tree, kept by a ref.** (Withdrawn
+   by ADR 0032 §5: no snapshots or refs.) Taken
    through a temporary index, untracked files included and the checkout
    untouched, its parent the round's `HEAD`; kept by
    `refs/diff-loop/<name>/<number>`, with `<name>` as in §1, so `git gc`
@@ -76,14 +78,17 @@ that, 2026-10-24.
    each save writes `<name>.json.next` and renames it over the file.
    Reads take no lock. The app watches `diff-loop/reviews/` for the
    server's saves. (Amended by ADR 0031 §4: the watch ignores the folder
-   until the MCP spec's step 6.)
-5. **Nothing is guessed.** A comment's outcome is the agent's reply and the
+   until the MCP spec's step 6. Since ADR 0032 §4 the window watches its
+   review's file through `ReviewStore::watch`.)
+5. **Nothing is guessed.** (Amended by ADR 0032 §5: a comment moves as
+   `reanchor` moves it, not by snapshots.) A comment's outcome is the agent's reply and the
    reviewer's resolution; `Verdict`, its judgement at every load and the
    follow of ADRs 0017, 0021 and 0022 go. A comment moves to its new lines
    by diffing the snapshot it was sent on with the next round's handed
    snapshot, and between rounds with the live diff, as `reanchor` does
    today. A suggestion found applied no longer resolves itself.
-6. **Finishing a round ends it,** not copying (amends ADR 0015 §1):
+6. **Finishing a round ends it,** not copying (amends ADR 0015 §1;
+   withdrawn by ADR 0032 §5: a copy still ends a round):
    Finish Round records `sent` and copies the pointer and the Markdown.
 7. **`reviews.json` is no longer read.** Its reviews are dropped and the
    file left as it is (the developer's call, 2026-10-24: no migration);

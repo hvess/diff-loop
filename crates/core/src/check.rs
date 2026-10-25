@@ -133,7 +133,8 @@ mod tests {
     use crate::{
         anchor::{AnchorState, Comment, Target},
         project::Location,
-        saved::Seen,
+        repository::WatchGuard,
+        saved::{OnReviewChange, Seen},
     };
 
     /// Reviews kept in memory.
@@ -155,6 +156,22 @@ mod tests {
         }
         fn kept(&self) -> Result<Vec<(ReviewKey, SavedReview)>, StoreError> {
             Ok(self.0.borrow().clone().into_iter().collect())
+        }
+        fn change(
+            &self,
+            key: &ReviewKey,
+            change: &mut dyn FnMut(&mut SavedReview),
+        ) -> Result<SavedReview, StoreError> {
+            let mut review = self.saved(key)?;
+            change(&mut review);
+            self.save(key, &review)?;
+            Ok(review)
+        }
+        fn location(&self, _: &ReviewKey) -> Option<String> {
+            None
+        }
+        fn watch(&self, _: &ReviewKey, _: OnReviewChange) -> Result<WatchGuard, StoreError> {
+            Ok(Box::new(()))
         }
     }
 
@@ -243,6 +260,7 @@ mod tests {
             place: None,
             sent: None,
             resolved: None,
+            note: None,
         };
         (
             ReviewKey {

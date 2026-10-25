@@ -74,6 +74,9 @@ impl Opens for GitProgram {
 /// The event the front end hears when the open checkout may have changed.
 const CHANGED: &str = "repository-changed";
 
+/// The event [`watch_review`] emits.
+const REVIEW_CHANGED: &str = "review-changed";
+
 /// The most a [`ReviewPart::Files`] message weighs ([`batches`]), so the
 /// webview parses a large review in pieces (ADR 0012); a file heavier on its
 /// own is still one piece.
@@ -100,6 +103,8 @@ struct Session {
     /// The review the open checkout shows, held for this window (ADR 0026
     /// §9); none on a detached `HEAD`.
     claim: Mutex<Option<Claim>>,
+    /// Keeps watching that review's file for the agent's marks (ADR 0032 §4).
+    review_watch: Mutex<Option<WatchGuard>>,
 }
 
 /// What a load starts from: the last load and what a watch saw touched
@@ -263,6 +268,7 @@ impl Session {
             loaded: Mutex::new(None),
             loads: Mutex::new(0),
             claim: Mutex::new(None),
+            review_watch: Mutex::new(None),
         }
     }
 
@@ -279,6 +285,7 @@ impl Session {
         // load for the old repository lands after it.
         let mut current = lock(&self.current);
         *lock(&self.watch) = None;
+        *lock(&self.review_watch) = None;
         *lock(&self.loaded) = None;
         *lock(&self.claim) = claim;
         *current = Some(repository);
@@ -289,6 +296,7 @@ impl Session {
     fn close(&self) {
         let mut current = lock(&self.current);
         *lock(&self.watch) = None;
+        *lock(&self.review_watch) = None;
         *lock(&self.loaded) = None;
         *lock(&self.claim) = None;
         *current = None;
@@ -316,6 +324,19 @@ impl Session {
             *lock(&self.loads) += 1;
         }
         open
+    }
+
+    /// Keeps `guard`, a watch on `key`'s file, while `key` is still the
+    /// review shown, and says so; otherwise drops it. Under `current`, as
+    /// `replace` swaps the review, so no guard for one shown before lands
+    /// after it.
+    fn keep_review_watch(&self, key: &ReviewKey, guard: WatchGuard) -> bool {
+        let _current = lock(&self.current);
+        let shown = lock(&self.claim).as_ref().is_some_and(|c| c.key() == key);
+        if shown {
+            *lock(&self.review_watch) = Some(guard);
+        }
+        shown
     }
 
     /// Begins a load of `of`: its number, and what it starts from, the last
@@ -576,6 +597,41 @@ async fn watch_repository(
     Ok(session.keep_watch(&watched, watching))
 }
 
+/// Emits [`REVIEW_CHANGED`] whenever the file of the review shown may have
+/// changed, until another review is shown (ADR 0032 §4). `false` when none
+/// is shown, or another was by the time the watch started, so it was dropped.
+#[tauri::command]
+async fn watch_review(
+    app: AppHandle,
+    reviews: State<'_, Reviews>,
+    session: State<'_, Session>,
+) -> Result<bool, CommandError> {
+    let Some(shown) = lock(&session.claim).as_ref().map(|c| c.key().clone()) else {
+        return Ok(false);
+    };
+    let store = Arc::clone(&reviews.0);
+    let key = shown.clone();
+    let guard = blocking(move || {
+        store.watch(
+            &key,
+            Box::new(move || {
+                // Emitting fails only while the app shuts down.
+                let _ = app.emit(REVIEW_CHANGED, ());
+            }),
+        )
+    })
+    .await?;
+    Ok(session.keep_review_watch(&shown, guard))
+}
+
+/// The window's review with the marks the agent left in `saved` that it has
+/// not taken in yet (ADR 0032 §3). This and the other pure commands are
+/// `async`, so they run off the main thread, where Tauri runs a plain one.
+#[tauri::command(async)]
+fn keep_agent_marks(window: SavedReview, saved: SavedReview) -> SavedReview {
+    window.keeping_agent_marks(&saved)
+}
+
 /// What the open checkout can be compared with.
 #[tauri::command]
 async fn base_choices(session: State<'_, Session>) -> Result<BaseChoices, CommandError> {
@@ -696,29 +752,35 @@ async fn save_review(
     blocking(move || store.save(&key, &review)).await
 }
 
-/// The review as instructions for a coding agent. This and the three
-/// commands after it are `async`, so they run off the main thread, where
-/// Tauri runs a plain command.
-#[tauri::command(async)]
-fn instructions(request: InstructionsRequest) -> String {
-    diff_loop_core::instructions(&request)
+/// The review as instructions for a coding agent, naming the file the
+/// review shown is kept in (ADR 0032 §1).
+#[tauri::command]
+async fn instructions(
+    request: InstructionsRequest,
+    reviews: State<'_, Reviews>,
+    session: State<'_, Session>,
+) -> Result<String, CommandError> {
+    let key = lock(&session.claim).as_ref().map(|c| c.key().clone());
+    let kept_at = key.and_then(|key| reviews.0.location(&key));
+    Ok(diff_loop_core::instructions(&request, kept_at.as_deref()))
 }
 
 /// The review after a copy of the instructions: a round ended, every
-/// unresolved comment sent (ADR 0015 §1).
+/// unresolved comment sent (ADR 0015 §1). `async`, as `keep_agent_marks`.
 #[tauri::command(async)]
 fn end_round(request: RoundRequest) -> SavedReview {
     diff_loop_core::end_round(request)
 }
 
 /// The round a commit on top of `previous` is followed for, seen at `now`
-/// (ADR 0017 §2, ADR 0022 §1).
+/// (ADR 0017 §2, ADR 0022 §1). `async`, as `keep_agent_marks`.
 #[tauri::command(async)]
 fn round_to_follow(comments: Vec<Comment>, now: Place, previous: String) -> Option<u32> {
     diff_loop_core::round_to_follow(&comments, &now, &previous)
 }
 
 /// The saved review merged into the window's, once a failed read is read again (ADR 0004 §5).
+/// `async`, as `keep_agent_marks`.
 #[tauri::command(async)]
 fn merge_reviews(window: SavedReview, saved: SavedReview) -> SavedReview {
     diff_loop_core::merge(window, saved)
@@ -798,6 +860,8 @@ pub fn run() -> TauriResult<()> {
             merge_reviews,
             launch_path,
             watch_repository,
+            watch_review,
+            keep_agent_marks,
             saved_review,
             save_review,
             uncommitted_lines,
@@ -1199,5 +1263,29 @@ mod tests {
             commit: "4e1b2a0".into(),
         });
         assert!(claim_on(&one, &claims, &detached).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_review_watch_is_kept_only_for_the_review_still_shown() {
+        let (_dir, repository) = git_repository();
+        let app_data = TempDir::new().unwrap();
+        let session = git_session();
+        let claims = Claims::new(app_data.path().to_path_buf());
+        let shown = |name: &str| {
+            let held = block_on(claim(&session, &claims, &opening_on(branch(name)))).unwrap();
+            let key = held.as_ref().map(|c| c.key().clone()).unwrap();
+            session.replace(Arc::clone(&repository), held);
+            key
+        };
+        let x = shown("agent/x");
+        assert!(session.keep_review_watch(&x, Box::new(())));
+        // A watch started for x lands after y is shown: dropped, and y's watch is not replaced by it.
+        let y = shown("agent/y");
+        assert!(session.keep_review_watch(&y, Box::new(())));
+        assert!(!session.keep_review_watch(&x, Box::new(())));
+        assert!(lock(&session.review_watch).is_some());
+        session.close();
+        assert!(!session.keep_review_watch(&y, Box::new(())));
+        assert!(lock(&session.review_watch).is_none());
     }
 }

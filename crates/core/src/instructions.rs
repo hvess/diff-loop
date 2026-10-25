@@ -31,9 +31,11 @@ pub struct InstructionsRequest {
 const QUOTE_MAX: usize = 60;
 
 /// The review as Markdown instructions an agent can act on: what is new,
-/// then what was sent before and is still open (ADR 0015 §6).
+/// then what was sent before and is still open (ADR 0015 §6). With
+/// `kept_at`, the file the review is kept in, each comment names its id and
+/// the agent is told to mark the ones it fixed resolved there (ADR 0032 §1).
 #[must_use]
-pub fn instructions(request: &InstructionsRequest) -> String {
+pub fn instructions(request: &InstructionsRequest, kept_at: Option<&str>) -> String {
     let mut out = String::new();
     // `write!` to a String cannot fail.
     let _ = writeln!(
@@ -50,7 +52,7 @@ pub fn instructions(request: &InstructionsRequest) -> String {
     for (path, comments) in by_file(&new) {
         let _ = write!(out, "\n### {path}\n");
         for comment in comments {
-            write_comment(&mut out, comment);
+            write_comment(&mut out, comment, kept_at.is_some());
         }
     }
     if !still.is_empty() {
@@ -58,11 +60,26 @@ pub fn instructions(request: &InstructionsRequest) -> String {
         for (path, comments) in by_file(&still) {
             let _ = write!(out, "\n#### {path}\n");
             for comment in comments {
-                write_comment(&mut out, comment);
+                write_comment(&mut out, comment, kept_at.is_some());
             }
         }
     }
-    out.push_str("\nWhen done, reply with one line per comment saying what you changed.\n");
+    match kept_at {
+        Some(path) => {
+            let _ = write!(
+                out,
+                "\nThese comments are kept in `{path}`. When you have fixed one, mark it \
+                 resolved with a one-line note saying what you changed: call \
+                 `resolve_comment` on the `diff-loop` MCP server with its id and the \
+                 note, or, without it, set the comment's `\"resolved\"` to `\"byAgent\"` \
+                 and its `\"note\"` to the note in that file, changing nothing else. \
+                 Leave a comment you did not fix as it is.\n"
+            );
+        }
+        None => {
+            out.push_str("\nWhen done, reply with one line per comment saying what you changed.\n")
+        }
+    }
     out
 }
 
@@ -121,7 +138,8 @@ fn by_file<'a>(comments: &[&'a Comment]) -> Vec<(&'a str, Vec<&'a Comment>)> {
     files
 }
 
-fn write_comment(out: &mut String, comment: &Comment) {
+/// `comment` as one item, with its id when `with_id`.
+fn write_comment(out: &mut String, comment: &Comment, with_id: bool) {
     let text = comment.text.trim();
     let still = if comment.reopened() { "Still: " } else { "" };
     // Suggested code may stand without a reason; reopened, it still says so.
@@ -130,7 +148,12 @@ fn write_comment(out: &mut String, comment: &Comment) {
         (true, false) => String::new(),
         (false, _) => format!(": {still}{text}"),
     };
-    let _ = writeln!(out, "- {}{text}", where_label(comment));
+    let id = if with_id {
+        format!(" (id `{}`)", comment.id)
+    } else {
+        String::new()
+    };
+    let _ = writeln!(out, "- {}{text}{id}", where_label(comment));
     if let Some(suggestion) = &comment.suggestion {
         let _ = writeln!(
             out,
@@ -268,6 +291,7 @@ mod tests {
             place: None,
             sent: None,
             resolved: None,
+            note: None,
         }
     }
 
@@ -357,7 +381,25 @@ Please address these review comments on agent/share-rate-limit (compared with ma
 
 When done, reply with one line per comment saying what you changed.
 ";
-        assert_eq!(instructions(&request(comments)), expected);
+        assert_eq!(instructions(&request(comments), None), expected);
+    }
+
+    #[test]
+    fn with_its_file_each_comment_names_its_id_and_the_agent_is_told_how_to_resolve() {
+        let text = instructions(
+            &request(vec![comment("a.rs", 3, &["let x = 1;"], "Name it.")]),
+            Some("/p/.git/diff-loop/reviews/b.json"),
+        );
+        assert!(
+            text.contains("- L3 `let x = 1;`: Name it. (id `a.rs:3`)\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("kept in `/p/.git/diff-loop/reviews/b.json`"),
+            "{text}"
+        );
+        assert!(text.contains("`resolve_comment`"), "{text}");
+        assert!(!text.contains("When done, reply"), "{text}");
     }
 
     #[test]
@@ -457,7 +499,7 @@ Sent in earlier rounds and not resolved yet.
 When done, reply with one line per comment saying what you changed.
 ";
         let comments = vec![new, lost, reopened, untouched, changed, removed, resolved];
-        assert_eq!(instructions(&request(comments)), expected);
+        assert_eq!(instructions(&request(comments), None), expected);
     }
 
     #[test]
@@ -469,7 +511,7 @@ When done, reply with one line per comment saying what you changed.
             &["x"],
             Verdict::Untouched,
         );
-        let text = instructions(&request(vec![one]));
+        let text = instructions(&request(vec![one]), None);
         assert!(
             text.contains("### Still open\nSent in round 3 and not resolved yet.\n"),
             "{text}"
@@ -485,7 +527,7 @@ When done, reply with one line per comment saying what you changed.
             &["old"],
             Verdict::Changed,
         );
-        let text = instructions(&request(vec![changed]));
+        let text = instructions(&request(vec![changed]), None);
         assert!(text.contains("\n- L4 `new`: t\n"), "{text}");
     }
 
@@ -493,7 +535,7 @@ When done, reply with one line per comment saying what you changed.
     fn a_suggestion_without_a_reason_has_no_trailing_colon() {
         let mut only_code = comment("a.rs", 3, &["let x = 1;"], "");
         only_code.suggestion = Some("let x = 2;".into());
-        let text = instructions(&request(vec![only_code]));
+        let text = instructions(&request(vec![only_code]), None);
         assert!(
             text.contains("\n- L3 `let x = 1;`\n  Suggested change:\n"),
             "{text}"
@@ -506,7 +548,7 @@ When done, reply with one line per comment saying what you changed.
         only_code.suggestion = Some("let x = 2;".into());
         let mut reopened = sent(only_code, 1, 3, &["let x = 1;"], Verdict::Untouched);
         reopened.suggestion = Some("let x = 3;".into());
-        let text = instructions(&request(vec![reopened]));
+        let text = instructions(&request(vec![reopened]), None);
         assert!(
             text.contains(
                 "\n- L3 `let x = 1;`: Still: see the suggested change.\n  Suggested change:\n"
@@ -517,7 +559,10 @@ When done, reply with one line per comment saying what you changed.
 
     #[test]
     fn a_line_with_only_blanks_is_not_quoted() {
-        let text = instructions(&request(vec![comment("a.rs", 3, &["   "], "Name it.")]));
+        let text = instructions(
+            &request(vec![comment("a.rs", 3, &["   "], "Name it.")]),
+            None,
+        );
         assert!(text.contains("\n### a.rs\n- L3: Name it.\n"), "{text}");
     }
 
@@ -532,7 +577,7 @@ When done, reply with one line per comment saying what you changed.
             text: "Smaller image?".into(),
             ..removed.clone()
         };
-        let text = instructions(&request(vec![removed, file]));
+        let text = instructions(&request(vec![removed, file]), None);
         assert!(
             text.contains(
                 "- The whole file: Smaller image?\n- removed L4 `old()`: Why remove this?\n"
@@ -555,7 +600,7 @@ When done, reply with one line per comment saying what you changed.
             commit: "4e1b2a0".into(),
         };
         request.base = Base::Uncommitted;
-        assert!(instructions(&request).starts_with(
+        assert!(instructions(&request, None).starts_with(
             "Please address these review comments on the detached HEAD at 4e1b2a0 (uncommitted changes only)."
         ));
     }

@@ -12,6 +12,7 @@ const draft: Comment = {
   place: null,
   sent: null,
   resolved: null,
+  note: null,
 };
 
 const sent = (verdict: Comment["sent"] extends infer S ? (S extends { verdict: infer V } ? V : never) : never): Comment => ({
@@ -56,6 +57,13 @@ describe("a comment's kind", () => {
     expect(hasCard(draft)).toBe(true);
     expect(hasCard({ ...draft, state: "lost" })).toBe(false);
     expect(hasCard({ ...sent("untouched"), resolved: "byReviewer" })).toBe(false);
+    // The agent's word stays on its lines until the reviewer accepts it (ADR 0032 §2).
+    expect(hasCard({ ...sent("untouched"), resolved: "byAgent" })).toBe(true);
+    expect(toneOf({ ...sent("untouched"), resolved: "byAgent" })).toBe("changed");
+    // A draft the agent resolved is accepted, and once accepted can be unresolved again.
+    expect(resolvable({ ...draft, resolved: "byAgent" })).toBe(true);
+    expect(resolvable({ ...draft, resolved: "byReviewer" })).toBe(true);
+    expect(resolvable(draft)).toBe(false);
   });
 
   it("is not in this diff only while open and outdated without a verdict", () => {
@@ -90,6 +98,7 @@ describe("the words for a comment", () => {
     expect(markOf({ ...draft, state: "outdated" })).toBe("Not in this diff");
     expect(markOf({ ...sent("untouched"), resolved: "byReviewer" })).toBe("Resolved");
     expect(markOf({ ...sent("applied"), resolved: "suggestionApplied" })).toBe("Resolved · suggestion applied");
+    expect(markOf({ ...sent("untouched"), resolved: "byAgent", note: "Done." })).toBe("Resolved by agent");
   });
 
   it("say what became of sent code in the card's footer", () => {

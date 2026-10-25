@@ -30,6 +30,7 @@ Each is a pure function tested here.
 12. Judging a sent comment (`anchor.rs`, ADR 0015 §3), and comparing code with whitespace aside (`code.rs`, §7) — done 2026-10-15.
 13. The base picker as designed 2026-10-17: `BaseRef::updated`, `Repository::uncommitted_lines` and `LineCounts`, and `choices` with the `default_branch` (Decisions 13 and 17) — done 2026-10-17.
 14. Reviews per branch (ADR 0026): `ReviewKey`, `SavedReview::base` and `seen`, `Checkout::project` and `worktree`, `resume` (Decision 18), and the `Project` port with `check_kept` (Decision 19) — done 2026-10-19.
+15. The agent's marks (ADR 0032): `Resolution::ByAgent` and `Comment::note`, `SavedReview::keeping_agent_marks`, `instructions`' `kept_at`, and `ReviewStore::change`, `location` and `watch` — done 2026-10-25.
 
 ## Decisions
 
@@ -71,7 +72,10 @@ Each is a pure function tested here.
    "### Still open" with the round they were sent in, the sent comments
    still open, each file under `####`, a changed one with ", was L21–24"
    where its lines moved, a removed one as "Code removed since sent, was
-   L31 `…`".
+   L31 `…`". Since ADR 0032, given the file the review is kept in
+   (`kept_at`), each comment ends with its id, "(id `…`)", and in place
+   of "When done, reply…" the agent is told where the comments are kept
+   and how to mark one resolved, through `resolve_comment` or the file.
 7. **`open` and `load` take any `Repository`, sized or not**, so the app
    can hold its adapter as `dyn Repository`.
 8. **`load` returns only what the caller lacks.** Each file carries a
@@ -214,6 +218,13 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-25, the agent's marks)
+
+ADR 0032: `Resolution::ByAgent` and `Comment::note`;
+`SavedReview::keeping_agent_marks`; `instructions` takes `kept_at`, and
+with it names each comment's id and says how to resolve one;
+`ReviewStore` gains `location` and `watch` (`OnReviewChange`).
 
 ## Progress (2026-10-25, the review file)
 

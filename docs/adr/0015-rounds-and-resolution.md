@@ -47,7 +47,7 @@ say where).
    the checkout's commit, and the Markdown as copied (a kept preview edit
    included); each sent comment records the code it was on with up to
    three lines either side of it, its text and suggestion as
-   sent, and its round. There is no other way to send. (Amended by ADR 0030 §6: Finish Round ends it.) Until the next
+   sent, and its round. There is no other way to send. (Amended by ADR 0030 §6: Finish Round ends it; withdrawn by ADR 0032 §5.) Until the next
    load changes something, the Copied popover stays and offers "Not
    sent", which returns the review to what it was before the copy
    (red-pen note 02); dismissing the popover, or writing, editing,
@@ -75,7 +75,8 @@ say where).
    count, not a verdict. A sent comment whose file left the diff where it
    was sent is removed and outdated: it has no line for a pin, the list
    draws it as changed and offers Resolve.
-4. **Resolution is the reviewer's.** `R` resolves the comment under the
+4. **Resolution is the reviewer's.** (Amended by ADR 0032 §2: the agent
+   may resolve a comment too, and the reviewer accepts it.) `R` resolves the comment under the
    open card, which closes it, and `R` again unresolves that comment and
    opens its card, until another comment is shown; on a draft never sent it does
    nothing, since a resolved draft would only vanish from every copy

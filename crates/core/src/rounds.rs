@@ -284,6 +284,7 @@ mod tests {
             place: Some(place()),
             sent: None,
             resolved: None,
+            note: None,
         }
     }
 

@@ -35,9 +35,14 @@ export function notInDiff(c: Comment): boolean {
   return c.resolved === null && kindOf(c) === "outdated";
 }
 
-/** Whether the comment can be shown on its lines: a rail and margin note, a card, a stop for N / P. */
+/** Whether the agent resolved the comment and it waits on the reviewer to accept it or reopen it (ADR 0032 §2). */
+export function awaitsReviewer(c: Comment): boolean {
+  return c.resolved === "byAgent";
+}
+
+/** Whether the comment can be shown on its lines: a rail and margin note, a card, a stop for N / P. One the agent resolved stays there until accepted. */
 export function hasCard(c: Comment): boolean {
-  return c.state === "current" && c.resolved === null;
+  return c.state === "current" && (c.resolved === null || awaitsReviewer(c));
 }
 
 /** Whether the comment is still open: it is copied, counted and judged. */
@@ -45,9 +50,9 @@ export function open(c: Comment): boolean {
   return c.resolved === null;
 }
 
-/** Whether R can resolve the comment: a draft never sent would only vanish from the copy (ADR 0015 §4). */
+/** Whether R can resolve or unresolve the comment: a draft never sent would only vanish from the copy (ADR 0015 §4); one already resolved, the agent's included, sent or not, R accepts or unresolves (ADR 0032 §2). */
 export function resolvable(c: Comment): boolean {
-  return c.sent !== null;
+  return c.sent !== null || c.resolved !== null;
 }
 
 /**
@@ -55,6 +60,8 @@ export function resolvable(c: Comment): boolean {
  * reopened), amber once its code changed, grey once sent or set aside (the canvas's `.rail.sent`, `.rail.changed`).
  */
 export function toneOf(c: Comment): "" | "sent" | "changed" {
+  // Amber, as changed code is: the agent's word waits on the reviewer.
+  if (awaitsReviewer(c)) return "changed";
   if (c.resolved !== null) return "sent";
   switch (kindOf(c)) {
     case "draft":
@@ -71,7 +78,9 @@ export function toneOf(c: Comment): "" | "sent" | "changed" {
 
 /** The list entry's mark; empty for a draft. */
 export function markOf(c: Comment): string {
-  if (c.resolved !== null) return c.resolved === "suggestionApplied" ? "Resolved · suggestion applied" : "Resolved";
+  if (c.resolved === "suggestionApplied") return "Resolved · suggestion applied";
+  if (awaitsReviewer(c)) return "Resolved by agent";
+  if (c.resolved !== null) return "Resolved";
   switch (kindOf(c)) {
     case "draft":
       return "";

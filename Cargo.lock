@@ -647,6 +647,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "diff-loop-mcp"
+version = "0.1.0"
+dependencies = [
+ "diff-loop-core",
+ "diff-loop-git",
+ "diff-loop-store",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "diff-loop-review"
 version = "0.1.0"
 dependencies = [
@@ -661,6 +672,7 @@ name = "diff-loop-store"
 version = "0.1.0"
 dependencies = [
  "diff-loop-core",
+ "notify",
  "serde",
  "serde_json",
  "tempfile",

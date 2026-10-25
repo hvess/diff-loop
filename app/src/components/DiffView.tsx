@@ -9,7 +9,8 @@ import { useDelayed } from "../delay";
 import { findTyped, type Mark, type Match, marked } from "../find";
 import { useHighlights, type Highlights, type Token } from "../highlight";
 import { isLineCommand, type LineCommand } from "../keys";
-import { changed, hasCard, markOf, toneOf } from "../lifecycle";
+import { awaitsReviewer, changed, hasCard, markOf, toneOf } from "../lifecycle";
+import { shownNote } from "../note";
 import { nameOf } from "../path";
 import { bindingFor } from "../platform";
 import { type Cell, type Expanded, gutterLine, type HunkRow, lastLine, lineKey, splitRows, unifiedRows, withinHunk } from "../rows";
@@ -19,6 +20,7 @@ import { CommentCard } from "./CommentCard";
 import { Composer, targetLabel } from "./Composer";
 import { FindBar } from "./FindBar";
 import { Sym } from "./Icon";
+import { AgentNote } from "./AgentNote";
 
 /** The diff's own keys (keys.ts `LINE_COMMANDS`): what each moves, and which way. */
 const LINE_KEYS: Record<LineCommand, { move: "line" | "extend" | "change"; step: 1 | -1 }> = {
@@ -664,7 +666,16 @@ function MarginNote({
 }) {
   const toggleComment = useStore((s) => s.toggleComment);
   const c = note.comment;
-  const lead = note.tone === "sent" ? <Sym name="sent" /> : note.tone === "changed" ? <Sym name="changed" className="text-[var(--amber)]" /> : <span className="dot" />;
+  // The agent's check, until the reviewer accepts it (ADR 0032 §2).
+  const lead = awaitsReviewer(c) ? (
+    <Sym name="resolved" className="text-[var(--amber)]" />
+  ) : note.tone === "sent" ? (
+    <Sym name="sent" />
+  ) : note.tone === "changed" ? (
+    <Sym name="changed" className="text-[var(--amber)]" />
+  ) : (
+    <span className="dot" />
+  );
   const hover = {
     onMouseEnter: () => onHover(true),
     onMouseLeave: () => onHover(false),
@@ -683,7 +694,19 @@ function MarginNote({
   return (
     <button type="button" className={`mnote ${note.tone === "changed" ? "changed" : ""} ${hovered ? "hov" : ""}`} style={{ top: collapsed ? top - (NOTE - MARK) / 2 : top }} {...hover}>
       {lead}
-      <span className="t">{c.text === "" ? "Suggested change" : c.text}</span>
+      {/* While it waits on the reviewer, what the agent says it did; the reviewer's comment is on the card (ADR 0032 §2). */}
+      <span className="t">
+        {awaitsReviewer(c) ? (
+          <>
+            <span className="text-[var(--amber)]">Agent: </span>
+            {shownNote(c.note) === null ? "Resolved" : <AgentNote note={c.note ?? ""} />}
+          </>
+        ) : c.text === "" ? (
+          "Suggested change"
+        ) : (
+          c.text
+        )}
+      </span>
       {c.suggestion !== null && c.text !== "" && <Sym name="suggest" className="text-[var(--accent)]" />}
     </button>
   );

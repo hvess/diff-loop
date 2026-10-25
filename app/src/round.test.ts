@@ -13,6 +13,7 @@ const draft = (id: string): Comment => ({
   place: null,
   sent: null,
   resolved: null,
+  note: null,
 });
 
 const inRound = (id: string, round: number, verdict: "untouched" | "changed" | "applied" | null, resolved = false): Comment => ({
@@ -37,6 +38,22 @@ describe("the round strip", () => {
   it("counts drafts while nothing was sent", () => {
     expect(roundStrip([], [draft("a"), draft("b")], 0, 0)).toEqual({ title: "Nothing sent yet", stage: "none", parts: [], meta: "2 drafts" });
     expect(roundStrip([], [], 0, 0).meta).toBe("");
+  });
+
+  it("counts what the agent resolved, which waits on the reviewer", () => {
+    const round = { number: 1, at: 0, place: { base: { kind: "uncommitted" as const }, head: { kind: "branch" as const, name: "b" } }, commit: null, markdown: "" };
+    const sentOne = (id: string, resolved: Comment["resolved"]): Comment => ({
+      ...draft(id),
+      resolved,
+      sent: { round: 1, place: round.place, commit: null, target: { kind: "file" }, before: [], after: [], text: "t", suggestion: null, verdict: "untouched" },
+    });
+    const strip = roundStrip([round], [sentOne("a", "byAgent"), sentOne("b", "byAgent"), sentOne("c", null)], 0, 0);
+    expect(strip.stage).toBe("answered");
+    expect(strip.parts.map((p) => p.text)).toContain("2 resolved by agent, to accept");
+    // An unsent one the agent resolved counts too, as the filter it sets steps through it.
+    const unsent: Comment = { ...draft("d"), resolved: "byAgent" };
+    const withUnsent = roundStrip([round], [sentOne("c", null), unsent], 0, 0);
+    expect(withUnsent.parts.map((p) => p.text)).toContain("1 resolved by agent, to accept");
   });
 
   it("reads as just sent until the agent's work shows", () => {

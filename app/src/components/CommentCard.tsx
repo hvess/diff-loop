@@ -1,11 +1,13 @@
 import type { Comment } from "../bindings/Comment";
 import { shortId, when } from "../format";
 import { dedent } from "../indent";
-import { changed, footOf, kindOf, markOf, verdictOf } from "../lifecycle";
+import { awaitsReviewer, changed, footOf, kindOf, markOf, resolvable, verdictOf } from "../lifecycle";
+import { shownNote } from "../note";
 import { useNow } from "../now";
 import { useStore } from "../store";
 import { SentBefore, targetLabel } from "./Composer";
 import { type Symbol, Sym } from "./Icon";
+import { AgentNote } from "./AgentNote";
 
 /** A comment's badge as the canvas draws its states (5a; the rules note's Reopened chip). */
 const BADGE: Record<ReturnType<typeof kindOf>, { cls: string; sym: Symbol | null }> = {
@@ -65,6 +67,11 @@ export function CommentCard({ comment }: { comment: Comment }) {
         </div>
       )}
       {comment.text !== "" && <p className="code mt-2.5 text-[13px] leading-[1.4] text-pretty whitespace-pre-wrap">{comment.text}</p>}
+      {shownNote(comment.note) !== null && (
+        <p className="mt-2 text-[13px] leading-[1.4] text-pretty whitespace-pre-wrap text-[var(--sec)]">
+          Agent: <AgentNote note={comment.note ?? ""} />
+        </p>
+      )}
       {comment.suggestion !== null && !compare && (
         <>
           <div className="mt-3.5 mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--sec)]">
@@ -130,10 +137,15 @@ export function CommentCard({ comment }: { comment: Comment }) {
         <button type="button" className="btn" onClick={() => editComment(comment.id)}>
           Edit
         </button>
-        {sent !== null && (
-          <button type="button" className={kind === "changed" ? "btnp" : "btn"} title="R" onClick={() => resolveComment(comment.id)}>
+        {resolvable(comment) && (
+          <button
+            type="button"
+            className={kind === "changed" || awaitsReviewer(comment) ? "btnp" : "btn"}
+            title="R"
+            onClick={() => resolveComment(comment.id)}
+          >
             <Sym name="resolved" />
-            Resolve
+            {awaitsReviewer(comment) ? "Accept" : "Resolve"}
           </button>
         )}
       </div>

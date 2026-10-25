@@ -8,7 +8,7 @@
 
 ADR 0030 §2 draws the review file with threads, comment states and round
 snapshots, which exist only once `docs/spec/diff-loop-mcp.md`'s steps 2, 3
-and 7 land; step 1 only moves reviews into each project. And the review
+and 7 land (as the spec then numbered them; ADR 0032 withdrew them); step 1 only moves reviews into each project. And the review
 switcher and the welcome screen list every project's reviews (ADR 0026
 §7), which a file per project cannot tell on its own. The developer chose
 both answers, 2026-10-25.
@@ -33,7 +33,8 @@ both answers, 2026-10-25.
    that touched only files under `<common git dir>/diff-loop/` calls
    nothing, so a save does not reload the window that made it. The app
    does not watch the server's saves until `docs/spec/diff-loop-mcp.md`'s
-   step 6 decides how.
+   step 6 decides how. (Amended by ADR 0032 §4: the window watches its
+   review's file itself, through `ReviewStore::watch`.)
 5. **A listing leaves out a review it cannot read** (`ReviewStore::kept`):
    a damaged file in one project hides no other review. Opening that
    branch still reports it, and it is never overwritten. The developer's
@@ -47,4 +48,5 @@ both answers, 2026-10-25.
 - `reviews.json` and its lock stay in the app-data directory, unread.
 - Step 6 of `docs/spec/diff-loop-mcp.md`, which has the app see the MCP
   server's saves, needs its own way to tell them from the app's: §4 hides
-  both.
+  both. (Since ADR 0032 §4, a watch on the review's file; the spec's
+  steps were renumbered then.)

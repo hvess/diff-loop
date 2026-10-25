@@ -41,6 +41,9 @@ pub struct Comment {
     /// How it was resolved, if it is.
     #[serde(default)]
     pub resolved: Option<Resolution>,
+    /// What the agent said when it resolved it (ADR 0032 §1).
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 impl Comment {
@@ -225,7 +228,7 @@ pub enum Verdict {
     Applied,
 }
 
-/// How a comment was resolved (ADR 0015 §4).
+/// How a comment was resolved (ADR 0015 §4, ADR 0032 §1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -234,6 +237,8 @@ pub enum Resolution {
     ByReviewer,
     /// A load found its suggestion in place.
     SuggestionApplied,
+    /// The agent said it fixed it, through the MCP server or the review file.
+    ByAgent,
 }
 
 /// `comment` moved onto its code in `files`, as seen from `now` with `commit`
@@ -561,6 +566,7 @@ mod tests {
             place: Some(here()),
             sent: None,
             resolved: None,
+            note: None,
         }
     }
 

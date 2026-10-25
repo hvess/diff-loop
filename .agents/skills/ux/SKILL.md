@@ -262,7 +262,11 @@ against other wording that would also do.
 - **A comment's marks** (ADR 0015; the design's words, the developer's
   call, 2026-10-15). In the list: "Sent", "Changed", "Reopened", "Code
   gone", "Not in this diff", "Resolved" and "Resolved · suggestion
-  applied". On a card: the chip repeats the mark, and the footer says
+  applied"; since ADR 0032, "Resolved by agent", with the agent's note
+  as "Agent: …" and Accept in place of Resolve, the margin note reading
+  "Agent: <note>" ("Agent: Resolved" with none), and the round strip's
+  "2 resolved by agent, to accept", which the comment count's "2
+  comments, 2 to accept" repeats (the developer's call, 2026-10-25). On a card: the chip repeats the mark, and the footer says
   "Untouched since sent", "Untouched since sent · nearby lines changed",
   "The code changed after you sent this. Resolve it if the change
   answers you." (the canvas's), "Code removed since sent", "Suggestion

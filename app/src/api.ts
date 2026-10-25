@@ -59,6 +59,10 @@ export const api = {
   fileLines: (snapshot: Snapshot, side: Side, path: string, first: number, last: number) =>
     invoke<string[]>("file_lines", { snapshot, side, path, first, last }),
   watchRepository: () => invoke<boolean>("watch_repository"),
+  /** Emits `review-changed` while the review shown is watched (ADR 0032 §4); `false` when none is shown, or another was by then. */
+  watchReview: () => invoke<boolean>("watch_review"),
+  /** The window's review with the agent's marks it has not taken in yet (ADR 0032 §3). */
+  keepAgentMarks: (window: SavedReview, saved: SavedReview) => invoke<SavedReview>("keep_agent_marks", { window, saved }),
   savedReview: (key: ReviewKey) => invoke<SavedReview>("saved_review", { key }),
   saveReview: (key: ReviewKey, review: SavedReview) => invoke<null>("save_review", { key, review }),
   launchPath: () => invoke<string | null>("launch_path"),

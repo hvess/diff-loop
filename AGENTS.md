@@ -17,6 +17,7 @@ Shape (quality-gate §2):
 | `diff-loop-core` | `crates/core` | Domain and its ports, `Repository`, `Project` and `ReviewStore`; no I/O | `docs/spec/diff-loop-core.md` |
 | `diff-loop-git` | `crates/git` | `Repository` and `Project` over the `git` command line | `docs/spec/diff-loop-git.md` |
 | `diff-loop-app` | `app/src-tauri` | Composition root and Tauri commands | `docs/spec/diff-loop-app.md` |
+| `diff-loop-mcp` | `crates/mcp` | MCP server on stdio: an agent reads a branch's review and resolves comments | `docs/spec/diff-loop-mcp.md` |
 | `diff-loop-store` | `crates/store` | `ReviewStore` as a file per branch in each project's git directory | `docs/spec/diff-loop-store.md` |
 | `diff-loop-review` | `crates/review` | The review loop's commit gate; dev-only | `docs/spec/diff-loop-review.md` |
 
@@ -207,13 +208,20 @@ before reopening a decision they cover.
   thread the agent answers; each round's snapshot is a commit of the
   working tree kept by `refs/diff-loop/<name>/<number>`; app and MCP
   server save in turn on a lock beside the file; nothing is guessed, and
-  `reviews.json` is no longer read. Takes effect as `diff-loop-mcp`'s
+  `reviews.json` is no longer read. Its snapshots, threads and handed
+  rounds were withdrawn by 0032. Takes effect as `diff-loop-mcp`'s
   steps land.
 - **0031 — The review file is built in steps, and the projects with one
   are listed.** The file grows to 0030's shape step by step at version 1;
   `projects.json` in the app-data directory lists the projects that hold
   a review; the store is the `diff-loop-store` crate; the watch ignores
   Diff Loop's own folder; a listing leaves out a review it cannot read.
+- **0032 — The agent resolves comments in the review file.** Through
+  `diff-loop-mcp` or by editing the file the copied instructions name,
+  with a note; the comment stays, shown as resolved by the agent until
+  the reviewer accepts it (R) or edits it to reopen it; a save keeps a
+  mark the window has not seen, and the window watches the file. 0030's
+  snapshots, threads and handed rounds are withdrawn.
 
 ## Key Constraints (non-negotiable)
 

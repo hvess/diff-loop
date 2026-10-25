@@ -1,10 +1,12 @@
 import { useState } from "react";
 import type { Comment } from "../bindings/Comment";
-import { hasCard, kindOf, markOf, open as isOpen, toneOf } from "../lifecycle";
+import { awaitsReviewer, hasCard, kindOf, markOf, open as isOpen, toneOf } from "../lifecycle";
+import { shownNote } from "../note";
 import { nameOf } from "../path";
 import { lastLine } from "../rows";
 import { commentText, useStore } from "../store";
 import { Sym } from "./Icon";
+import { AgentNote } from "./AgentNote";
 
 function location(c: Comment): string {
   const name = nameOf(c.path);
@@ -92,6 +94,7 @@ function Entry({ comment: c }: { comment: Comment }) {
   const showComment = useStore((s) => s.showComment);
   const deleteComment = useStore((s) => s.deleteComment);
   const resolveComment = useStore((s) => s.resolveComment);
+  const editComment = useStore((s) => s.editComment);
   const startReplace = useStore((s) => s.startReplace);
   const setListOpen = useStore((s) => s.setCommentList);
   const kind = kindOf(c);
@@ -130,6 +133,11 @@ function Entry({ comment: c }: { comment: Comment }) {
       <div className="flex min-w-0 flex-1 flex-col">
         {loc}
         <div className="tx text-[var(--sec)]">{commentText(c)}</div>
+        {shownNote(c.note) !== null && (
+          <div className="tx">
+            Agent: <AgentNote note={c.note ?? ""} />
+          </div>
+        )}
         {kind === "lost" && c.target.kind === "lines" && (
           <span className="code mt-1 truncate rounded-md bg-[var(--field)] px-2 py-1 font-mono text-[11px] whitespace-pre text-[var(--sec)]">
             {c.target.code.find((l) => l.trim() !== "") ?? ""}
@@ -141,7 +149,17 @@ function Entry({ comment: c }: { comment: Comment }) {
               Re-place
             </button>
           )}
-          {c.resolved !== null ? (
+          {awaitsReviewer(c) ? (
+            // The agent's word stands until the reviewer accepts it, or edits the comment, which reopens it (ADR 0032 §2).
+            <>
+              <button type="button" className="btnplain" onClick={() => resolveComment(c.id)}>
+                Accept
+              </button>
+              <button type="button" className="btnplain" onClick={() => editComment(c.id)}>
+                Edit
+              </button>
+            </>
+          ) : c.resolved !== null ? (
             <button type="button" className="btnplain" onClick={() => resolveComment(c.id)}>
               Unresolve
             </button>

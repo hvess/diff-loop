@@ -2,7 +2,7 @@
 import type { Comment } from "./bindings/Comment";
 import type { Round } from "./bindings/Round";
 import { when } from "./format";
-import { changed, open as isOpen, reopened } from "./lifecycle";
+import { awaitsReviewer, changed, open as isOpen, reopened } from "./lifecycle";
 import { type CommentFilter, inFilter } from "./store";
 
 /** What the strip says of the last round: its title, its counts, and what goes at the right. */
@@ -22,8 +22,10 @@ export function roundStrip(
   const open = sent.filter((c) => c.resolved === null && !reopened(c));
   const changedN = open.filter(changed).length;
   const untouchedN = open.filter((c) => inFilter(c, "untouched")).length;
+  // What the agent says it fixed waits on the reviewer, from any round or none, as the `byAgent` filter steps through it (ADR 0032 §2).
+  const byAgentN = comments.filter(awaitsReviewer).length;
   // Until the agent's work shows, the round reads as what was just sent.
-  if (changedN === 0 && autoResolved === 0 && open.length === sent.length) {
+  if (changedN === 0 && autoResolved === 0 && byAgentN === 0 && open.length === sent.length) {
     const n = sent.length;
     return {
       title: `Round ${last.number} sent`,
@@ -35,6 +37,7 @@ export function roundStrip(
   const parts: StripPart[] = [];
   if (changedN > 0) parts.push({ filter: "changed", text: `${changedN} changed` });
   if (untouchedN > 0) parts.push({ filter: "untouched", text: `${untouchedN} untouched` });
+  if (byAgentN > 0) parts.push({ filter: "byAgent", text: `${byAgentN} resolved by agent, to accept` });
   if (autoResolved > 0) parts.push({ filter: null, text: `${autoResolved} resolved automatically` });
   return { title: `Round ${last.number}`, stage: "answered", parts, meta: "" };
 }

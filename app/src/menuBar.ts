@@ -1,7 +1,7 @@
 // The macOS menu bar (diff-loop-app.md Decision 18). Item names are title case, per the HIG's `menus` page.
 import { CheckMenuItem, Menu, MenuItem, Submenu } from "@tauri-apps/api/menu";
 import { chooseFolder } from "./choose";
-import { hasCard, resolvable } from "./lifecycle";
+import { awaitsReviewer, hasCard, resolvable } from "./lifecycle";
 import { dialogOpen } from "./platform";
 import { canComment, useStore } from "./store";
 
@@ -38,7 +38,8 @@ export function menuState(s: Store): MenuState {
 
 function resolveOf(open: ReturnType<typeof useStore.getState>["comments"][number] | undefined): MenuState["resolve"] {
   if (!open || !resolvable(open)) return null;
-  return open.resolved === null ? "resolve" : "unresolve";
+  // R accepts what the agent resolved (ADR 0032 §2).
+  return open.resolved === null || awaitsReviewer(open) ? "resolve" : "unresolve";
 }
 
 /** Installs the menu bar; the returned function stops following the store. */

@@ -21,7 +21,7 @@ import type { Seen } from "./bindings/Seen";
 import type { Snapshot } from "./bindings/Snapshot";
 import type { Side } from "./bindings/Side";
 import type { Target } from "./bindings/Target";
-import { changed, hasCard, open as isOpen, resolvable } from "./lifecycle";
+import { awaitsReviewer, changed, hasCard, open as isOpen, resolvable } from "./lifecycle";
 import { dedent } from "./indent";
 import { shortId } from "./format";
 import { idOf, sameKey } from "./key";
@@ -98,8 +98,8 @@ export type Banner = { title: string; body: string | null; action: BannerAction 
 /** A round the base follows: its number, and the full id of the commit it was sent on. */
 export type Following = { round: number; since: string };
 
-/** The comments N / P step through: every one with a card, or only the sent ones a round strip count names. */
-export type CommentFilter = "changed" | "untouched" | null;
+/** The comments N / P step through: every one with a card, or only those a round strip count names (sent ones judged changed or untouched, or any the agent resolved). */
+export type CommentFilter = "changed" | "untouched" | "byAgent" | null;
 
 type Undo = { label: string; comments: Comment[] };
 
@@ -232,6 +232,8 @@ type Actions = {
   /** Loads the review again; `full` reads everything, even what a running watch saw untouched (ADR 0014 §1). */
   reload: (full?: boolean) => Promise<void>;
   poll: () => Promise<void>;
+  /** Takes in the marks the agent left in the review's file (ADR 0032 §4). */
+  takeAgentMarks: () => Promise<void>;
   /** Checks for changes now, reading the whole checkout again (⌘/Ctrl-R). */
   refresh: () => Promise<void>;
   select: (path: string) => void;
@@ -428,9 +430,11 @@ export function bannerDetail(notInDiff: number): string {
   return `${notInDiff} ${notInDiff === 1 ? "comment is" : "comments are"} not in this diff.`;
 }
 
-/** Whether a sent comment is one `filter` names: judged changed, or untouched. */
+/** Whether `c` is one `filter` names: a sent comment judged changed, or untouched; or any comment the agent resolved, sent or not. */
 export function inFilter(c: Comment, filter: CommentFilter): boolean {
   if (filter === null) return true;
+  // What the agent resolved waits on the reviewer, sent or not (ADR 0032 §2).
+  if (filter === "byAgent") return awaitsReviewer(c);
   if (c.sent === null || c.resolved !== null) return false;
   return filter === "changed" ? changed(c) : c.sent.verdict === "untouched" || c.sent.verdict === "nearbyChanged";
 }
@@ -872,6 +876,24 @@ export const useStore = create<State & Actions>()((set, get) => ({
     }
   },
 
+  async takeAgentMarks() {
+    const { key, opening } = get();
+    if (!key || !opening) return;
+    // An answer for a review no longer shown is not this one's.
+    const stillShown = () => get().opening === opening && sameKey(get().key, key);
+    const saved = await api.savedReview(key).catch(() => null);
+    if (!saved || !stillShown()) return;
+    // A loop, not a chain: comments changed while the core merged would be lost to its answer, so it merges again onto them.
+    for (;;) {
+      const before = get().comments;
+      const marked = await api.keepAgentMarks(keptOf(get()), saved);
+      if (!stillShown()) return;
+      if (get().comments !== before) continue;
+      if (JSON.stringify(marked.comments) !== JSON.stringify(before)) set({ comments: marked.comments });
+      return;
+    }
+  },
+
   async poll() {
     const { review, loading, base, opening, watching, key } = get();
     if (!opening) return;
@@ -1111,10 +1133,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
     const written = { target: composer.target, text: composer.text.trim(), suggestion: composer.suggestion };
     // An edited sent comment keeps its round, and is reopened by its text differing from what was sent.
     const comments = composer.editing
-      ? get().comments.map((c) => (c.id === composer.editing ? { ...c, ...written } : c))
+      ? get().comments.map((c) => (c.id === composer.editing ? { ...c, ...written, ...reopenedMark(c, written) } : c))
       : [
           ...get().comments,
-          { id: crypto.randomUUID(), path: composer.path, ...written, state: "current" as const, place, sent: null, resolved: null },
+          { id: crypto.randomUUID(), path: composer.path, ...written, state: "current" as const, place, sent: null, resolved: null, note: null },
         ];
     // The first comment starts the review (ADR 0026 §2): the title bar says where it is kept.
     const starts = !composer.editing && !holdsReview(get());
@@ -1137,9 +1159,11 @@ export const useStore = create<State & Actions>()((set, get) => ({
   resolveComment(id) {
     const c = get().comments.find((x) => x.id === id);
     if (!c || !resolvable(c)) return;
-    const resolved = c.resolved === null ? "byReviewer" as const : null;
+    // R accepts what the agent resolved (ADR 0032 §2); otherwise it toggles.
+    const resolved = c.resolved === null || awaitsReviewer(c) ? "byReviewer" as const : null;
     set({
-      comments: get().comments.map((x) => (x.id === id ? { ...x, resolved } : x)),
+      // Unresolved, it is the reviewer's again: the agent's note no longer answers it.
+      comments: get().comments.map((x) => (x.id === id ? { ...x, resolved, ...(resolved ? {} : { note: null }) } : x)),
       // Resolved, it has no card to stay open; R again unresolves it and opens the card (ADR 0015 §4).
       openComment: resolved && get().openComment === id ? null : get().openComment,
       lastResolved: resolved ? id : null,
@@ -1378,6 +1402,12 @@ export const useStore = create<State & Actions>()((set, get) => ({
   },
 }));
 
+/** What editing `c` into `written` does to a mark the agent left: a changed comment is open again (ADR 0032 §2). */
+function reopenedMark(c: Comment, written: Pick<Comment, "text" | "suggestion">): Partial<Comment> {
+  const edited = written.text !== c.text || written.suggestion !== c.suggestion;
+  return awaitsReviewer(c) && edited ? { resolved: null, note: null } : {};
+}
+
 /** The review as kept: what the window holds of it. */
 function keptOf(s: Pick<State, "comments" | "rounds" | "keptBase" | "seen">): SavedReview {
   return { comments: s.comments, rounds: s.rounds, base: s.keptBase, seen: s.seen };
@@ -1485,6 +1515,7 @@ async function show(opening: Opening, banner: Banner | null, read: ReturnType<ty
   // Watched first, so the first load is the one a watch event brings up to date: a watch
   // started after it drops it, and the next event reads everything again (ADR 0029 §1).
   const watching = await api.watchRepository().catch(() => false);
+  if (key) void api.watchReview().catch(() => false);
   // Only the answer for the checkout still open counts: a slow answer
   // for one opened before must not stop the fallback polling.
   const stillOpen = () => get().opening === opening;

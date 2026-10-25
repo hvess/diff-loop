@@ -46,4 +46,8 @@ sent: Sent | null,
 /**
  * How it was resolved, if it is.
  */
-resolved: Resolution | null, };
+resolved: Resolution | null, 
+/**
+ * What the agent said when it resolved it (ADR 0032 §1).
+ */
+note: string | null, };

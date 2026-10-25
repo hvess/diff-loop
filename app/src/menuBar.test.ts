@@ -17,6 +17,7 @@ const comment = (state: Comment["state"]): Comment => ({
   place: null,
   sent: null,
   resolved: null,
+  note: null,
 });
 
 const store = (patch: Partial<Store>): Store => ({ ...useStore.getState(), ...patch });

@@ -147,7 +147,10 @@ change, annotate, hand off to the agent, next round.
    clears the watch and the last load), and drops a guard that arrives
    for a repository no longer open, answering `false`. The store trusts
    only answers for the repository still open; until one confirms a watch,
-   or if watching fails, `App` polls every 2 s. `Session` keeps the last
+   or if watching fails, `App` polls every 2 s. A second watch, on the
+   review shown's file (`watch_review`, ADR 0032 §4), is kept and dropped
+   with it and emits `review-changed`; when it cannot start, the agent's
+   marks show when the review is next shown. `Session` keeps the last
    load: while a watch runs, with what the watch touched, and
    `load_review` reads only that (ADR 0005 §4); without one, with the
    file states it took, and `load_review` reads only the paths whose
@@ -223,7 +226,8 @@ change, annotate, hand off to the agent, next round.
     verdict changed, removed or applied), reopened (edited since sent),
     lost (a draft whose code went where it was last seen) or not in this
     diff (outdated). A comment has a card, a rail and margin note (a pin until Decision 35) and a stop for N / P only
-    while current and unresolved (`hasCard`); a lost or outdated one is
+    while current and unresolved, or resolved by the agent and not yet
+    accepted (ADR 0032 §2) (`hasCard`); a lost or outdated one is
     muted in the list, opens nothing, and is still copied; a lost one
     keeps its quoted code and offers Re-place and Delete. The banner names
     only a context change: a switched (until 2026-10-19; see Decision 33),
@@ -457,7 +461,7 @@ change, annotate, hand off to the agent, next round.
     | C, or Return | Comment on the cursor or range; placing a lost draft, Return places it there |
     | Alt-Return (Option), in the composer | Suggest Change on or off |
     | E | Edit the open comment |
-    | R | Resolve the open comment, which closes its card; R again unresolves it and opens the card; nothing on a draft never sent (ADR 0015 §4) |
+    | R | Resolve the open comment, which closes its card; R again unresolves it and opens the card; on one the agent resolved, accepts it (ADR 0032 §2); nothing on a draft never sent and never resolved (ADR 0015 §4); a draft the agent resolved it accepts, and once accepted unresolves |
     | ⌘/Ctrl-Backspace | Delete the open comment, with Undo |
     | ⌘/Ctrl-Z | Undo the last delete, Delete Drafts or Re-place |
     | Shift-X | Show every unchanged line of the file |
@@ -524,8 +528,11 @@ change, annotate, hand off to the agent, next round.
     skill, the same section): a list of them is open task 17. The set, from
     the conventions of GitLab, Gerrit, Crucible, Meld and the HIG, is the
     developer's call, 2026-10-15. R, added with ADR 0015, is shown on
-    every sent card's Resolve button and in the macOS Review menu, which
-    reads Unresolve when the open comment is resolved. While a lost draft
+    every sent card's Resolve button (and on an unsent one the agent
+    resolved, ADR 0032 §2) and in the macOS Review menu, which
+    reads Unresolve when the open comment is resolved; on a comment the
+    agent resolved, the button reads Accept and the menu Resolve, and R
+    accepts it (ADR 0032 §2). While a lost draft
     is being placed, Return places it wherever focus was left, as the bar
     over the file says.
 
@@ -572,7 +579,8 @@ change, annotate, hand off to the agent, next round.
       a draft not in this diff, and
       folds the resolved ones into "Resolved (n)" at the bottom, each with
       Unresolve, which opens the card again only for a comment that has
-      one. Text the list mutes is in
+      one; one the agent resolved reads "Resolved by agent", shows the
+      agent's note, and offers Accept and Edit instead (ADR 0032 §2). Text the list mutes is in
       `--sec`, which reads at 4.5:1 or more since ADR 0027,
       and the entry the keys are on is the accent row (Decision 35). Its footer
       has Preview Instructions… and Delete Drafts,
@@ -900,6 +908,26 @@ change, annotate, hand off to the agent, next round.
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
 
+## Progress (2026-10-25, the agent's marks)
+
+ADR 0032: `instructions` names the review file shown (from the window's
+claim); `watch_review` emits `review-changed` while the review shown is
+watched, and the front end takes in the agent's marks
+(`takeAgentMarks`, through `keep_agent_marks`). A comment resolved by the
+agent stays on its lines in amber, its margin note a check and the agent's
+note, "Agent: <note>" (the reviewer's comment is on its card; the
+developer's call, 2026-10-25),
+its card showing the note with Accept in place of Resolve, and the round
+strip counting them, from any round or none ("2 resolved by agent, to
+accept"), as does the comment count ("2 comments, 2 to accept"),
+until the reviewer accepts it (R) or edits it, which reopens it; off its
+lines, the list offers Accept and Edit with the note. Accept is where
+Resolve is, on the card and R, with no hint in the window pointing at it;
+and it is amber, as a changed comment is, both asking the reviewer to
+look, told apart by the check and "Agent:" (the developer's calls,
+2026-10-25). One the agent
+resolved before it was ever sent is accepted the same way.
+
 ## Progress (2026-10-25, the review file)
 
 The composition root wires `diff_loop_store::FileReviews` over
@@ -913,8 +941,9 @@ its first load (ADR 0029), and passes `fetchReview` the review last shown
 for that review and base (`recent`, the last 4), so a return sends only
 what changed and keeps the same `FileDiff`s, whose caches hold. `Session`
 opens repositories through one `Opens` adapter, `GitProgram`, which looks
-for git once. The pure commands (`instructions`, `end_round`,
-`round_to_follow`, `merge_reviews`) run off the main thread. The base
+for git once. The pure commands (`keep_agent_marks`, `end_round`,
+`round_to_follow`, `merge_reviews`) run off the main thread, as does
+`instructions`, which reads the review shown and its file's place. The base
 picker counts the uncommitted lines from the review when it shows them,
 replaces `choices` only when they changed, and lists nothing while
 closed; `setBase` no longer reads the choices again. The highlight

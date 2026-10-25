@@ -37,6 +37,8 @@ vi.mock("./api", () => ({
     roundToFollow: vi.fn(() => Promise.resolve(null)),
     baseChoices: vi.fn(() => Promise.resolve({ refs: [], defaultBranch: null })),
     watchRepository: vi.fn(() => Promise.resolve(true)),
+    watchReview: vi.fn(() => Promise.resolve(true)),
+    keepAgentMarks: vi.fn(),
     fileLines: vi.fn(),
     instructions: vi.fn(() => Promise.resolve("md")),
     endRound: vi.fn(),
@@ -89,6 +91,7 @@ const comment = (id: string): Comment => ({
   place: null,
   sent: null,
   resolved: null,
+  note: null,
 });
 
 /** `c` as sent in round `round`, untouched. */
@@ -1315,6 +1318,25 @@ describe("resolving", () => {
     expect(useStore.getState().lastResolved).toBeNull();
   });
 
+  it("accepts what the agent resolved, keeping its note", () => {
+    const marked: Comment = { ...open, resolved: "byAgent", note: "Renamed it." };
+    useStore.setState({ comments: [draft, marked] });
+    useStore.getState().resolveComment("s");
+    expect(useStore.getState().comments[1]).toMatchObject({ resolved: "byReviewer", note: "Renamed it." });
+  });
+
+  it("reopens what the agent resolved once the comment is edited, and not before", () => {
+    const marked: Comment = { ...open, resolved: "byAgent", note: "Renamed it." };
+    useStore.setState({ comments: [draft, marked], review: null });
+    useStore.getState().editComment("s");
+    useStore.getState().saveComposer();
+    expect(useStore.getState().comments[1]).toMatchObject({ resolved: "byAgent", note: "Renamed it." });
+    useStore.getState().editComment("s");
+    useStore.getState().updateComposer({ text: "Not quite: rename the type too." });
+    useStore.getState().saveComposer();
+    expect(useStore.getState().comments[1]).toMatchObject({ resolved: null, note: null });
+  });
+
   it("unresolves a comment with no card without showing it", () => {
     const away: Comment = { ...sent(comment("o")), state: "outdated", resolved: "byReviewer" };
     useStore.setState({ comments: [away], openComment: null, selected: "a.ts" });
@@ -1367,6 +1389,18 @@ describe("resolving", () => {
     expect(useStore.getState().undo?.label).toBe("1 draft deleted");
     useStore.getState().undoLast();
     expect(useStore.getState().comments).toEqual([draft, open]);
+  });
+});
+
+describe("the agent's marks", () => {
+  it("takes in a comment the agent resolved in the review's file", async () => {
+    const open = sent(comment("s"));
+    await openWith("/repo", keptReview([open], []));
+    const marked: Comment = { ...open, resolved: "byAgent", note: "Done." };
+    vi.mocked(api.savedReview).mockResolvedValue(keptReview([marked], []));
+    vi.mocked(api.keepAgentMarks).mockImplementation((_window, saved) => Promise.resolve(saved));
+    await useStore.getState().takeAgentMarks();
+    expect(useStore.getState().comments[0]).toMatchObject({ resolved: "byAgent", note: "Done." });
   });
 });
 

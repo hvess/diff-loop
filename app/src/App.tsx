@@ -199,11 +199,13 @@ export function App() {
       if (!useStore.getState().watching) tick();
     }, POLL_MS);
     const unlisten = listen("repository-changed", () => void useStore.getState().poll());
+    const unlistenReview = listen("review-changed", () => void useStore.getState().takeAgentMarks());
     window.addEventListener("focus", tick);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", tick);
       void unlisten.then((f) => f());
+      void unlistenReview.then((f) => f());
     };
   }, []);
 

@@ -1,0 +1,18 @@
+[package]
+name         = "diff-loop-mcp"
+version      = "0.1.0"
+description  = "Diff Loop's MCP server: an agent reads a branch's review and resolves the comments it fixed."
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+publish.workspace      = true
+
+[dependencies]
+diff-loop-core  = { workspace = true }
+diff-loop-git   = { workspace = true }
+diff-loop-store = { workspace = true }
+serde_json      = { workspace = true }
+thiserror       = { workspace = true }
+
+[lints]
+workspace = true

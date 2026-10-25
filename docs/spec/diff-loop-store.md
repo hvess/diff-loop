@@ -2,7 +2,7 @@
 
 The `ReviewStore` adapter: a file per branch in each project's common git directory, with the projects that hold one listed in the app's data directory.
 
-**Status:** active — first version landed.
+**Status:** active — the review file and the agent's marks landed.
 **Scope:** `crates/store`. Excludes what a review holds (the core) and when the app saves (`docs/spec/diff-loop-app.md`).
 **Owner:** Maximilian
 **Last Updated:** 2026-10-25
@@ -18,6 +18,9 @@ app share them; ADR 0031 §3 makes the store a crate both can depend on.
 1. A review per branch at `<common git dir>/diff-loop/reviews/<name>.json`,
    and `projects.json` listing the projects that hold one (ADR 0030 §1,
    ADR 0031 §1 and §2) — done 2026-10-25.
+2. The agent's marks (ADR 0032): a save keeps marks the window has not
+   seen, `change` writes in one locked step, `location` names a review's
+   file and `watch` follows it (Decisions 7 to 9) — done 2026-10-25.
 
 ## Decisions
 
@@ -44,11 +47,27 @@ app share them; ADR 0031 §3 makes the store a crate both can depend on.
 6. **A listing leaves out what it cannot read** (ADR 0031 §5): a review
    folder or file that cannot be read is skipped in `kept`; `saved`
    reports it. Only an unreadable `projects.json` fails the listing.
+7. **A save keeps the agent's marks it has not seen** (ADR 0032 §3):
+   under the lock, the review written takes in each comment the file
+   holds resolved by the agent while the window's copy is open and
+   unedited (`SavedReview::keeping_agent_marks`).
+8. **A watch hears its review's file by name** (`touches`): the folder,
+   made if missing (never the git directory, Decision 4), is watched; reads do not count, and macOS reports
+   paths with links resolved, so the name alone is compared.
+9. **Every write is one locked step** (`FileReviews::replace`): `save`
+   and `change` read what is kept and write in its place under the lock,
+   so the MCP server's resolve and the app's save never lose each other's
+   work.
 
 ## Pitfalls
 
 - `Path::with_extension` replaces part of a branch named `v1.2`; a lock
   or a write in progress is named by appending (`file::beside`).
+
+## Progress (2026-10-25, the agent's marks)
+
+A save keeps the agent's unseen marks (Decision 7), `location` names a
+review's file, and `watch` follows it (Decision 8).
 
 ## Progress (2026-10-25, first version)
 

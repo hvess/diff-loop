@@ -13,7 +13,9 @@ tree, highlighting, find, what a comment's fields mean on screen
 count of new comments by it, `previewSubtitle`, repeat the core's one
 comparison, the seam the ADR 0015 build chose; `holdsReview` repeats
 `SavedReview::is_empty`, the seam the ADR 0026 build chose, since the
-window asks it on every comment; the store's `seen`, which a load moves
+window asks it on every comment; the store's `reopenedMark` repeats
+`SavedReview::keeping_agent_marks`'s test of an unedited comment, the
+seam the ADR 0032 build chose, since the composer decides on save; the store's `seen`, which a load moves
 to the branch's new commit between the core's `resume` calls, Decision
 33), what to send and when (`canSend`
 says whether Copy is offered at all: not where no worktree has the
