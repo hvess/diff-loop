@@ -77,7 +77,9 @@ on 2026-10-19, and the design's v3 drew it as flow 6.
    folder, as the title bar's chip did (the developer's call,
    2026-10-19). The welcome screen lists the reviews, most recently
    shown first, where it listed recent folders, which are no longer kept
-   (`diff-loop.recent`; amends ADR 0001 §5).
+   (`diff-loop.recent`; amends ADR 0001 §5). (Amended by ADR 0033: the
+   welcome screen lists the projects most recently opened, and the
+   switcher opens only once a project is shown.)
 8. **`reviews.json` is version 4**: `{"version": 4, "projects":
    {"<project>": {"reviews": {"<branch>": SavedReview}, "seen": ms}}}`.
    Versions 1 to 3 kept reviews by working tree, which names no branch:

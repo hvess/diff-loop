@@ -15,7 +15,7 @@ change, annotate, hand off to the agent, next round.
 ## Steps
 
 1. Open a project: welcome, open folder (⌘/Ctrl-O, drop, or a path on the
-   command line), recent folders (reviews since 2026-10-19, step 15), "Not a git repository", "Nothing to
+   command line), recent folders (reviews since 2026-10-19, step 15; projects since 2026-10-25, ADR 0033), "Not a git repository", "Nothing to
    review" — done 2026-10-13.
 2. Read the change: files grouped by role with viewed progress (V),
    unified and split views, highlighting, base picker, cards for renamed,
@@ -164,7 +164,8 @@ change, annotate, hand off to the agent, next round.
    to narrow (`SHOWN`), in a search and in each list it opens, and the
    review switcher 50 rows a group (`SHOWN`, `switcher.ts`); 8 recent
    folders were kept (`recent.ts`, `LIMIT`) until 2026-10-19, when the
-   welcome screen's 8 reviews took their place (`LISTED`). The preview's 150 ms wait
+   welcome screen's 8 reviews took their place (`LISTED`), and 8 recent
+   projects took theirs 2026-10-25 (`recent.ts`, `LIMIT`, ADR 0033). The preview's 150 ms wait
    after the last change (`PREVIEW_DELAY_MS`) went with the note it
    waited for, 2026-10-14.
 
@@ -471,7 +472,7 @@ change, annotate, hand off to the agent, next round.
     | ⌘/Ctrl-Shift-C | Copy Review, with comments |
     | ⌘/Ctrl-R | Check for changes now |
     | ⌘/Ctrl-Shift-W | Close the folder |
-    | ⌘/Ctrl-K | Open or close the review switcher, on the welcome screen too (ADR 0026 §7) |
+    | ⌘/Ctrl-K | Open or close the review switcher, once a project is open (ADR 0033 §4; on the welcome screen too from ADR 0026 §7 until then) |
     | ⌘/Ctrl-O, ⌘/Ctrl-F, ⌘/Ctrl-G, Esc | As before (Decisions 18 and 27), except that ⌘/Ctrl-G, and the macOS menu's Find Next and Find Previous, no longer step find under a dialog |
 
     The line cursor is the selection. ↓ and ↑ move it a row at a time,
@@ -552,7 +553,7 @@ change, annotate, hand off to the agent, next round.
       Lost, resolved and outdated comments draw none.
     - **Cards:** a draft keeps Edit and Delete; a sent one shows its chip
       (Sent, Changed, Reopened), "Sent in round N · 18 min ago" (`when`,
-      as the welcome screen's reviews; in `--sec`, as "You sent in
+      as the switcher's reviews; in `--sec`, as "You sent in
       round N"), a reopened
       one "You sent in round N" with the old text and "Copies as “Still:
       …”" (the composer shows the same while editing a sent comment), a
@@ -660,7 +661,8 @@ change, annotate, hand off to the agent, next round.
     notes and Copy's reason also written out, "Open without saving" and
     "Branches without a review" on every branch row, the other-window
     notice at the switcher's top and every notice closed by Dismiss, the
-    welcome rows drawn as the switcher's, the reworded notes and banners,
+    welcome rows drawn as the switcher's (until ADR 0033 listed projects
+    there), the reworded notes and banners,
     and no copy at all from a branch no worktree has.
     - **One review on screen**, kept under its `key` (the core's
       `Opening::key`; null on a detached `HEAD`). Opening a
@@ -769,14 +771,14 @@ change, annotate, hand off to the agent, next round.
       the sidebar's head at its default width: "… is with your reviews now, under ⌘K.",
       where the design says "in the switcher", a word no window shows. Its hints are
       ↑ ↓, Return and Esc, without the design's ⌃Tab (step 15).
-    - **The welcome screen** (1a): "Open Folder…", and the 8 reviews
-      most recently shown under "Recent Reviews", with "All Reviews ⌘K", in place of recent
-      folders (`diff-loop.recent` is no longer read or written). Each row
-      reads as the switcher's does, its moved badge and its place line
-      ("Live in .wt/share-retry"), where the design writes the moved
-      state after the count and the place as a whole path in mono; the
-      place line is in the text face, as the switcher's. Each
-      row's dot is centred on its two lines, as the switcher's is.
+    - **The welcome screen** (1a; ADR 0033 since 2026-10-25): "Open
+      Folder…", and the 8 projects most recently opened under "Recent
+      Projects" (`recent.ts`, under `diff-loop.recent`), each row a
+      folder symbol, the project's name and the folder it opens (`~` for
+      home, in the text face); a row opens the project's main checkout,
+      or a bare project's folder last opened. No review is listed, and
+      neither "All Reviews ⌘K" nor ⌘/Ctrl-K opens the switcher there.
+      Until 2026-10-25 it listed the 8 reviews most recently shown.
       Closing the folder lets the session go (`close_repository`), so
       another window may show its review.
     - **The banners** (`resumedBanner`, `switchedBanner`): the design's
@@ -874,9 +876,8 @@ change, annotate, hand off to the agent, next round.
       out the review shown before (step 15). Find in file, which the
       canvas does not draw, keeps its place over the diff in the
       popover's look. The suggestion box says "Edit the + line", by its
-      mark, where the canvas says "Edit the green line" (ux gate 8), and
-      on Welcome's card the ⌘K cap takes the card's colour, as the
-      canvas's field colour is that card's own in light. The sheet's ⌘↩
+      mark, where the canvas says "Edit the green line" (ux gate 8; the
+      canvas says "Edit the + line" too since 2026-10-25). The sheet's ⌘↩
       sits on Copy to Clipboard, not before Cancel, and a draft's
       Delete on its card is in the deletion colour, as Delete Drafts is;
       the comment list's row the keys are on is the accent row the base
@@ -907,6 +908,13 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-25, the welcome screen lists projects)
+
+ADR 0033: Welcome lists the projects most recently opened, kept by
+`show` through `rememberOpened` (`recent.ts`), each opening its main
+checkout; the switcher opens only once a project is shown. The canvas's
+1a is redrawn to match.
 
 ## Progress (2026-10-25, the agent's marks)
 

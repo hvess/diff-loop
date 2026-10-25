@@ -84,7 +84,7 @@ before reopening a decision they cover.
   read by running `git` with optional locks off; two `localStorage` keys
   (recent folders, instruction preferences; the second unused since
   0013, and replaced by the sidebar's width in 0016; the first unused
-  since 0026). The stack gains Lucide, and the fonts become the system's
+  since 0026, and keeping recent projects since 0033). The stack gains Lucide, and the fonts become the system's
   on macOS, by 0027.
 - **0002 — Watch the checkout instead of polling it.** `Repository::watch`
   on the port; `diff-loop-git` watches with `notify`; the app emits
@@ -188,7 +188,7 @@ before reopening a decision they cover.
   never checking anything out; a detached `HEAD` keeps none; a deleted
   branch takes its reviews; a review switcher moves between them;
   `reviews.json` is version 4, and earlier reviews are dropped (a file
-  per branch by 0030).
+  per branch by 0030; the welcome screen lists projects by 0033).
 - **0027 — The redesign, drawn for Tauri.** The canvas "Diff Loop macOS
   Redesign" is the app's design, refined for Tauri: opaque layered
   surfaces instead of Liquid Glass; Lucide icons; SF Pro and SF Mono on
@@ -222,6 +222,10 @@ before reopening a decision they cover.
   the reviewer accepts it (R) or edits it to reopen it; a save keeps a
   mark the window has not seen, and the window watches the file. 0030's
   snapshots, threads and handed rounds are withdrawn.
+- **0033 — The welcome screen lists projects.** The 8 projects most
+  recently opened, by name and folder, each opening its main checkout,
+  kept under `diff-loop.recent`; no review is listed there, and the
+  switcher opens only once a project is shown.
 
 ## Key Constraints (non-negotiable)
 

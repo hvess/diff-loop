@@ -24,14 +24,12 @@ function run(command: WindowCommand, e: KeyboardEvent): boolean {
     return true;
   }
   const s = useStore.getState();
-  // The switcher lists every project's reviews, so it opens on the welcome screen too (ADR 0026 §7).
-  if (command === "switcher") {
-    s.setSwitcher(!s.switcher);
-    return true;
-  }
-  // The rest act on an open checkout.
+  // The rest act on an open checkout; the welcome screen opens projects, not reviews (ADR 0033 §4).
   if (!s.opening) return false;
   switch (command) {
+    case "switcher":
+      s.setSwitcher(!s.switcher);
+      return true;
     case "find":
       s.openFind();
       return true;

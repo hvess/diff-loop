@@ -40,7 +40,8 @@ to a coding agent as instructions. The core also needs a way to read git.
    `diff-loop.recent` is read or written. (Amended by ADR 0016 §2:
    `diff-loop.sidebar` keeps the sidebar's width. Amended by ADR 0026 §7:
    `diff-loop.recent` is no longer read or written, the welcome screen
-   listing reviews instead.) Review comments are not
+   listing reviews instead. Amended by ADR 0033 §5: it keeps the recent
+   projects the welcome screen lists.) Review comments are not
    persisted (superseded by ADR 0004).
 
 ## Consequences

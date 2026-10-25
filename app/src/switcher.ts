@@ -1,4 +1,4 @@
-// What the review switcher and the welcome screen list (ADR 0026 §7; the design's flow 6 and 1a).
+// What the review switcher and the sidebar's Other Reviews list (ADR 0026 §7; the design's flow 6 and 2a).
 import type { Branch } from "./bindings/Branch";
 import type { KeptReview } from "./bindings/KeptReview";
 import type { ProjectCheck } from "./bindings/ProjectCheck";
@@ -150,7 +150,7 @@ function branchRow(branch: Branch, project: string, home: string | null, shown: 
  */
 export function listing(at: {
   query: string;
-  /** The review shown and its project's name; null on the welcome screen. */
+  /** The review shown and its project's name; null with no project open. */
   shown: { key: ReviewKey | null; project: string; name: string } | null;
   kept: KeptReview[];
   checks: Map<string, Check>;
@@ -217,7 +217,7 @@ export function listing(at: {
   return { empty, groups };
 }
 
-/** The welcome screen's reviews (the design's 1a): every project's, most recently shown first, at most `limit`. */
+/** The sidebar's Other Reviews (the canvas's 2a): every project's, most recently shown first, at most `limit`. */
 export function recentReviews(kept: KeptReview[], limit: number): KeptReview[] {
   return [...kept].sort(byShown).slice(0, limit);
 }

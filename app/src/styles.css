@@ -385,7 +385,7 @@
   .sug .m .sg { color: var(--deltx); }
   .sug .p .sg { color: var(--addtx); }
 
-  /* Rows of reviews (Welcome, the switcher, Other Reviews) and of comments */
+  /* Rows of reviews (the switcher, Other Reviews), of Welcome's projects, and of comments */
   .rv { display: flex; align-items: center; gap: 12px; border-radius: 10px; }
   /* The canvas scopes the dots to `.rv`; the sidebar's Other Reviews draws them too. */
   .live { width: 8px; height: 8px; border-radius: 4px; background: var(--sta); flex: none; }

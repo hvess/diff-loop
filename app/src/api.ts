@@ -34,7 +34,7 @@ export const api = {
   /** Closes the open checkout, letting another window show its review (ADR 0026 §9). */
   closeRepository: () => invoke<null>("close_repository"),
   worktreeOf: (key: ReviewKey) => invoke<string | null>("worktree_of", { key }),
-  /** Every review kept, for the review switcher and the welcome screen (ADR 0026 §7). */
+  /** Every review kept, for the review switcher and the sidebar's Other Reviews (ADR 0026 §7). */
   keptReviews: () => invoke<KeptReview[]>("kept_reviews"),
   /** `project`'s branches, and where its reviews' went; a review whose branch is gone is deleted, and named (ADR 0026 §6). */
   checkProject: (project: string) => invoke<ProjectCheck>("check_project", { project }),

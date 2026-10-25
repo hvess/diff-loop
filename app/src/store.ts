@@ -27,6 +27,7 @@ import { shortId } from "./format";
 import { idOf, sameKey } from "./key";
 import { whereIs } from "./path";
 import { changedLines, type Expanded, type Gap, gapsOf, lastLine, linesOn, withinHunk } from "./rows";
+import { loadRecent, type Recent, rememberOpened } from "./recent";
 import { clampWidth, loadWidth, rememberWidth } from "./sidebar";
 import type { Check } from "./switcher";
 import { folderKeys, keptOrder, type TreeRow, treeRows } from "./tree";
@@ -115,7 +116,7 @@ type State = {
   switcher: boolean;
   /**
    * Every review kept, as last read (null before), and each project's last check, absent until
-   * its first answers: what the switcher and the welcome screen list.
+   * its first answers: what the switcher and the sidebar's Other Reviews list.
    */
   reviews: { kept: KeptReview[] | null; checks: Map<string, Check> };
   /** Reviews deleted with their branch since the switcher last said so (ADR 0026 §6). */
@@ -126,6 +127,8 @@ type State = {
   reviewSaved: boolean;
   /** The user's home folder, which paths name as `~`; null until known. */
   home: string | null;
+  /** The projects most recently opened, newest first, which the welcome screen lists (ADR 0033). */
+  recentProjects: Recent[];
   openProblem: (Problem & { path: string }) | null;
   busy: boolean;
   /** Whether the checkout is watched; when not, App polls instead. */
@@ -542,6 +545,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
   elsewhere: null,
   reviewSaved: false,
   home: null,
+  recentProjects: loadRecent(),
   openProblem: null,
   busy: false,
   watching: false,
@@ -1509,6 +1513,7 @@ async function show(opening: Opening, banner: Banner | null, read: ReturnType<ty
     closed: new Set(),
     opensCheckout: true,
     following: null,
+    recentProjects: rememberOpened(opening.checkout, Date.now()),
   });
   // What resuming changed is kept: where the branch is now, and the rounds a rewrite took with it.
   if (key) void save(key, keptOf(get()));

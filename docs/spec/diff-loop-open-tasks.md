@@ -28,8 +28,7 @@ contradicts) and the entry says so before it goes.
     (⌘/Ctrl-O), a
     sent card's Resolve button (R), the preview's Copy (⌘/Ctrl-↵), the
     review switcher's field, rows and hints (⌘/Ctrl-K, ⌘/Ctrl-O, ↑ ↓,
-    Return, Esc; since 2026-10-19) and the welcome screen's
-    All Reviews (⌘/Ctrl-K), and
+    Return, Esc; since 2026-10-19), and
     the macOS menu bar's Open Folder and Find items name a key, and Linux
     has no menu bar (Decision 18). The HIG `offering-help` page offers
     tips to help people "discover faster ways to accomplish a task". Closes when ? (and ⌘-? on macOS, with a Help menu

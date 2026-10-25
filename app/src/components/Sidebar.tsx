@@ -14,7 +14,7 @@ import { LiveDot } from "./LiveDot";
 
 /** Each tree row's height, the canvas's `.tr`. */
 const ROW_PX = 28;
-/** Most reviews Other Reviews lists, as many as the welcome screen. */
+/** Most reviews Other Reviews lists, the 8 most recently shown (diff-loop-app.md Decision 35). */
 const OTHER_REVIEWS = 8;
 
 /** The letter for a file's change and its class; meaning is also in its label, never colour alone. */

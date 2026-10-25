@@ -145,7 +145,7 @@ describe("a review's row", () => {
   });
 });
 
-describe("the welcome screen's reviews", () => {
+describe("the sidebar's other reviews", () => {
   it("are every project's, most recently shown first, never shown last, up to the limit", () => {
     const list = recentReviews([kept(P, "a", { at: 1 }), kept(Q, "b"), kept(P, "c", { at: 5 }), kept(Q, "d", { at: 3 })], 3);
     expect(list.map((r) => r.key.branch)).toEqual(["c", "d", "a"]);

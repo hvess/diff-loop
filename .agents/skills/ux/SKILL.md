@@ -296,7 +296,9 @@ against other wording that would also do.
   Branches, Tags, or Commits",
   where the design says "SHAs", and the typed row "Compare with “…”".
 - **Projects and folders** (ADR 0026; the design's words, the
-  developer's call, 2026-10-19): Welcome's "Open Folder…" (the canvas's 1a).
+  developer's call, 2026-10-19): Welcome's "Open Folder…" (the canvas's 1a),
+  and since ADR 0033 its "Recent Projects", each row a project's name
+  and folder.
   A project is what is
   reviewed, its branches' reviews together; a folder is what is picked
   to open one.

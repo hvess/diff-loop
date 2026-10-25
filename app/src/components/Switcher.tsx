@@ -22,7 +22,7 @@ function deletedWith(comments: number): string {
 }
 
 /** That a review's branch moved or was rewritten since it was last shown, as the canvas's badge. */
-export function Moved({ moved }: { moved: string | null }) {
+function Moved({ moved }: { moved: string | null }) {
   if (!moved) return null;
   return <span className="badge b-changed flex-none">{moved}</span>;
 }
