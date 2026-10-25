@@ -27,8 +27,8 @@ contradicts) and the entry says so before it goes.
     Comment button (⌘/Ctrl-Return), the welcome screen's Open Folder…
     (⌘/Ctrl-O), a
     sent card's Resolve button (R), the preview's Copy (⌘/Ctrl-↵), the
-    review switcher's field, rows and hints (⌘/Ctrl-K, ⌘/Ctrl-O, ↑ ↓,
-    Return, Esc; since 2026-10-19), and
+    branch switcher's hints (↑ ↓, Return, Esc; since 2026-10-19; its
+    field's ⌘/Ctrl-K and its rows' ⌘/Ctrl-O gone with ADR 0035), and
     the macOS menu bar's Open Folder and Find items name a key, and Linux
     has no menu bar (Decision 18). The HIG `offering-help` page offers
     tips to help people "discover faster ways to accomplish a task". Closes when ? (and ⌘-? on macOS, with a Help menu
@@ -71,7 +71,9 @@ contradicts) and the entry says so before it goes.
     elsewhere just after the claim was dropped
     (`assert!(!other.held_elsewhere(..))`), once, on 2026-10-23 while a
     release build ran beside the review loop; it passed five runs after.
-    Why the lock outlived the dropped handle is not known. Closes when the
+    Why the lock outlived the dropped handle is not known. That assertion
+    went with `held_elsewhere` (ADR 0035); the same delay would show as
+    the test's next `take` refused, after its retries. Closes when the
     cause is found and fixed, or the test is shown not to flake.
 
 ## Store

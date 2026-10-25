@@ -79,7 +79,9 @@ on 2026-10-19, and the design's v3 drew it as flow 6.
    shown first, where it listed recent folders, which are no longer kept
    (`diff-loop.recent`; amends ADR 0001 §5). (Amended by ADR 0033: the
    welcome screen lists the projects most recently opened, and the
-   switcher opens only once a project is shown.)
+   switcher opens only once a project is shown. Amended by ADR 0035: the
+   switcher lists the open project's branches only, marking none live or
+   committed only, with no row opening a folder.)
 8. **`reviews.json` is version 4**: `{"version": 4, "projects":
    {"<project>": {"reviews": {"<branch>": SavedReview}, "seen": ms}}}`.
    Versions 1 to 3 kept reviews by working tree, which names no branch:

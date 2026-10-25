@@ -100,22 +100,16 @@ impl SavedReview {
         self
     }
 
-    /// What the review switcher says of it (ADR 0026 §7). O(comments).
+    /// What the branch switcher says of it (ADR 0035). O(comments).
     #[must_use]
     pub fn summary(&self) -> ReviewSummary {
-        let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+        let open = self
+            .comments
+            .iter()
+            .filter(|c| c.resolved.is_none())
+            .count();
         ReviewSummary {
-            comments: count(self.comments.len()),
-            open: count(
-                self.comments
-                    .iter()
-                    .filter(|c| c.resolved.is_none())
-                    .count(),
-            ),
-            round: self.rounds.last().map(|r| RoundSummary {
-                number: r.number,
-                at: r.at,
-            }),
+            open: u32::try_from(open).unwrap_or(u32::MAX),
             seen: self.seen.clone(),
         }
     }
@@ -133,31 +127,15 @@ pub struct Seen {
     pub at: i64,
 }
 
-/// What the review switcher lists of a kept review ([`SavedReview::summary`]).
+/// What the branch switcher shows of a kept review ([`SavedReview::summary`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ReviewSummary {
-    /// Every comment, resolved ones included.
-    pub comments: u32,
     /// The comments not resolved.
     pub open: u32,
-    /// The latest round, if one was sent.
-    pub round: Option<RoundSummary>,
     /// As [`SavedReview::seen`].
     pub seen: Option<Seen>,
-}
-
-/// A round as the review switcher names it: "Round 2 sent · 10 min ago".
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub struct RoundSummary {
-    /// As [`Round::number`].
-    pub number: u32,
-    /// As [`Round::at`].
-    #[ts(type = "number")]
-    pub at: i64,
 }
 
 /// Where reviews are kept between runs, by [`ReviewKey`].
@@ -329,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn a_summary_counts_open_comments_and_names_the_latest_round() {
+    fn a_summary_counts_open_comments() {
         let review = SavedReview {
             comments: vec![
                 comment("a", None),
@@ -339,10 +317,8 @@ mod tests {
             rounds: vec![round(1, 10), round(2, 20)],
             ..SavedReview::default()
         };
-        let summary = review.summary();
-        assert_eq!((summary.comments, summary.open), (3, 2));
-        assert_eq!(summary.round, Some(RoundSummary { number: 2, at: 20 }));
-        assert_eq!(SavedReview::default().summary().round, None);
+        assert_eq!(review.summary().open, 2);
+        assert_eq!(SavedReview::default().summary().open, 0);
     }
 
     #[test]

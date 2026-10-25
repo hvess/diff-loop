@@ -174,7 +174,7 @@ own decisions to depart from it, each recorded with both halves.
   does (ADR 0027 §7). Its search field, which
   holds focus while the picker is open, is drawn flat, with no focus
   ring (HIG `focus-and-selection`); the highlighted row shows where
-  Return goes. The review switcher's field is drawn the same way, so
+  Return goes. The branch switcher's field is drawn the same way, so
   the two read alike (the developer's call, 2026-10-20).
 - **A range's ends drag from the gutter, marked by mini handles**
   (diff-loop-app Decision 35; the developer's direction, 2026-10-22,
@@ -313,7 +313,8 @@ against other wording that would also do.
   comments."), the base picker's reason ("… Check it out in one to
   compare with its uncommitted changes.") and the switched banner, and the
   detached banner's "… Check out a branch to comment.", each with its
-  next step; "Open without saving" on a branch row, to match "↩ Open";
+  next step; "Open without saving" on a branch row, to match "↩ Open"
+  (until ADR 0035, whose branch rows say nothing of saving);
   "Review Saved" with "… is with your reviews now, under ⌘K." (Ctrl+K
   off macOS), as no window names a switcher; notices
   closed by "Dismiss", as banners' close buttons are named.

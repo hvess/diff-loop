@@ -85,10 +85,6 @@ impl Project for GitProject {
     fn worktree_of(&self, branch: &str) -> Result<Option<String>, RepoError> {
         Ok(self.worktrees()?.remove(&format!("refs/heads/{branch}")))
     }
-
-    fn commits_between(&self, from: &str, to: &str) -> Result<Option<u32>, RepoError> {
-        crate::commits_between(&self.run, from, to)
-    }
 }
 
 /// The absolute common git directory of the repository `run` runs in.

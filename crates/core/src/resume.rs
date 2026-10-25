@@ -117,7 +117,7 @@ pub fn resume(
 
 /// Where a branch at `now` went since it was seen at `seen`, by
 /// `commits_between` ([`Repository::commits_between`]).
-pub(crate) fn since_seen(
+fn since_seen(
     seen: Option<&str>,
     now: Option<&str>,
     commits_between: impl Fn(&str, &str) -> Result<Option<u32>, RepoError>,

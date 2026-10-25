@@ -472,7 +472,7 @@ fn millis(seconds: &str) -> Option<i64> {
     seconds.parse::<i64>().ok()?.checked_mul(1000)
 }
 
-/// [`Repository::commits_between`], for a checkout and a project alike.
+/// [`Repository::commits_between`].
 fn commits_between(run: &Runner, from: &str, to: &str) -> Result<Option<u32>, RepoError> {
     if let Outcome::Failure =
         run.outcome(&["merge-base", "--is-ancestor", "--end-of-options", from, to])?

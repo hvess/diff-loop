@@ -24,7 +24,7 @@ use diff_loop_core::{
     Base, BaseChoices, CheckError, Checkout, Comment, Content, InstructionsRequest, KnownFile,
     LineCounts, Loaded, Opening, Place, Project, ProjectCheck, RepoError, Repository, Resumed,
     Review, ReviewFile, ReviewKey, ReviewStore, ReviewSummary, RoundRequest, SavedReview, Side,
-    Snapshot, StoreError, Touched, WatchGuard, project_name,
+    Snapshot, StoreError, Touched, WatchGuard,
 };
 use diff_loop_git::{Git, GitProgram, GitProject};
 use diff_loop_store::FileReviews;
@@ -483,39 +483,26 @@ fn close_repository(session: State<'_, Session>) {
     session.close();
 }
 
-/// A kept review as the review switcher lists it (ADR 0026 §7).
+/// A kept review as the branch switcher reads it (ADR 0035).
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub(crate) struct KeptReview {
     key: ReviewKey,
-    /// The project's name.
-    name: String,
     summary: ReviewSummary,
-    /// Whether another window shows it.
-    elsewhere: bool,
 }
 
-/// Every review kept, in key order, with whether another window shows it.
+/// Every review kept, in key order.
 #[tauri::command]
-async fn kept_reviews(
-    reviews: State<'_, Reviews>,
-    session: State<'_, Session>,
-    claims: State<'_, Claims>,
-) -> Result<Vec<KeptReview>, CommandError> {
+async fn kept_reviews(reviews: State<'_, Reviews>) -> Result<Vec<KeptReview>, CommandError> {
     let store = Arc::clone(&reviews.0);
-    let claims = claims.inner().clone();
-    // This window's own review would read as held: its lock is this window's.
-    let own = lock(&session.claim).as_ref().map(|c| c.key().clone());
     blocking(move || {
         Ok::<_, StoreError>(
             store
                 .kept()?
                 .into_iter()
                 .map(|(key, review)| KeptReview {
-                    name: project_name(&key.project),
                     summary: review.summary(),
-                    elsewhere: own.as_ref() != Some(&key) && claims.held_elsewhere(&key),
                     key,
                 })
                 .collect(),

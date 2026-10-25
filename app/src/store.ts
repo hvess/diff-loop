@@ -112,7 +112,7 @@ type State = {
   keptBase: Base | null;
   /** Where the branch was when the review was last shown, kept with it (ADR 0026 §4). */
   seen: Seen | null;
-  /** Whether the review switcher is open (ADR 0026 §7). */
+  /** Whether the branch switcher is open (ADR 0035). */
   switcher: boolean;
   /**
    * Every review kept, as last read (null before), and each project's last check, absent until

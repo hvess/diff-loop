@@ -143,7 +143,7 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
     with no commit. Each says where it is
     (`Location`: local, with its upstream's remote and the worktree that
     has it checked out, or a remote's alone). O(refs), once each time the
-    review switcher checks the project or a review is opened. While a
+    branch switcher checks the project (ADR 0035) or a review is opened. While a
     review is shown from its commits, each poll asks only which worktree
     has its branch (`Project::worktree_of`, `worktree list` alone).
 

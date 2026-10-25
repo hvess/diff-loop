@@ -189,7 +189,8 @@ before reopening a decision they cover.
   never checking anything out; a detached `HEAD` keeps none; a deleted
   branch takes its reviews; a review switcher moves between them;
   `reviews.json` is version 4, and earlier reviews are dropped (a file
-  per branch by 0030; the welcome screen lists projects by 0033).
+  per branch by 0030; the welcome screen lists projects by 0033; the
+  switcher lists the project's branches by 0035).
 - **0027 — The redesign, drawn for Tauri.** The canvas "Diff Loop macOS
   Redesign" is the app's design, refined for Tauri: opaque layered
   surfaces instead of Liquid Glass; Lucide icons; SF Pro and SF Mono on
@@ -230,6 +231,12 @@ before reopening a decision they cover.
 - **0034 — Long names in the sidebar end in an ellipsis.** The tree
   never scrolls sideways; a name too long for its row is cut at its end,
   its status letter kept and its full path the row's tooltip.
+- **0035 — The switcher lists the project's branches.** In the base
+  picker's popover: Recent (up to 8, the shown branch first, then the
+  reviews last shown, then the last committed to), then Local Branches
+  and each remote opening in place; typing searches them all. No other
+  projects, no live or committed-only marks; the core's summaries keep
+  only what it shows.
 
 ## Key Constraints (non-negotiable)
 

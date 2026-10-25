@@ -14,8 +14,8 @@ use diff_loop_core::ReviewKey;
 use thiserror::Error;
 
 /// How often, and how far apart, a claim is tried before the review counts
-/// as another window's: another instance's `held_elsewhere` holds a lock for
-/// the moment it takes to try it.
+/// as another window's: a lock has been seen to outlive its dropped handle
+/// for a moment (open-tasks 27).
 const TRIES: u32 = 3;
 const APART: Duration = Duration::from_millis(20);
 
@@ -75,15 +75,6 @@ impl Claims {
         Err(Refused::Elsewhere)
     }
 
-    /// Whether another window holds `key`: its lock tried once and let go at
-    /// once. A review this window claims reads as held too, since a lock
-    /// belongs to the handle that took it; the caller leaves that one out.
-    pub(crate) fn held_elsewhere(&self, key: &ReviewKey) -> bool {
-        // A lock that cannot be tried says nothing of another window.
-        self.open(key)
-            .is_ok_and(|file| matches!(file.try_lock(), Err(TryLockError::WouldBlock)))
-    }
-
     fn open(&self, key: &ReviewKey) -> io::Result<File> {
         fs::create_dir_all(&self.dir)?;
         fs::OpenOptions::new()
@@ -126,10 +117,8 @@ mod tests {
         let held = one.take(&key("a")).unwrap();
         assert_eq!(held.key(), &key("a"));
         assert!(matches!(other.take(&key("a")), Err(Refused::Elsewhere)));
-        assert!(other.held_elsewhere(&key("a")));
         assert!(other.take(&key("b")).is_ok(), "another review is free");
         drop(held);
-        assert!(!other.held_elsewhere(&key("a")));
         assert!(other.take(&key("a")).is_ok());
     }
 

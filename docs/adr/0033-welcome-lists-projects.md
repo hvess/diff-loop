@@ -28,7 +28,8 @@ is reached from the project it belongs to.
    opened from. The developer's call, 2026-10-25.
 4. **The switcher is not on the welcome screen**: no "All Reviews ⌘K",
    and ⌘/Ctrl-K does nothing there. It opens once a project is shown,
-   where it still lists every project's reviews (ADR 0026 §7). The
+   where it still lists every project's reviews (ADR 0026 §7; since
+   ADR 0035, the project's branches only). The
    developer's call, 2026-10-25.
 5. **The list is kept in `localStorage` under `diff-loop.recent`**, as
    ADR 0001 §5 kept recent folders, each entry the project, its name,

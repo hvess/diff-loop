@@ -27,12 +27,6 @@ pub trait Project {
     /// # Errors
     /// [`RepoError::Failed`] when the worktrees cannot be read.
     fn worktree_of(&self, branch: &str) -> Result<Option<String>, RepoError>;
-
-    /// As [`crate::Repository::commits_between`].
-    ///
-    /// # Errors
-    /// [`RepoError::Failed`] when either commit cannot be read.
-    fn commits_between(&self, from: &str, to: &str) -> Result<Option<u32>, RepoError>;
 }
 
 /// A branch of a [`Project`]: the branch a review is kept for.

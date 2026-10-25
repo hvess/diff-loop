@@ -22,7 +22,7 @@ mod update;
 
 pub use anchor::{AnchorState, Comment, Place, Resolution, Sent, Target, Verdict};
 pub use base::{Base, BaseChoices, BaseRef, RefKind};
-pub use check::{CheckError, CheckedReview, GoneReview, ProjectCheck, check_kept};
+pub use check::{CheckError, GoneReview, ProjectCheck, check_kept};
 pub use diff::{Content, FileDiff, Hunk, Line, LineCounts, Side, Status};
 pub use instructions::{InstructionsRequest, instructions};
 pub use lines::lines;
@@ -37,6 +37,6 @@ pub use review::{
 };
 pub use rounds::{Round, RoundRequest, end_round, merge, round_to_follow};
 pub use saved::{
-    OWN_FOLDER, OnReviewChange, ReviewKey, ReviewStore, ReviewSummary, RoundSummary, SavedReview,
-    Seen, StoreError,
+    OWN_FOLDER, OnReviewChange, ReviewKey, ReviewStore, ReviewSummary, SavedReview, Seen,
+    StoreError,
 };

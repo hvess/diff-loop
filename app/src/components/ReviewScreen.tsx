@@ -3,12 +3,11 @@ import { useEffect } from "react";
 import { notInDiff } from "../lifecycle";
 import { isMac, modKey } from "../platform";
 import { hunksOf } from "../rows";
-import { bannerDetail, holdsReview, isLive, useStore } from "../store";
+import { bannerDetail, holdsReview, useStore } from "../store";
 import { BasePicker } from "./BasePicker";
 import { BottomBar } from "./BottomBar";
 import { FilePane } from "./FilePane";
 import { Sym } from "./Icon";
-import { LiveDot } from "./LiveDot";
 import { Sidebar } from "./Sidebar";
 import { Switcher } from "./Switcher";
 
@@ -77,11 +76,10 @@ function chipNote(s: { worktree: string | null; detached: boolean; kept: boolean
   return s.kept ? undefined : "No review yet";
 }
 
-/** The project and branch the window shows, which opens the review switcher (ADR 0026 §7; the canvas's 6a). */
+/** The project and branch the window shows, which opens the branch switcher (ADR 0035; the canvas's 6a). */
 function ReviewChip() {
   const checkout = useStore((s) => s.review?.checkout ?? s.opening?.checkout);
   const kept = useStore(holdsReview);
-  const live = useStore(isLive);
   const switcher = useStore((s) => s.switcher);
   const setSwitcher = useStore((s) => s.setSwitcher);
   if (!checkout) return null;
@@ -91,9 +89,8 @@ function ReviewChip() {
   return (
     <>
       <Switcher open={switcher} onOpenChange={setSwitcher}>
-        <button type="button" className="cap" title={note} aria-label={`${checkout.name} ${branch}${note ? `, ${note}` : ""}. Switch review, ${modKey}K`}>
-          {/* Read from commits alone, the hollow dot stands in for the branch symbol (the canvas's rules note). */}
-          {live ? <Sym name="branch" /> : <LiveDot live={false} />}
+        <button type="button" className="cap" title={note} aria-label={`${checkout.name} ${branch}${note ? `, ${note}` : ""}. Switch branch, ${modKey}K`}>
+          <Sym name="branch" />
           <span className="k">{checkout.name}</span>
           <span>{branch}</span>
         </button>

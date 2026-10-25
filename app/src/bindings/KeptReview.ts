@@ -3,14 +3,6 @@ import type { ReviewKey } from "./ReviewKey";
 import type { ReviewSummary } from "./ReviewSummary";
 
 /**
- * A kept review as the review switcher lists it (ADR 0026 §7).
+ * A kept review as the branch switcher reads it (ADR 0035).
  */
-export type KeptReview = { key: ReviewKey, 
-/**
- * The project's name.
- */
-name: string, summary: ReviewSummary, 
-/**
- * Whether another window shows it.
- */
-elsewhere: boolean, };
+export type KeptReview = { key: ReviewKey, summary: ReviewSummary, };

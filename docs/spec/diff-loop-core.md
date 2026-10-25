@@ -190,22 +190,25 @@ Each is a pure function tested here.
     kept base stays for when it can be shown. It is then seen at the
     checkout's commit, at the time given.
 
-19. **The review switcher reads a project through the `Project` port**
-    (`project.rs`, ADR 0026 §7): its branches, one per name, each with
-    the worktree that has it checked out (`Branch`), `worktree_of`, which
-    a poll asks and which reads the worktrees alone, and `commits_between`.
+19. **The branch switcher reads a project through the `Project` port**
+    (`project.rs`, ADR 0026 §7, ADR 0035): its branches, one per name,
+    each with the worktree that has it checked out (`Branch`), and
+    `worktree_of`, which a poll asks and which reads the worktrees alone
+    (`commits_between` too until ADR 0035).
     A `Branch` says where it is as a `Location`: local, with its
     upstream's remote and worktree, or a remote's alone, which no
     worktree has; its commit is `None` before the first. `check_kept`
     (`check.rs`) reads a project's kept reviews from the `ReviewStore`,
-    names which still have a branch and where each went since last seen,
-    and which do not (`GoneReview`), with how many comments go with each,
+    names which no longer have a branch (`GoneReview`), with how many
+    comments go with each (where each went since last seen until
+    ADR 0035),
     and deletes those (ADR 0026 §6); a project that cannot be read
     deletes none (`CheckError`). `Opening::key` and `Review::key` name
     the review a checkout shows (`ReviewKey::of`), so the front end never
     decides which review a checkout is.
-    `SavedReview::summary` gives what a row shows: its comments, those
-    open, its latest round and where it was seen.
+    `SavedReview::summary` gives what the branch switcher shows: the
+    comments open and where it was seen (its comments and latest round
+    too until ADR 0035).
 
 ## Pitfalls
 

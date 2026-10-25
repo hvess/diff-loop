@@ -1,7 +1,7 @@
-//! What the review switcher reads of a project's kept reviews, and the
-//! deletion of those whose branch is gone (ADR 0026 §6 and §7).
+//! A project's branches, as the branch switcher lists them, and the deletion
+//! of the kept reviews whose branch is gone (ADR 0026 §6, ADR 0035).
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -10,33 +10,18 @@ use ts_rs::TS;
 use crate::{
     project::{Branch, Project},
     repository::RepoError,
-    resume::{SinceSeen, since_seen},
     saved::{ReviewKey, ReviewStore, SavedReview, StoreError},
 };
 
-/// A project as the review switcher shows it ([`check_kept`]).
+/// A project as the branch switcher shows it ([`check_kept`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ProjectCheck {
     /// As [`Project::branches`] lists them.
     pub branches: Vec<Branch>,
-    /// Each review whose branch is still there, with where its branch went
-    /// since the review was last shown.
-    pub reviews: Vec<CheckedReview>,
     /// The reviews whose branch is gone, to be deleted with it.
     pub gone: Vec<GoneReview>,
-}
-
-/// A kept review whose branch is still there.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub struct CheckedReview {
-    /// As [`ReviewKey::branch`].
-    pub branch: String,
-    /// Where its branch went since it was last shown.
-    pub since: SinceSeen,
 }
 
 /// A kept review whose branch was deleted.
@@ -62,10 +47,9 @@ pub enum CheckError {
 }
 
 /// The project whose common git directory is `project`, read through `repo`,
-/// with its reviews kept in `store`: its branches, where each review's branch
-/// went since it was last shown, and the reviews whose branch is gone, which
-/// are deleted with it (ADR 0026 §6). One read of `store`, and one save per
-/// review gone.
+/// with its reviews kept in `store`: its branches, and the reviews whose
+/// branch is gone, which are deleted with it (ADR 0026 §6). One read of
+/// `store`, and one save per review gone.
 ///
 /// # Errors
 /// [`CheckError::Repository`] when the project cannot be read, and then
@@ -88,41 +72,23 @@ pub fn check_kept(
     Ok(checked)
 }
 
-/// `project`'s branches, and of `reviews` (its own, as kept) which have a
-/// branch still, and where it went since each was last shown, and which do
-/// not. One [`Project::branches`], and one [`Project::commits_between`] per
-/// review whose branch moved.
+/// `project`'s branches, and which of `reviews` (its own, as kept) have none
+/// any more. One [`Project::branches`]; O(branches + reviews).
 fn check(
     project: &(impl Project + ?Sized),
     reviews: &[(ReviewKey, SavedReview)],
 ) -> Result<ProjectCheck, RepoError> {
     let branches = project.branches()?;
-    // By name, once: O(branches + reviews) rather than a search per review.
-    let named: HashMap<&str, &Branch> = branches.iter().map(|b| (b.name.as_str(), b)).collect();
-    let mut checked = Vec::new();
-    let mut gone = Vec::new();
-    // A loop, not a chain: each review can fail to check, and they go two ways.
-    for (key, review) in reviews {
-        match named.get(key.branch.as_str()) {
-            Some(branch) => checked.push(CheckedReview {
-                branch: key.branch.clone(),
-                since: since_seen(
-                    review.seen.as_ref().map(|s| s.commit.as_str()),
-                    branch.commit.as_deref(),
-                    |from, to| project.commits_between(from, to),
-                )?,
-            }),
-            None => gone.push(GoneReview {
-                key: key.clone(),
-                comments: review.summary().comments,
-            }),
-        }
-    }
-    Ok(ProjectCheck {
-        branches,
-        reviews: checked,
-        gone,
-    })
+    let named: HashSet<&str> = branches.iter().map(|b| b.name.as_str()).collect();
+    let gone = reviews
+        .iter()
+        .filter(|(key, _)| !named.contains(key.branch.as_str()))
+        .map(|(key, review)| GoneReview {
+            key: key.clone(),
+            comments: u32::try_from(review.comments.len()).unwrap_or(u32::MAX),
+        })
+        .collect();
+    Ok(ProjectCheck { branches, gone })
 }
 
 #[cfg(test)]
@@ -187,9 +153,6 @@ mod tests {
         fn worktree_of(&self, _: &str) -> Result<Option<String>, RepoError> {
             Ok(None)
         }
-        fn commits_between(&self, _: &str, _: &str) -> Result<Option<u32>, RepoError> {
-            Ok(None)
-        }
     }
 
     #[test]
@@ -225,7 +188,7 @@ mod tests {
         assert_eq!(store.kept().unwrap().len(), 1);
     }
 
-    /// Branches `a`, at commit `2`, and `b`, at `9`; commit `1` is one before `2`.
+    /// Branches `a`, at commit `2`, and `b`, at `9`.
     struct Two;
 
     impl Project for Two {
@@ -243,9 +206,6 @@ mod tests {
         }
         fn worktree_of(&self, _: &str) -> Result<Option<String>, RepoError> {
             Ok(None)
-        }
-        fn commits_between(&self, from: &str, to: &str) -> Result<Option<u32>, RepoError> {
-            Ok((from, to).eq(&("1", "2")).then_some(1))
         }
     }
 
@@ -286,22 +246,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(check.branches.len(), 2);
-        assert_eq!(
-            check.reviews,
-            [
-                CheckedReview {
-                    branch: "a".into(),
-                    since: SinceSeen::Moved {
-                        from: "1".into(),
-                        count: 1
-                    }
-                },
-                CheckedReview {
-                    branch: "b".into(),
-                    since: SinceSeen::Unchanged
-                },
-            ]
-        );
         assert_eq!(
             check.gone,
             [GoneReview {

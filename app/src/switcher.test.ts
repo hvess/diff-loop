@@ -2,145 +2,96 @@ import { describe, expect, it } from "vitest";
 import type { Branch } from "./bindings/Branch";
 import type { KeptReview } from "./bindings/KeptReview";
 import type { ProjectCheck } from "./bindings/ProjectCheck";
-import { type Check, type Row, listing, reviewRow, roundOf } from "./switcher";
+import { type BranchRow, type Check, RECENT, type Row, listing, listsOf } from "./switcher";
 
-const NOW = Date.UTC(2026, 9, 19, 12);
+const NOW = Date.UTC(2026, 9, 25, 12);
+const HOUR = 3600000;
 const P = "/home/me/code/drive-web/.git";
-const Q = "/home/me/code/pass-cli/.git";
 
-const kept = (project: string, branch: string, o: { open?: number; comments?: number; at?: number; round?: number } = {}): KeptReview => ({
-  key: { project, branch },
-  name: project === P ? "drive-web" : "pass-cli",
-  summary: {
-    comments: o.comments ?? o.open ?? 0,
-    open: o.open ?? 0,
-    round: o.round === undefined ? null : { number: o.round, at: NOW - 10 * 60000 },
-    seen: o.at === undefined ? null : { commit: "c", at: o.at },
-  },
-  elsewhere: false,
-});
-
-/** A local branch, with its upstream's remote and worktree if given; or one only on `only`. */
-const branch = (name: string, o: { worktree?: string; remote?: string; only?: string; updated?: number } = {}): Branch => ({
+/** A local branch committed to `hours` ago, or one only on `remote`. */
+const branch = (name: string, hours: number, remote?: string): Branch => ({
   name,
   commit: "c",
-  updated: o.updated ?? 0,
-  location: o.only ? { kind: "remote", remote: o.only } : { kind: "local", remote: o.remote ?? null, worktree: o.worktree ?? null },
+  updated: NOW - hours * HOUR,
+  location: remote ? { kind: "remote", remote } : { kind: "local", remote: null, worktree: null },
 });
 
-const checked = (branches: Branch[], reviews: ProjectCheck["reviews"] = []): ProjectCheck => ({ branches, reviews, gone: [] });
-
-const shown = (branchName: string | null) => ({
-  key: branchName === null ? null : { project: P, branch: branchName },
-  project: P,
-  name: "drive-web",
+const kept = (name: string, o: { open?: number; at?: number } = {}): KeptReview => ({
+  key: { project: P, branch: name },
+  summary: { open: o.open ?? 0, seen: o.at === undefined ? null : { commit: "c", at: o.at } },
 });
 
-const names = (rows: Row[]) => rows.map((r) => (r.kind === "openFolder" ? "open folder" : r.key.branch));
+const check = (branches: Branch[]): Check => ({ branches, gone: [] }) satisfies ProjectCheck;
 
-describe("the review switcher's list", () => {
-  const reviews = [
-    kept(P, "agent/share-retry", { open: 4, at: 3, round: 1 }),
-    kept(P, "agent/share-rate-limit", { open: 3, at: 1, round: 2 }),
-    kept(Q, "agent/fix-sync-retry", { open: 2, at: 2 }),
-  ];
+const BRANCHES = [
+  branch("main", 24),
+  branch("agent/share-retry", 2),
+  branch("agent/share-rate-limit", 1),
+  branch("old/session-store", 2000),
+  branch("agent/retry-backoff", 120, "origin"),
+  branch("fix/sync-retry", 500, "origin"),
+];
 
-  it("lists the project's reviews first, the one shown at their top, then other projects', then opening a folder", () => {
-    const { empty, groups } = listing({
+const names = (rows: Row[]) => rows.map((r) => (r.kind === "branch" ? r.name : `[${r.title}]`));
+
+describe("the branch switcher", () => {
+  it("opens on Recent: the branch shown, then the reviews last shown, then the local branches last committed to", () => {
+    const sections = listing({
       query: "",
-      shown: shown("agent/share-rate-limit"),
-      kept: reviews,
-      checks: new Map(),
-      home: "/home/me",
+      list: null,
+      check: check(BRANCHES),
+      kept: [kept("main", { at: 5 }), kept("old/session-store", { at: 9, open: 2 })],
+      shown: "agent/share-rate-limit",
       now: NOW,
-      checking: "Checking…",
     });
-    expect(empty).toBeNull();
-    expect(groups.map((g) => [g.name, g.meta])).toEqual([
-      ["drive-web", "~/code/drive-web"],
-      ["pass-cli", "~/code/pass-cli"],
-      ["", ""],
-    ]);
-    expect(groups.map((g) => names(g.rows))).toEqual([["agent/share-rate-limit", "agent/share-retry"], ["agent/fix-sync-retry"], ["open folder"]]);
-    // The review on screen is marked, and only it.
-    expect(groups[0]?.rows.map((r) => r.kind === "review" && r.current)).toEqual([true, false]);
+    expect(sections.map((s) => s.title)).toEqual(["Recent", ""]);
+    expect(names(sections[0]!.rows)).toEqual(["agent/share-rate-limit", "old/session-store", "main", "agent/share-retry"]);
+    expect(names(sections[1]!.rows)).toEqual(["[Local Branches]", "[origin]"]);
   });
 
-  it("says how a review starts and lists the branches, live ones first, in a project with none", () => {
-    const branches = [
-      branch("feature/old-export", { updated: 9 }),
-      branch("main", { worktree: "/home/me/code/drive-web", remote: "origin" }),
-      branch("agent/x", { worktree: "/home/me/code/drive-web/.wt/x", updated: 5 }),
-      branch("spike/webp", { only: "origin" }),
-    ];
-    const { empty, groups } = listing({
-      query: "",
-      shown: shown("agent/x"),
-      kept: [],
-      checks: new Map([[P, checked(branches)]]),
-      home: "/home/me",
-      now: NOW,
-      checking: "Checking…",
-    });
-    expect(empty?.title).toBe("No reviews in drive-web yet");
-    const [list] = groups;
-    expect(list?.name).toBe("Branches without a review in drive-web");
-    expect(list?.meta).toBe("3 local · 2 on origin");
-    expect(list?.rows.map((r) => (r.kind === "branch" ? [r.key.branch, r.where, r.live] : null))).toEqual([
-      ["agent/x", "Live in .wt/x", true],
-      ["main", "Live in ~/code/drive-web · also on origin", true],
-      ["feature/old-export", "Committed only · not checked out", false],
-      ["spike/webp", "Committed only · on origin", false],
+  it("marks the branch shown, a review's open comments and each branch's age", () => {
+    const [recent] = listing({ query: "", list: null, check: check(BRANCHES), kept: [kept("main", { open: 3 })], shown: "main", now: NOW });
+    const rows = recent!.rows as BranchRow[];
+    expect(rows[0]).toMatchObject({ name: "main", current: true, open: 3, age: "1d" });
+    expect(rows[1]).toMatchObject({ current: false, open: 0, age: "1h" });
+  });
+
+  it("lists no more than the limit in Recent", () => {
+    const many = Array.from({ length: RECENT + 4 }, (_, i) => branch(`b${i}`, i));
+    const [recent] = listing({ query: "", list: null, check: check(many), kept: [], shown: null, now: NOW });
+    expect(recent!.rows).toHaveLength(RECENT);
+  });
+
+  it("lists the reviews alone in Recent until the project's branches are read", () => {
+    const sections = listing({ query: "", list: null, check: undefined, kept: [kept("main", { at: 1 })], shown: "x", now: NOW });
+    expect(sections.map((s) => names(s.rows))).toEqual([["x", "main"]]);
+  });
+
+  it("searches every local and remote branch, grouped by list", () => {
+    const sections = listing({ query: "RETRY", list: null, check: check(BRANCHES), kept: [], shown: null, now: NOW });
+    expect(sections.map((s) => [s.title, names(s.rows)])).toEqual([
+      ["Local Branches", ["agent/share-retry"]],
+      ["origin", ["agent/retry-backoff", "fix/sync-retry"]],
     ]);
   });
 
-  it("finds reviews by branch or project, then branches without a review", () => {
-    const branches = [
-      branch("agent/thumbnail-cache", { worktree: "/home/me/code/drive-web/.wt/thumbnail-cache", remote: "origin" }),
-      branch("agent/share-retry"),
-      branch("spike/thumb-webp", { only: "origin" }),
-    ];
-    const at = (query: string) =>
-      listing({ query, shown: shown("agent/share-retry"), kept: reviews, checks: new Map([[P, checked(branches)]]), home: null, now: NOW, checking: "Checking…" });
-    const thumb = at("THUMB").groups;
-    expect(thumb[0]).toMatchObject({ name: "Reviews", meta: "No matches", rows: [] });
-    expect(thumb[1]?.name).toBe("Branches without a review in drive-web");
-    expect(thumb[1]?.rows).toEqual([
-      { kind: "branch", key: { project: P, branch: "agent/thumbnail-cache" }, live: true, where: "Live in .wt/thumbnail-cache · also on origin", current: false },
-      { kind: "branch", key: { project: P, branch: "spike/thumb-webp" }, live: false, where: "Committed only · on origin", current: false },
-    ]);
-    expect(names(at("pass").groups[0]!.rows)).toEqual(["agent/fix-sync-retry"]);
-    // A branch with a review is found as the review, not again as a branch.
-    expect(at("share-retry").groups.map((g) => g.name)).toEqual(["Reviews", ""]);
+  it("lists one list's branches when it is opened, narrowed by the query", () => {
+    const all = listing({ query: "", list: "remote:origin", check: check(BRANCHES), kept: [], shown: null, now: NOW });
+    expect(all.map((s) => names(s.rows))).toEqual([["agent/retry-backoff", "fix/sync-retry"]]);
+    const narrowed = listing({ query: "sync", list: "remote:origin", check: check(BRANCHES), kept: [], shown: null, now: NOW });
+    expect(narrowed.map((s) => names(s.rows))).toEqual([["fix/sync-retry"]]);
   });
 });
 
-describe("a review's row", () => {
-  const review = kept(P, "agent/share-retry", { open: 4, round: 1 });
-
-  it("says it is being checked until its project is, and where its branch is after", () => {
-    expect(reviewRow(review, undefined, null, NOW)).toMatchObject({ where: "Checking…", live: false, moved: null });
-    const check: Check = checked([branch("agent/share-retry", { worktree: "/home/me/code/drive-web/.wt/share-retry" })], [
-      { branch: "agent/share-retry", since: { kind: "moved", from: "a", count: 3 } },
+describe("a project's lists", () => {
+  it("are its local branches, then each remote's by name, leaving out an empty one", () => {
+    const lists = listsOf([branch("a", 1, "upstream"), branch("b", 1), branch("c", 1, "origin")]);
+    expect(lists.map((l) => [l.key, l.title, l.trail, l.branches.map((b) => b.name)])).toEqual([
+      ["local", "Local Branches", "1", ["b"]],
+      ["remote:origin", "origin", "1 branch", ["c"]],
+      ["remote:upstream", "upstream", "1 branch", ["a"]],
     ]);
-    expect(reviewRow(review, check, "/home/me", NOW)).toMatchObject({
-      where: "Live in .wt/share-retry",
-      live: true,
-      moved: "+3 commits",
-      comments: "4 open",
-      open: true,
-      round: "Round 1 sent · 10 min ago",
-    });
-    expect(reviewRow(review, "failed", null, NOW).where).toBe("Couldn’t be checked");
-  });
-
-  it("names a rewrite, a review open in another window, and one all resolved", () => {
-    const check: Check = checked([branch("agent/share-retry")], [{ branch: "agent/share-retry", since: { kind: "rewritten", from: "a" } }]);
-    expect(reviewRow(review, check, null, NOW).moved).toBe("Rewritten");
-    expect(reviewRow({ ...review, elsewhere: true }, check, null, NOW).where).toBe("Open in another window");
-    const done = kept(P, "b", { comments: 2, open: 0 });
-    done.summary.open = 0;
-    expect(reviewRow(done, undefined, null, NOW)).toMatchObject({ comments: "All resolved", open: false, round: "No rounds yet" });
-    expect(roundOf({ number: 3, at: NOW }, NOW)).toBe("Round 3 sent · Just now");
+    expect(listsOf([branch("a", 1, "origin"), branch("b", 1, "origin")])[0]?.trail).toBe("2 branches");
+    expect(listsOf([branch("a", 1, "origin")]).map((l) => l.key)).toEqual(["remote:origin"]);
   });
 });

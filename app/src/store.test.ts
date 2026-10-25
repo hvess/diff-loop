@@ -1495,12 +1495,10 @@ describe("the sidebar's folders", () => {
   });
 });
 
-describe("the review switcher", () => {
+describe("the branch switcher", () => {
   const kept = (project: string, branch: string): KeptReview => ({
     key: { project, branch },
-    name: "r",
-    summary: { comments: 1, open: 1, round: null, seen: null },
-    elsewhere: false,
+    summary: { open: 1, seen: null },
   });
 
   beforeEach(async () => {
@@ -1512,7 +1510,7 @@ describe("the review switcher", () => {
     vi.mocked(api.keptReviews).mockResolvedValueOnce([kept("/a/.git", "agent/x"), kept("/b/.git", "gone")]);
     const gone = { key: { project: "/b/.git", branch: "gone" }, comments: 1 };
     vi.mocked(api.checkProject).mockReset().mockImplementation((project) =>
-      Promise.resolve({ branches: [], reviews: [], gone: project === "/b/.git" ? [gone] : [] }),
+      Promise.resolve({ branches: [], gone: project === "/b/.git" ? [gone] : [] }),
     );
     useStore.getState().setSwitcher(true);
     await vi.waitFor(() => expect(useStore.getState().reviews.checks.size).toBe(2));
@@ -1529,7 +1527,7 @@ describe("the review switcher", () => {
     vi.mocked(api.keptReviews).mockClear().mockResolvedValueOnce([kept("/b/.git", "gone")]);
     const gone = { key: { project: "/b/.git", branch: "gone" }, comments: 1 };
     vi.mocked(api.checkProject).mockReset().mockImplementation((project) =>
-      Promise.resolve({ branches: [], reviews: [], gone: project === "/b/.git" ? [gone] : [] }),
+      Promise.resolve({ branches: [], gone: project === "/b/.git" ? [gone] : [] }),
     );
     await Promise.all([useStore.getState().refreshReviews(), useStore.getState().refreshReviews()]);
     expect(api.keptReviews).toHaveBeenCalledTimes(1);
@@ -1540,7 +1538,7 @@ describe("the review switcher", () => {
   it("saves the review on screen no more once its branch is found deleted", async () => {
     vi.mocked(api.keptReviews).mockResolvedValueOnce([kept("/a/.git", "agent/x")]);
     const gone = { key: { project: "/a/.git", branch: "agent/x" }, comments: 1 };
-    vi.mocked(api.checkProject).mockReset().mockResolvedValue({ branches: [], reviews: [], gone: [gone] });
+    vi.mocked(api.checkProject).mockReset().mockResolvedValue({ branches: [], gone: [gone] });
     await useStore.getState().refreshReviews();
     vi.mocked(api.saveReview).mockClear();
     useStore.setState({ comments: [comment("late")] });
