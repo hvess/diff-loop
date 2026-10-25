@@ -76,8 +76,8 @@ Each is a pure function tested here.
    (`kept_at`), each comment ends with its id, "(id `…`)", and in place
    of "When done, reply…" the agent is told where the comments are kept
    and how to mark one resolved, through `resolve_comment` or the file.
-   Since ADR 0036: a comment is a comment, a question (`Comment::question`)
-   or a suggestion (holding suggested code), read by `Comment::kind`. The
+   Since ADR 0036: a comment is a comment, a question or a suggestion
+   (holding suggested code), its `Comment::ask` since ADR 0037. The
    first line counts what is new by kind ("Review of agent/x (compared
    with main): 2 comments, 1 question and 1 suggestion", "; 3 still open
    from earlier rounds"); what is new has a numbered `##` section per kind
@@ -233,6 +233,11 @@ Each is a pure function tested here.
 - `Line` text excludes the line ending, and git's `\r` is stripped with
   it (`str::lines`); comparisons in `reanchor` rely on both sides being
   read the same way.
+
+## Progress (2026-10-25, the kind as an enum)
+
+ADR 0037: `Comment::ask` (`Ask`) in place of `question` and
+`suggestion`; a comment stored before it reads its kind from those.
 
 ## Progress (2026-10-25, questions and suggestions)
 

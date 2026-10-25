@@ -2,7 +2,7 @@
 import type { Comment } from "./bindings/Comment";
 import type { Round } from "./bindings/Round";
 import { when } from "./format";
-import { answered, askOf, changed, KINDS, open as isOpen, reopened, toAccept } from "./lifecycle";
+import { answered, changed, KINDS, open as isOpen, reopened, toAccept } from "./lifecycle";
 import { type CommentFilter, inFilter } from "./store";
 
 /** What the strip says of the last round: its title, its counts, and what goes at the right. */
@@ -56,7 +56,7 @@ export type Strip = { title: string; stage: "none" | "sent" | "answered"; parts:
 export function previewSubtitle(comments: Comment[], rounds: number): string {
   const open = comments.filter(isOpen);
   if (rounds === 0) {
-    const kinds = KINDS.map(({ kind }) => [kind, open.filter((c) => askOf(c) === kind).length] as const)
+    const kinds = KINDS.map(({ kind }) => [kind, open.filter((c) => c.ask.kind === kind).length] as const)
       .filter(([, n]) => n > 0)
       .map(([kind, n]) => `${n} ${kind}${n === 1 ? "" : "s"}`);
     return kinds.length > 0 ? kinds.join(" · ") : "0 comments";

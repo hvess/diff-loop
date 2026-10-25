@@ -1,6 +1,6 @@
 # 0036 — Comments, questions and suggestions
 
-**Status:** accepted, 2026-10-25
+**Status:** accepted, 2026-10-25; §1 amended by ADR 0037
 **Amends:** ADR 0015 §6 (the instructions: what is new, then what is still open); ADR 0032 §1 (what the agent's note says) and §2 (what waits on the reviewer)
 **Affects:** `docs/spec/diff-loop-core.md`, `docs/spec/diff-loop-app.md`, `docs/spec/diff-loop-mcp.md`, `docs/spec/diff-loop-store.md`; `crates/core` (`Comment::question`, `Kind`, `instructions`), `crates/mcp` (the tools' descriptions); `app/src` (the composer, the comment card and list, the round strip, the comment count, the preview's subtitle); the canvas's 3c, 3d, 3f, 4a, 4c and 5c
 

@@ -97,7 +97,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        anchor::{AnchorState, Comment, Target},
+        anchor::{AnchorState, Ask, Comment, Target},
         project::Location,
         repository::WatchGuard,
         saved::{OnReviewChange, Seen},
@@ -215,13 +215,12 @@ mod tests {
             path: "a.ts".into(),
             target: Target::File,
             text: "t".into(),
-            suggestion: None,
+            ask: Ask::Comment,
             state: AnchorState::Current,
             place: None,
             sent: None,
             resolved: None,
             note: None,
-            question: false,
         };
         (
             ReviewKey {

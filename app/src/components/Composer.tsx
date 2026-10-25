@@ -3,7 +3,8 @@ import type { Target } from "../bindings/Target";
 import { dedent } from "../indent";
 import { hasMod, modKey } from "../platform";
 import { lastLine } from "../rows";
-import { type Ask, askOf, KINDS } from "../lifecycle";
+import type { Ask } from "../bindings/Ask";
+import { codeOf, KINDS } from "../lifecycle";
 import { canSave, suggestable, useStore } from "../store";
 import { Sym } from "./Icon";
 
@@ -28,7 +29,7 @@ export function Composer() {
   const sent = useStore((s) => s.comments.find((c) => c.id === s.composer?.editing)?.sent ?? null);
   const text = useRef<HTMLTextAreaElement>(null);
   const code = useRef<HTMLTextAreaElement>(null);
-  const suggesting = composer?.suggestion !== null && composer?.suggestion !== undefined;
+  const suggesting = composer?.ask.kind === "suggestion";
 
   // Typing goes on in the field left: the code once Suggest Change is on, the text once it is off.
   useEffect(() => {
@@ -39,16 +40,17 @@ export function Composer() {
   const { target } = composer;
   const canSuggest = target.kind === "lines" && target.side === "new";
   // Code that changes the lines saves without a reason (diff-loop-app.md Decision 22).
-  const reasonOptional = composer.suggestion !== null && canSave({ ...composer, text: "" });
-  const asks = askOf(composer);
+  const suggestion = codeOf(composer.ask);
+  const reasonOptional = suggestion !== null && canSave({ ...composer, text: "" });
+  const asks = composer.ask.kind;
   const toggleSuggestion = () => {
-    if (target.kind === "lines") update({ question: false, suggestion: composer.suggestion === null ? suggestable(target.code) : null });
+    if (target.kind === "lines") update({ ask: suggestion === null ? { kind: "suggestion", code: suggestable(target.code) } : { kind: "comment" } });
   };
-  const choose = (kind: Ask) => {
+  const choose = (kind: Ask["kind"]) => {
     if (kind === "suggestion") {
-      if (target.kind === "lines") update({ question: false, suggestion: composer.suggestion ?? suggestable(target.code) });
+      if (target.kind === "lines") update({ ask: { kind: "suggestion", code: suggestion ?? suggestable(target.code) } });
     } else {
-      update({ question: kind === "question", suggestion: null });
+      update({ ask: { kind } });
     }
   };
 
@@ -92,7 +94,7 @@ export function Composer() {
       <AutoTextarea
         inputRef={text}
         autoFocus
-        minRows={composer.suggestion === null ? 3 : 2}
+        minRows={suggestion === null ? 3 : 2}
         value={composer.text}
         onChange={(value) => update({ text: value })}
         aria-label={asks === "question" ? "Question" : "Comment"}
@@ -101,21 +103,21 @@ export function Composer() {
             ? "Ask the agent a question"
             : reasonOptional
               ? "Why this change? (optional)"
-              : composer.suggestion !== null
+              : suggestion !== null
                 ? "Change the code, or say why"
                 : "Leave a comment for the agent"
         }
         className="block w-full resize-none rounded-[7px] bg-[var(--card)] px-2 py-1.5 text-[13px] leading-[1.4] text-[var(--label)] shadow-[0_0_0_0.5px_var(--popbd)] outline-none placeholder:text-[var(--sec)] focus:shadow-[0_0_0_0.5px_var(--popbd),0_0_0_3.5px_var(--ring)]"
       />
       {asks === "question" && <p className="m-0 mt-2 text-[11px] text-[var(--sec)]">The agent answers, without changing code.</p>}
-      {canSuggest && composer.suggestion !== null && (
+      {canSuggest && suggestion !== null && (
         <>
           <div className="mt-3.5 mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--sec)]">
             <Sym name="suggest" />
             <span>Suggested Change</span>
             <span className="grow" />
             {/* By its mark, not its colour (ux gate 8), where the canvas says "Edit the green line". */}
-            <span className="font-medium">Edit the + {composer.suggestion.includes("\n") ? "lines" : "line"}</span>
+            <span className="font-medium">Edit the + {suggestion.includes("\n") ? "lines" : "line"}</span>
           </div>
           <div className="sug" role="group" aria-label="Suggested change">
             {dedent(target.code).map((line, i) => (
@@ -132,8 +134,8 @@ export function Composer() {
               </span>
               <AutoTextarea
                 inputRef={code}
-                value={composer.suggestion}
-                onChange={(value) => update({ suggestion: value })}
+                value={suggestion}
+                onChange={(value) => update({ ask: { kind: "suggestion", code: value } })}
                 aria-label="Suggested code"
                 spellCheck={false}
                 className="block flex-1 resize-none bg-transparent font-[inherit] break-all whitespace-pre-wrap text-[var(--label)] outline-none"

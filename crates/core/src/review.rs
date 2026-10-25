@@ -283,7 +283,7 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::{
-        anchor::{AnchorState, Sent, Target, Verdict},
+        anchor::{AnchorState, Ask, Sent, Target, Verdict},
         base::{BaseRef, RefKind},
         diff::{
             LineCounts, Side,
@@ -385,13 +385,12 @@ pub(crate) mod tests {
                 code: vec!["x".into()],
             },
             text: "t".into(),
-            suggestion: None,
+            ask: Ask::Comment,
             state: AnchorState::Current,
             place: None,
             sent: None,
             resolved: None,
             note: None,
-            question: false,
         };
         let (review, _) = load(&repo, Base::Uncommitted, vec![comment], vec![], None).unwrap();
         assert_eq!(review.fingerprint, None, "a watch takes no fingerprint");
@@ -421,7 +420,7 @@ pub(crate) mod tests {
             path: "a.ts".into(),
             target: target.clone(),
             text: "t".into(),
-            suggestion: None,
+            ask: Ask::Comment,
             state: AnchorState::Current,
             place: Some(place.clone()),
             sent: Some(Sent {
@@ -437,7 +436,6 @@ pub(crate) mod tests {
             }),
             resolved: None,
             note: None,
-            question: false,
         };
         let verdict = |base: Base| {
             let (review, _) = load(&repo, base, vec![comment.clone()], vec![], None).unwrap();

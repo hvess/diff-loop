@@ -1,4 +1,5 @@
 // What a comment is in the loop (ADR 0015): read off the fields the core keeps, never stored twice.
+import type { Ask } from "./bindings/Ask";
 import type { Comment } from "./bindings/Comment";
 import type { Verdict } from "./bindings/Verdict";
 
@@ -7,7 +8,7 @@ export type Kind = "draft" | "sent" | "changed" | "reopened" | "lost" | "outdate
 
 /** Whether the comment was edited since it was sent: the one comparison of the fields the core keeps, as its `Comment::reopened` makes it for the instructions. */
 export function reopened(c: Comment): boolean {
-  return c.sent !== null && (c.sent.text !== c.text || c.sent.suggestion !== c.suggestion);
+  return c.sent !== null && (c.sent.text !== c.text || c.sent.suggestion !== codeOf(c.ask));
 }
 
 /** The verdict the last load gave a sent comment, while it is judged at all. */
@@ -40,23 +41,21 @@ export const KINDS = [
   { kind: "comment", label: "Comment", save: "Comment" },
   { kind: "question", label: "Question", save: "Ask Question" },
   { kind: "suggestion", label: "Suggestion", save: "Suggest Change" },
-] as const;
+] as const satisfies readonly { kind: Ask["kind"]; label: string; save: string }[];
 
-export type Ask = (typeof KINDS)[number]["kind"];
-
-/** What a comment asks of the agent, as the core's `Comment::kind` reads it (ADR 0036 §1); its value is its noun. */
-export function askOf(c: Pick<Comment, "question" | "suggestion">): Ask {
-  return c.question ? "question" : c.suggestion !== null ? "suggestion" : "comment";
+/** The code a suggestion puts in its lines' place; none for a comment or a question (ADR 0037). */
+export function codeOf(ask: Ask): string | null {
+  return ask.kind === "suggestion" ? ask.code : null;
 }
 
 /** Whether the agent answered a question, which waits on the reviewer to read it, then mark it answered or reply (ADR 0036 §2). */
 export function answered(c: Comment): boolean {
-  return c.question && awaitsReviewer(c);
+  return c.ask.kind === "question" && awaitsReviewer(c);
 }
 
 /** Whether the agent resolved a comment or suggestion, which waits on the reviewer to accept it (ADR 0032 §2). */
 export function toAccept(c: Comment): boolean {
-  return !c.question && awaitsReviewer(c);
+  return c.ask.kind !== "question" && awaitsReviewer(c);
 }
 
 /** Whether the agent resolved the comment and it waits on the reviewer to accept it or reopen it (ADR 0032 §2). */

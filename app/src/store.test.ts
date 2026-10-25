@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
 import type { Base } from "./bindings/Base";
 import type { Checkout } from "./bindings/Checkout";
+import type { Ask } from "./bindings/Ask";
 import type { Comment } from "./bindings/Comment";
 import type { Opening } from "./bindings/Opening";
 import type { Resumed } from "./bindings/Resumed";
@@ -25,6 +26,7 @@ import {
   useStore,
   windowTitle,
 } from "./store";
+import { codeOf } from "./lifecycle";
 
 vi.mock("./api", () => ({
   api: {
@@ -86,14 +88,16 @@ const comment = (id: string): Comment => ({
   path: "a.ts",
   target: { kind: "file" },
   text: "t",
-  suggestion: null,
+  ask: { kind: "comment" },
   state: "current",
   place: null,
   sent: null,
   resolved: null,
   note: null,
-  question: false,
 });
+
+/** A comment, or a suggestion of `code`. */
+const askFor = (code: string | null): Ask => (code === null ? { kind: "comment" } : { kind: "suggestion", code });
 
 /** `c` as sent in round `round`, untouched. */
 const sent = (c: Comment, round = 1): Comment => ({
@@ -106,7 +110,7 @@ const sent = (c: Comment, round = 1): Comment => ({
     before: [],
     after: [],
     text: c.text,
-    suggestion: c.suggestion,
+    suggestion: codeOf(c.ask),
     verdict: "untouched",
   },
 });
@@ -785,8 +789,7 @@ describe("what the composer can save", () => {
     path: "a.rs",
     target: { kind: "lines", side: "new", start: 3, code: ["let x = 1;"] },
     text,
-    suggestion,
-    question: false,
+    ask: askFor(suggestion),
     editing: null,
   });
 
@@ -805,7 +808,7 @@ describe("what the composer can save", () => {
   });
 
   it("names a comment that is only suggested code", () => {
-    const only = { ...comment("a"), text: "", suggestion: "let x = 2;" };
+    const only = { ...comment("a"), text: "", ask: askFor("let x = 2;") };
     expect(commentText(only)).toBe("Suggested change");
     expect(commentText(comment("a"))).toBe("t");
   });
@@ -816,8 +819,7 @@ describe("suggested code", () => {
     path: "a.ts",
     target: { kind: "lines", side: "new", start: 3, code: ["    if (a) {", "      b();"] },
     text: "",
-    suggestion,
-    question: false,
+    ask: askFor(suggestion),
     editing: null,
   });
 
@@ -848,12 +850,12 @@ describe("the composer's range", () => {
   });
 
   it("carries untouched suggested code along, and leaves edited code as it is", () => {
-    useStore.getState().updateComposer({ suggestion: "line 2" });
+    useStore.getState().updateComposer({ ask: askFor("line 2") });
     useStore.getState().resizeComposer(2, 3);
-    expect(useStore.getState().composer?.suggestion).toBe("line 2\nline 3");
-    useStore.getState().updateComposer({ suggestion: "mine" });
+    expect(useStore.getState().composer?.ask).toEqual(askFor("line 2\nline 3"));
+    useStore.getState().updateComposer({ ask: askFor("mine") });
     useStore.getState().resizeComposer(2, 4);
-    expect(useStore.getState().composer?.suggestion).toBe("mine");
+    expect(useStore.getState().composer?.ask).toEqual(askFor("mine"));
   });
 });
 
@@ -984,12 +986,12 @@ describe("editing a comment saved with an indented suggestion", () => {
       ...comment("c"),
       text: "",
       target: { kind: "lines", side: "new", start: 3, code: ["    a();"] },
-      suggestion: "    a();",
+      ask: askFor("    a();"),
     };
     await openWith("/a", keptReview([old], []));
     useStore.getState().editComment("c");
     const composer = useStore.getState().composer!;
-    expect(composer.suggestion).toBe("a();");
+    expect(composer.ask).toEqual(askFor("a();"));
     expect(canSave(composer)).toBe(false);
   });
 });
@@ -1287,9 +1289,9 @@ describe("rounds", () => {
 
   it("saves a question as one, with no suggested code", () => {
     useStore.getState().composeOnFile("a.ts");
-    useStore.getState().updateComposer({ text: "Why?", question: true });
+    useStore.getState().updateComposer({ text: "Why?", ask: { kind: "question" } });
     useStore.getState().saveComposer();
-    expect(useStore.getState().comments.at(-1)).toMatchObject({ text: "Why?", question: true, suggestion: null });
+    expect(useStore.getState().comments.at(-1)).toMatchObject({ text: "Why?", ask: { kind: "question" } });
   });
 
   it("ends the offer to take a round back once a comment is resolved", async () => {
@@ -1351,9 +1353,9 @@ describe("resolving", () => {
     const marked: Comment = { ...open, resolved: "byAgent", note: "Renamed it." };
     useStore.setState({ comments: [draft, marked], review: null });
     useStore.getState().editComment("s");
-    useStore.getState().updateComposer({ question: true });
+    useStore.getState().updateComposer({ ask: { kind: "question" } });
     useStore.getState().saveComposer();
-    expect(useStore.getState().comments[1]).toMatchObject({ question: true, resolved: null, note: null });
+    expect(useStore.getState().comments[1]).toMatchObject({ ask: { kind: "question" }, resolved: null, note: null });
   });
 
   it("unresolves a comment with no card without showing it", () => {

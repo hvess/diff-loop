@@ -9,7 +9,7 @@ import { useDelayed } from "../delay";
 import { findTyped, type Mark, type Match, marked } from "../find";
 import { useHighlights, type Highlights, type Token } from "../highlight";
 import { isLineCommand, type LineCommand } from "../keys";
-import { askOf, awaitsReviewer, changed, hasCard, markOf, toneOf } from "../lifecycle";
+import { awaitsReviewer, changed, hasCard, markOf, toneOf } from "../lifecycle";
 import { shownNote } from "../note";
 import { nameOf } from "../path";
 import { bindingFor } from "../platform";
@@ -669,7 +669,7 @@ function noteLabel(note: Note): string {
   const kind = markOf(note.comment) || "Draft";
   const where = c.target.kind === "lines" ? targetLabel(c.target).toLowerCase() : "file";
   // The kind said in words, as the note draws every kind with the same dot (ADR 0036 §2).
-  return `${kind} ${askOf(c)} on ${where}${c.text === "" ? "" : `: ${c.text}`}`;
+  return `${kind} ${c.ask.kind} on ${where}${c.text === "" ? "" : `: ${c.text}`}`;
 }
 
 /** A comment's note in the margin, which opens it; in Split, a mark that shows the note on hover (the canvas's 3a and 3e). */
@@ -729,7 +729,7 @@ function MarginNote({
           c.text
         )}
       </span>
-      {c.suggestion !== null && c.text !== "" && <Sym name="suggest" className="text-[var(--accent)]" />}
+      {c.ask.kind === "suggestion" && c.text !== "" && <Sym name="suggest" className="text-[var(--accent)]" />}
     </button>
   );
 }
@@ -739,8 +739,8 @@ function MarginNote({
  * suggested code, 560 for a sent comment whose code changed (3c, 3f, 5a).
  */
 function CommentPopover({ top, left, comment }: { top: number; left: number | string; comment: Comment | null }) {
-  const suggesting = useStore((s) => s.composer?.suggestion != null);
-  const width = comment ? (comment.sent !== null && changed(comment) ? 560 : comment.suggestion !== null ? 520 : 400) : suggesting ? 520 : 400;
+  const suggesting = useStore((s) => s.composer?.ask.kind === "suggestion");
+  const width = comment ? (comment.sent !== null && changed(comment) ? 560 : comment.ask.kind === "suggestion" ? 520 : 400) : suggesting ? 520 : 400;
   const label = comment ? `Comment on ${comment.target.kind === "lines" ? targetLabel(comment.target).toLowerCase() : "file"}` : "New comment";
   return (
     <div className="pop" role="dialog" aria-label={label} style={{ top, left, width, maxWidth: "calc(100% - 180px)" }}>

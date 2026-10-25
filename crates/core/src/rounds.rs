@@ -110,7 +110,7 @@ pub fn end_round(request: RoundRequest) -> SavedReview {
                     before,
                     after,
                     text: comment.text.clone(),
-                    suggestion: comment.suggestion.clone(),
+                    suggestion: comment.ask.code().map(str::to_owned),
                     verdict: Some(Verdict::Untouched),
                 }),
                 ..comment
@@ -248,7 +248,7 @@ pub fn round_to_follow(comments: &[Comment], now: &Place, previous: &str) -> Opt
 mod tests {
     use super::*;
     use crate::{
-        anchor::Resolution,
+        anchor::{Ask, Resolution},
         base::Base,
         diff::{
             Side,
@@ -279,13 +279,12 @@ mod tests {
                 code: code.iter().map(|s| (*s).to_owned()).collect(),
             },
             text: "t".into(),
-            suggestion: None,
+            ask: Ask::Comment,
             state: AnchorState::Current,
             place: Some(place()),
             sent: None,
             resolved: None,
             note: None,
-            question: false,
         }
     }
 

@@ -249,7 +249,7 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use diff_loop_core::{AnchorState, Comment, Resolution, Target};
+    use diff_loop_core::{AnchorState, Ask, Comment, Resolution, Target};
     use notify::event::{EventAttributes, ModifyKind};
     use tempfile::TempDir;
 
@@ -294,13 +294,12 @@ mod tests {
                 path: "a.ts".into(),
                 target: Target::File,
                 text: text.into(),
-                suggestion: None,
+                ask: Ask::Comment,
                 state: AnchorState::Current,
                 place: None,
                 sent: None,
                 resolved: None,
                 note: None,
-                question: false,
             }],
             ..SavedReview::default()
         }
@@ -333,20 +332,31 @@ mod tests {
     }
 
     #[test]
-    fn a_comment_written_before_questions_reads_as_no_question() {
+    fn a_comment_written_before_its_ask_reads_its_kind() {
         let fixture = Fixture::new();
         let p = fixture.project("p");
         let store = fixture.store();
-        store.save(&key(&p, "b"), &with_comment("one")).unwrap();
         let path = reviews_in(&p).join("b.json");
-        let mut file: serde_json::Value =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        file["comments"][0]
-            .as_object_mut()
-            .unwrap()
-            .remove("question");
-        fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
-        assert_eq!(store.saved(&key(&p, "b")).unwrap(), with_comment("one"));
+        for (old, ask) in [
+            (serde_json::json!({ "suggestion": null }), Ask::Comment),
+            (
+                serde_json::json!({ "suggestion": "y" }),
+                Ask::Suggestion { code: "y".into() },
+            ),
+            (
+                serde_json::json!({ "suggestion": null, "question": true }),
+                Ask::Question,
+            ),
+        ] {
+            store.save(&key(&p, "b"), &with_comment("one")).unwrap();
+            let mut file: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            let comment = file["comments"][0].as_object_mut().unwrap();
+            comment.remove("ask");
+            comment.extend(old.as_object().unwrap().clone());
+            fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
+            assert_eq!(store.saved(&key(&p, "b")).unwrap().comments[0].ask, ask);
+        }
     }
 
     #[test]

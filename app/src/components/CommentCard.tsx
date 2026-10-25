@@ -72,7 +72,7 @@ export function CommentCard({ comment }: { comment: Comment }) {
           Agent: <AgentNote note={comment.note ?? ""} />
         </p>
       )}
-      {comment.suggestion !== null && !compare && (
+      {comment.ask.kind === "suggestion" && !compare && (
         <>
           <div className="mt-3.5 mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--sec)]">
             <Sym name="suggest" />
@@ -86,7 +86,7 @@ export function CommentCard({ comment }: { comment: Comment }) {
               </div>
             ))}
             {/* A suggestion saved before diff-loop-app.md Decision 26 still has its indent; shown without it, as the − lines are. */}
-            {dedent(comment.suggestion.split("\n")).map((line, i) => (
+            {dedent(comment.ask.code.split("\n")).map((line, i) => (
               <div key={`n${i}`} className="p">
                 <span className="sg">+</span>
                 <span>{line}</span>

@@ -239,10 +239,14 @@ before reopening a decision they cover.
   projects, no live or committed-only marks; the core's summaries keep
   only what it shows.
 - **0036 — Comments, questions and suggestions.** A comment is one of
-  three kinds, picked in the composer; a question (`"question": true`)
-  is answered through the resolve note and waits as "Answered by agent";
+  three kinds, picked in the composer; a question (`"question": true`
+  until 0037) is answered through the resolve note and waits as "Answered by agent";
   the instructions have a numbered section per kind, then Still open and
   When you're done.
+- **0037 — A comment's kind is one enum.** `ask`, a comment, a question
+  or a suggestion holding its code, in place of `question` and
+  `suggestion`; a file written before it reads its kind from those, still
+  version 1.
 
 ## Key Constraints (non-negotiable)
 

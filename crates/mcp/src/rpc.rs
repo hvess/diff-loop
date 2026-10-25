@@ -119,7 +119,7 @@ fn failure(id: &Value, code: i32, message: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use diff_loop_core::{AnchorState, Comment, SavedReview, Target};
+    use diff_loop_core::{AnchorState, Ask, Comment, SavedReview, Target};
 
     use super::*;
     use crate::memory::Memory;
@@ -148,13 +148,12 @@ mod tests {
             path: "a.rs".into(),
             target: Target::File,
             text: "Name it.".into(),
-            suggestion: None,
+            ask: Ask::Comment,
             state: AnchorState::Current,
             place: None,
             sent: None,
             resolved: None,
             note: None,
-            question: false,
         };
         let review = SavedReview {
             comments: vec![comment],

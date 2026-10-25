@@ -20,7 +20,7 @@ mod rounds;
 mod saved;
 mod update;
 
-pub use anchor::{AnchorState, Comment, Place, Resolution, Sent, Target, Verdict};
+pub use anchor::{AnchorState, Ask, Comment, Place, Resolution, Sent, Target, Verdict};
 pub use base::{Base, BaseChoices, BaseRef, RefKind};
 pub use check::{CheckError, GoneReview, ProjectCheck, check_kept};
 pub use diff::{Content, FileDiff, Hunk, Line, LineCounts, Side, Status};

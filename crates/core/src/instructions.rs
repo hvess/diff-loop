@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    anchor::{AnchorState, Comment, Kind, Target, Verdict},
+    anchor::{AnchorState, Ask, Comment, Target, Verdict},
     base::Base,
     code::dedent,
     diff::Side,
@@ -56,11 +56,8 @@ pub fn instructions(request: &InstructionsRequest, kept_at: Option<&str>) -> Str
     let sections = KINDS
         .iter()
         .map(|words| {
-            let of_kind: Vec<&Comment> = new
-                .iter()
-                .copied()
-                .filter(|c| c.kind() == words.kind)
-                .collect();
+            let of_kind: Vec<&Comment> =
+                new.iter().copied().filter(|c| (words.is)(&c.ask)).collect();
             (words, of_kind)
         })
         .filter(|(_, comments)| !comments.is_empty());
@@ -104,7 +101,8 @@ pub fn instructions(request: &InstructionsRequest, kept_at: Option<&str>) -> Str
 
 /// A kind's words: its noun, and its section's title and one instruction.
 struct Words {
-    kind: Kind,
+    /// Whether a comment asks this.
+    is: fn(&Ask) -> bool,
     one: &'static str,
     many: &'static str,
     title: &'static str,
@@ -114,21 +112,21 @@ struct Words {
 /// Every kind's words, in the order the instructions take them (the canvas's 4c).
 const KINDS: [Words; 3] = [
     Words {
-        kind: Kind::Comment,
+        is: |ask| matches!(ask, Ask::Comment),
         one: "comment",
         many: "comments",
         title: "Address these comments",
         ask: "Change the code so each comment is dealt with.",
     },
     Words {
-        kind: Kind::Question,
+        is: |ask| matches!(ask, Ask::Question),
         one: "question",
         many: "questions",
         title: "Answer these questions",
         ask: "Answer each one. Don't change any code for them.",
     },
     Words {
-        kind: Kind::Suggestion,
+        is: |ask| matches!(ask, Ask::Suggestion { .. }),
         one: "suggestion",
         many: "suggestions",
         title: "Implement these suggestions",
@@ -142,7 +140,7 @@ fn counts(new: &[&Comment], still: usize) -> String {
     let mut parts: Vec<String> = KINDS
         .iter()
         .filter_map(|words| {
-            let n = new.iter().filter(|c| c.kind() == words.kind).count();
+            let n = new.iter().filter(|c| (words.is)(&c.ask)).count();
             (n > 0).then(|| format!("{n} {}", if n == 1 { words.one } else { words.many }))
         })
         .collect();
@@ -221,7 +219,7 @@ fn by_file<'a>(comments: &[&'a Comment]) -> Vec<(&'a str, Vec<&'a Comment>)> {
 fn write_comment(out: &mut String, comment: &Comment, with_id: bool, labelled: bool) {
     let text = comment.text.trim();
     let still = if comment.reopened() { "Still: " } else { "" };
-    let asked = if labelled && comment.question {
+    let asked = if labelled && comment.ask == Ask::Question {
         "Question: "
     } else {
         ""
@@ -238,7 +236,7 @@ fn write_comment(out: &mut String, comment: &Comment, with_id: bool, labelled: b
         String::new()
     };
     let _ = writeln!(out, "- {}{text}{id}", where_label(comment));
-    if let Some(suggestion) = &comment.suggestion {
+    if let Some(suggestion) = comment.ask.code() {
         let label = if labelled {
             "  Suggested change:\n"
         } else {
@@ -371,13 +369,12 @@ mod tests {
                 code: code.iter().map(|s| (*s).to_owned()).collect(),
             },
             text: text.into(),
-            suggestion: None,
+            ask: Ask::Comment,
             state: AnchorState::Current,
             place: None,
             sent: None,
             resolved: None,
             note: None,
-            question: false,
         }
     }
 
@@ -399,7 +396,7 @@ mod tests {
                 before: vec![],
                 after: vec![],
                 text: comment.text.clone(),
-                suggestion: comment.suggestion.clone(),
+                suggestion: comment.ask.code().map(str::to_owned),
                 verdict: Some(verdict),
             }),
             ..comment
@@ -427,15 +424,16 @@ mod tests {
             &["    log.warn('share rate limited', { userId });"],
             "Don't log the raw userId. Hash it first.",
         );
-        hash.suggestion =
-            Some("    log.warn('share rate limited', { user: hashUserId(userId) });".into());
+        hash.ask = Ask::Suggestion {
+            code: "    log.warn('share rate limited', { user: hashUserId(userId) });".into(),
+        };
         let mut ask = comment(
             handler,
             17,
             &["  const limit = await checkShareLimit(userId);"],
             "Should a failed share count against the limit?",
         );
-        ask.question = true;
+        ask.ask = Ask::Question;
         let comments = vec![
             hash,
             comment(
@@ -495,7 +493,7 @@ Reply with one line per comment saying what you changed, and answer each questio
     #[test]
     fn a_kind_with_nothing_new_has_no_section_and_the_rest_are_numbered_on() {
         let mut ask = comment("a.rs", 1, &["x"], "Why?");
-        ask.question = true;
+        ask.ask = Ask::Question;
         let text = instructions(&request(vec![ask]), None);
         assert!(
             text.starts_with(
@@ -648,9 +646,9 @@ Reply with one line per comment saying what you changed, and answer each questio
     #[test]
     fn a_question_or_suggestion_still_open_says_what_it_is() {
         let mut ask = comment("a.rs", 1, &["x"], "Why?");
-        ask.question = true;
+        ask.ask = Ask::Question;
         let mut code = comment("a.rs", 2, &["y"], "Use z.");
-        code.suggestion = Some("z".into());
+        code.ask = Ask::Suggestion { code: "z".into() };
         let still = [ask, code].map(|c| sent(c, 1, 1, &["x"], Verdict::Untouched));
         let text = instructions(&request(still.to_vec()), None);
         assert!(text.contains("- L1 `x`: Question: Why?\n"), "{text}");
@@ -676,7 +674,9 @@ Reply with one line per comment saying what you changed, and answer each questio
     #[test]
     fn a_suggestion_without_a_reason_has_no_trailing_colon() {
         let mut only_code = comment("a.rs", 3, &["let x = 1;"], "");
-        only_code.suggestion = Some("let x = 2;".into());
+        only_code.ask = Ask::Suggestion {
+            code: "let x = 2;".into(),
+        };
         let text = instructions(&request(vec![only_code]), None);
         assert!(text.contains("\n- L3 `let x = 1;`\n  ```rust\n"), "{text}");
     }
@@ -684,9 +684,13 @@ Reply with one line per comment saying what you changed, and answer each questio
     #[test]
     fn a_comment_reopened_by_its_suggestion_alone_still_says_so() {
         let mut only_code = comment("a.rs", 3, &["let x = 1;"], "");
-        only_code.suggestion = Some("let x = 2;".into());
+        only_code.ask = Ask::Suggestion {
+            code: "let x = 2;".into(),
+        };
         let mut reopened = sent(only_code, 1, 3, &["let x = 1;"], Verdict::Untouched);
-        reopened.suggestion = Some("let x = 3;".into());
+        reopened.ask = Ask::Suggestion {
+            code: "let x = 3;".into(),
+        };
         let text = instructions(&request(vec![reopened]), None);
         assert!(
             text.contains("\n- L3 `let x = 1;`: Still: see the suggested change.\n  ```rust\n"),

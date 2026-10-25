@@ -898,7 +898,7 @@ change, annotate, hand off to the agent, next round.
 36. **Comments, questions and suggestions** (ADR 0036; the canvas's 3c,
     3d, 3f, 4a, 4c and 5c). The composer opens with a segmented control,
     Comment | Question | Suggestion (`.tseg`), Comment pressed; Question
-    sets `question` and says under the field "The agent answers, without
+    asks a question (`ask`, ADR 0037) and says under the field "The agent answers, without
     changing code.", Suggestion fills the + lines as Suggest Change did,
     and Comment or Question drops them. Its main button follows: Comment,
     Ask Question, Suggest Change (Save while editing). A sent comment's
@@ -940,6 +940,11 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-25, the kind as an enum)
+
+ADR 0037: comments and the composer hold `ask`; `codeOf` reads a
+suggestion's code.
 
 ## Progress (2026-10-25, questions and suggestions)
 

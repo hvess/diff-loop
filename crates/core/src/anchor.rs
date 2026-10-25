@@ -3,7 +3,7 @@
 //! A draft is looked for by its code; a sent comment is judged against the
 //! code it was sent on (ADR 0015 §2 and §3). Nothing here removes a comment.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use ts_rs::TS;
 
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// A review comment.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Comment {
@@ -26,62 +26,118 @@ pub struct Comment {
     pub target: Target,
     /// What the reviewer wrote; empty when the comment is only suggested code.
     pub text: String,
-    /// Code proposed to replace the target lines, if any.
-    pub suggestion: Option<String>,
+    /// What it asks of the agent (ADR 0037).
+    pub ask: Ask,
     /// Whether the target is in the diff shown, on its code or, for a sent
     /// comment, on what is in its code's place.
     pub state: AnchorState,
     /// Where the comment's code was last seen; `None` for one saved before
     /// ADR 0015, which is then never lost, only outdated.
-    #[serde(default)]
     pub place: Option<Place>,
     /// The round it was last sent in and what it was sent on; `None` for a draft.
-    #[serde(default)]
     pub sent: Option<Sent>,
     /// How it was resolved, if it is.
-    #[serde(default)]
     pub resolved: Option<Resolution>,
     /// What the agent said when it resolved it (ADR 0032 §1).
-    #[serde(default)]
     pub note: Option<String>,
-    /// Whether it asks the agent a question, to be answered rather than acted
-    /// on (ADR 0036 §1); a comment saved before then is not one.
-    #[serde(default)]
-    pub question: bool,
 }
 
-/// What a comment asks of the agent (ADR 0036 §1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Kind {
+/// What a comment asks of the agent (ADR 0037): only a suggestion holds code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum Ask {
     /// A change to make.
     Comment,
     /// A question to answer, changing no code.
     Question,
-    /// Suggested code to put in the lines' place.
-    Suggestion,
+    /// Code to put in the target lines' place.
+    Suggestion {
+        /// The code as the reviewer wrote it.
+        code: String,
+    },
+}
+
+impl Ask {
+    /// A suggestion's code.
+    #[must_use]
+    pub(crate) fn code(&self) -> Option<&str> {
+        match self {
+            Self::Suggestion { code } => Some(code),
+            Self::Comment | Self::Question => None,
+        }
+    }
+}
+
+/// A comment as read: what [`Comment`] writes, or a file's from before
+/// [`Ask`], whose `suggestion` holds code and whose `question` (ADR 0036)
+/// marks a question.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Stored {
+    id: String,
+    path: String,
+    target: Target,
+    text: String,
+    #[serde(default)]
+    ask: Option<Ask>,
+    #[serde(default)]
+    suggestion: Option<String>,
+    #[serde(default)]
+    question: bool,
+    state: AnchorState,
+    #[serde(default)]
+    place: Option<Place>,
+    #[serde(default)]
+    sent: Option<Sent>,
+    #[serde(default)]
+    resolved: Option<Resolution>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+// Read through `Stored`, so a file from before `Ask` reads too (ADR 0037 §2).
+// By hand rather than `#[serde(from = "Stored")]`, which ts-rs warns of on
+// every build.
+impl<'de> Deserialize<'de> for Comment {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Stored::deserialize(deserializer).map(Self::from)
+    }
+}
+
+impl From<Stored> for Comment {
+    fn from(stored: Stored) -> Self {
+        let ask = stored
+            .ask
+            .unwrap_or(match (stored.question, stored.suggestion) {
+                (true, _) => Ask::Question,
+                (false, Some(code)) => Ask::Suggestion { code },
+                (false, None) => Ask::Comment,
+            });
+        Self {
+            id: stored.id,
+            path: stored.path,
+            target: stored.target,
+            text: stored.text,
+            ask,
+            state: stored.state,
+            place: stored.place,
+            sent: stored.sent,
+            resolved: stored.resolved,
+            note: stored.note,
+        }
+    }
 }
 
 impl Comment {
-    /// Its kind: a question as the reviewer marked it, else a suggestion
-    /// when it holds suggested code, else a comment.
-    #[must_use]
-    pub(crate) fn kind(&self) -> Kind {
-        if self.question {
-            Kind::Question
-        } else if self.suggestion.is_some() {
-            Kind::Suggestion
-        } else {
-            Kind::Comment
-        }
-    }
-
     /// Whether the comment was edited since it was sent: it is copied again
-    /// as "Still: …" (ADR 0015 §5).
+    /// as "Still: …" (ADR 0015 §5). A sent comment keeps its kind, so only
+    /// its text and code can differ (ADR 0036 §1).
     #[must_use]
     pub(crate) fn reopened(&self) -> bool {
         self.sent
             .as_ref()
-            .is_some_and(|s| s.text != self.text || s.suggestion != self.suggestion)
+            .is_some_and(|s| s.text != self.text || s.suggestion.as_deref() != self.ask.code())
     }
 }
 
@@ -589,30 +645,44 @@ mod tests {
                 code: code.iter().map(|s| (*s).to_owned()).collect(),
             },
             text: "Hash it first.".into(),
-            suggestion: None,
+            ask: Ask::Comment,
             state: AnchorState::Current,
             place: Some(here()),
             sent: None,
             resolved: None,
             note: None,
-            question: false,
         }
     }
 
     #[test]
-    fn a_question_is_one_whatever_it_holds_and_suggested_code_makes_a_suggestion() {
-        let plain = on_lines("a.ts", 1, &["x"]);
-        assert_eq!(plain.kind(), Kind::Comment);
-        let code = Comment {
-            suggestion: Some("y".into()),
-            ..plain.clone()
+    fn only_a_suggestion_holds_code() {
+        assert_eq!(Ask::Comment.code(), None);
+        assert_eq!(Ask::Question.code(), None);
+        assert_eq!(Ask::Suggestion { code: "y".into() }.code(), Some("y"));
+    }
+
+    #[test]
+    fn a_comment_stored_before_its_ask_reads_its_kind_from_its_fields() {
+        let stored = |question: bool, suggestion: Option<&str>| Stored {
+            id: "c".into(),
+            path: "a.ts".into(),
+            target: Target::File,
+            text: "t".into(),
+            ask: None,
+            suggestion: suggestion.map(str::to_owned),
+            question,
+            state: AnchorState::Current,
+            place: None,
+            sent: None,
+            resolved: None,
+            note: None,
         };
-        assert_eq!(code.kind(), Kind::Suggestion);
-        let asked = Comment {
-            question: true,
-            ..code
-        };
-        assert_eq!(asked.kind(), Kind::Question);
+        assert_eq!(Comment::from(stored(false, None)).ask, Ask::Comment);
+        assert_eq!(
+            Comment::from(stored(false, Some("y"))).ask,
+            Ask::Suggestion { code: "y".into() }
+        );
+        assert_eq!(Comment::from(stored(true, None)).ask, Ask::Question);
     }
 
     /// `comment` as sent in round 1 at `here`, with `before` and `after` around its code.
@@ -627,7 +697,7 @@ mod tests {
                 before: strings(before),
                 after: strings(after),
                 text: comment.text.clone(),
-                suggestion: comment.suggestion.clone(),
+                suggestion: comment.ask.code().map(str::to_owned),
                 verdict: Some(Verdict::Untouched),
             }),
             ..comment
@@ -956,7 +1026,7 @@ mod tests {
     #[test]
     fn a_sent_comment_whose_suggestion_is_in_place_resolves_itself_once() {
         let suggested = Comment {
-            suggestion: Some("  y".into()),
+            ask: Ask::Suggestion { code: "  y".into() },
             ..sent_on_x()
         };
         let suggested = sent(suggested, &["a", "b"], &["c", "d"]);
@@ -976,7 +1046,9 @@ mod tests {
     #[test]
     fn a_suggestion_that_keeps_the_sent_line_is_still_found_applied() {
         let suggested = Comment {
-            suggestion: Some("x\ny".into()),
+            ask: Ask::Suggestion {
+                code: "x\ny".into(),
+            },
             ..sent_on_x()
         };
         let suggested = sent(suggested, &["a", "b"], &["c", "d"]);
@@ -989,7 +1061,7 @@ mod tests {
     #[test]
     fn an_applied_comment_unresolved_stays_unresolved_across_another_branch() {
         let suggested = Comment {
-            suggestion: Some("y".into()),
+            ask: Ask::Suggestion { code: "y".into() },
             ..sent_on_x()
         };
         let suggested = sent(suggested, &["a", "b"], &["c", "d"]);

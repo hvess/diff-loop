@@ -91,8 +91,7 @@ impl SavedReview {
             if let Some(mark) = marked.get(comment.id.as_str())
                 && comment.resolved.is_none()
                 && comment.text == mark.text
-                && comment.suggestion == mark.suggestion
-                && comment.question == mark.question
+                && comment.ask == mark.ask
             {
                 comment.resolved = mark.resolved;
                 comment.note.clone_from(&mark.note);
@@ -209,7 +208,7 @@ pub enum StoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::anchor::{AnchorState, Place, Target};
+    use crate::anchor::{AnchorState, Ask, Place, Target};
 
     fn comment(id: &str, resolved: Option<Resolution>) -> Comment {
         Comment {
@@ -217,13 +216,12 @@ mod tests {
             path: "a.ts".into(),
             target: Target::File,
             text: "t".into(),
-            suggestion: None,
+            ask: Ask::Comment,
             state: AnchorState::Current,
             place: None,
             sent: None,
             resolved,
             note: None,
-            question: false,
         }
     }
 
@@ -289,7 +287,7 @@ mod tests {
             ..SavedReview::default()
         };
         let mut asked = comment("a", None);
-        asked.question = true;
+        asked.ask = Ask::Question;
         let window = SavedReview {
             comments: vec![asked],
             ..SavedReview::default()

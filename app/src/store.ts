@@ -2,6 +2,7 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { create } from "zustand";
 import { api, describe, isOpenElsewhere } from "./api";
+import type { Ask } from "./bindings/Ask";
 import type { Base } from "./bindings/Base";
 import type { BaseChoices } from "./bindings/BaseChoices";
 import type { Comment } from "./bindings/Comment";
@@ -21,7 +22,7 @@ import type { Seen } from "./bindings/Seen";
 import type { Snapshot } from "./bindings/Snapshot";
 import type { Side } from "./bindings/Side";
 import type { Target } from "./bindings/Target";
-import { answered, awaitsReviewer, changed, hasCard, open as isOpen, resolvable, toAccept } from "./lifecycle";
+import { answered, awaitsReviewer, changed, codeOf, hasCard, open as isOpen, resolvable, toAccept } from "./lifecycle";
 import { dedent } from "./indent";
 import { shortId } from "./format";
 import { idOf, sameKey } from "./key";
@@ -55,10 +56,8 @@ export type Composer = {
   path: string;
   target: Target;
   text: string;
-  /** Replacement code while the kind is Suggestion. */
-  suggestion: string | null;
-  /** Whether the kind is Question (ADR 0036 §1). */
-  question: boolean;
+  /** What it asks of the agent, with the replacement code while a suggestion (ADR 0037). */
+  ask: Ask;
   /** The comment being edited, if any. */
   editing: string | null;
 };
@@ -69,8 +68,8 @@ export type Composer = {
  */
 export function canSave(composer: Composer): boolean {
   if (composer.text.trim() !== "") return true;
-  const { suggestion, target } = composer;
-  return suggestion !== null && target.kind === "lines" && suggestion !== suggestable(target.code);
+  const { ask, target } = composer;
+  return ask.kind === "suggestion" && target.kind === "lines" && ask.code !== suggestable(target.code);
 }
 
 /** Lines as "Suggest Change" starts from them: without their shared indent (diff-loop-app.md Decision 26). */
@@ -80,7 +79,7 @@ export function suggestable(code: string[]): string {
 
 /** A comment's text, or what it is when it is only suggested code. */
 export function commentText(c: Comment): string {
-  return c.text === "" && c.suggestion !== null ? "Suggested change" : c.text;
+  return c.text === "" && c.ask.kind === "suggestion" ? "Suggested change" : c.text;
 }
 
 export type Selection = { path: string; side: Side; anchor: number; head: number; dragging: boolean };
@@ -760,7 +759,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         const m = moved.get(c.id);
         if (!m || !unchanged.has(c)) return c;
         if (c.resolved === null && m.resolved === "suggestionApplied") autoResolved++;
-        return { ...m, text: c.text, suggestion: c.suggestion, question: c.question };
+        return { ...m, text: c.text, ask: c.ask };
       });
       // A watch event often changes nothing reviewed (a build writing ignored
       // files): then the window keeps its state, and nothing re-renders.
@@ -1080,9 +1079,10 @@ export const useStore = create<State & Actions>()((set, get) => ({
     const code = linesOn(file, side, start, end);
     const was = composer.target.code;
     // Untouched suggested code follows the lines; code the user changed stays theirs.
-    const suggestion = composer.suggestion === suggestable(was) ? suggestable(code) : composer.suggestion;
+    const { ask } = composer;
+    const followed = ask.kind === "suggestion" && ask.code === suggestable(was) ? { ...ask, code: suggestable(code) } : ask;
     set({
-      composer: { ...composer, target: { kind: "lines", side, start, code }, suggestion },
+      composer: { ...composer, target: { kind: "lines", side, start, code }, ask: followed },
       selection: { path: composer.path, side, anchor, head, dragging: false },
     });
   },
@@ -1093,7 +1093,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
     end = withinHunk(file, side, start, end);
     const code = linesOn(file, side, start, end);
     set({
-      composer: { path, target: { kind: "lines", side, start, code }, text: "", suggestion: null, question: false, editing: null },
+      composer: { path, target: { kind: "lines", side, start, code }, text: "", ask: { kind: "comment" }, editing: null },
       selection: { path, side, anchor: start, head: end, dragging: false },
       openComment: null,
     });
@@ -1101,7 +1101,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
 
   composeOnFile(path) {
     if (!canComment(get())) return;
-    set({ composer: { path, target: { kind: "file" }, text: "", suggestion: null, question: false, editing: null }, openComment: null });
+    set({ composer: { path, target: { kind: "file" }, text: "", ask: { kind: "comment" }, editing: null }, openComment: null });
   },
 
   editComment(id) {
@@ -1117,8 +1117,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
         path: c.path,
         target: c.target,
         text: c.text,
-        suggestion: c.suggestion === null ? null : dedent(c.suggestion.split("\n")).join("\n"),
-        question: c.question,
+        ask: c.ask.kind === "suggestion" ? { ...c.ask, code: dedent(c.ask.code.split("\n")).join("\n") } : c.ask,
         editing: id,
       },
       selection,
@@ -1139,7 +1138,7 @@ export const useStore = create<State & Actions>()((set, get) => ({
     const composer = get().composer;
     const place = placeOf(get());
     if (!composer || !canSave(composer) || !place) return;
-    const written = { target: composer.target, text: composer.text.trim(), suggestion: composer.suggestion, question: composer.question };
+    const written = { target: composer.target, text: composer.text.trim(), ask: composer.ask };
     // An edited sent comment keeps its round, and is reopened by its text differing from what was sent.
     const comments = composer.editing
       ? get().comments.map((c) => (c.id === composer.editing ? { ...c, ...written, ...reopenedMark(c, written) } : c))
@@ -1412,8 +1411,8 @@ export const useStore = create<State & Actions>()((set, get) => ({
 }));
 
 /** What editing `c` into `written` does to a mark the agent left: a changed comment is open again (ADR 0032 §2). */
-function reopenedMark(c: Comment, written: Pick<Comment, "text" | "suggestion" | "question">): Partial<Comment> {
-  const edited = written.text !== c.text || written.suggestion !== c.suggestion || written.question !== c.question;
+function reopenedMark(c: Comment, written: Pick<Comment, "text" | "ask">): Partial<Comment> {
+  const edited = written.text !== c.text || written.ask.kind !== c.ask.kind || codeOf(written.ask) !== codeOf(c.ask);
   return awaitsReviewer(c) && edited ? { resolved: null, note: null } : {};
 }
 

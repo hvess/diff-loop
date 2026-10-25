@@ -12,13 +12,12 @@ const comment = (state: Comment["state"]): Comment => ({
   path: "a.ts",
   target: { kind: "file" },
   text: "t",
-  suggestion: null,
+  ask: { kind: "comment" },
   state,
   place: null,
   sent: null,
   resolved: null,
   note: null,
-  question: false,
 });
 
 const store = (patch: Partial<Store>): Store => ({ ...useStore.getState(), ...patch });

@@ -74,7 +74,7 @@ pub(crate) fn resolve_comment(
 
 #[cfg(test)]
 mod tests {
-    use diff_loop_core::{AnchorState, Comment, SavedReview, Target};
+    use diff_loop_core::{AnchorState, Ask, Comment, SavedReview, Target};
 
     use super::*;
     use crate::memory::Memory;
@@ -85,13 +85,12 @@ mod tests {
             path: "a.rs".into(),
             target: Target::File,
             text: format!("Fix {id}."),
-            suggestion: None,
+            ask: Ask::Comment,
             state: AnchorState::Current,
             place: None,
             sent: None,
             resolved: None,
             note: None,
-            question: false,
         }
     }
 
