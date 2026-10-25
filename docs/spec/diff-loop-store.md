@@ -30,7 +30,9 @@ app share them; ADR 0031 §3 makes the store a crate both can depend on.
    so locks and writes in progress are never read as one.
 3. **A file names its branch,** and a file whose branch is not the one
    asked for holds none of its review: where names ignore case, `Fix` and
-   `fix` share a file.
+   `fix` share a file. A save replaces it whichever branch it holds, so
+   the last save wins and the other branch's review is lost. The
+   developer's call, 2026-10-25.
 4. **A save never makes a git directory.** A review saved for a project
    that is gone fails; an empty one has nothing to remove and succeeds.
    Either drops the project from the list.
