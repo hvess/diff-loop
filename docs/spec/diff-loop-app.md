@@ -5,7 +5,7 @@ The desktop app: Tauri commands around `diff-loop-core`, and the React front end
 **Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15, and flow 6, reviews per branch, since 2026-10-19 (step 15); the redesign (step 16) landed 2026-10-22.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-25
+**Last Updated:** 2026-10-26
 
 ## Why
 
@@ -111,6 +111,8 @@ change, annotate, hand off to the agent, next round.
        instructions sheet, the banners' variants, Welcome, Nothing to
        review and the file cards (1a, 1c, 2b, 2c, 4a, 4c, 6a, 6g) — done
        2026-10-22.
+17. The app icon as Eclipse, flat everywhere and Liquid Glass on macOS
+    26 (ADR 0038; Decision 37) — done 2026-10-26.
 
 ## Decisions
 
@@ -216,7 +218,8 @@ change, annotate, hand off to the agent, next round.
     src-tauri/icons/app-icon.svg -o src-tauri/icons` in `app/` makes the
     desktop sizes `tauri.conf.json` lists; the others it makes are not
     kept. The design's `icon/` layers are for Icon Composer, which this
-    app does not use yet. The developer's choice, 2026-10-13.
+    app does not use yet. The developer's choice, 2026-10-13. Superseded
+    2026-10-26 by Decision 37 (ADR 0038).
 15. **Releases are built on the developer's Mac** (ADR 0028; by
     `.github/workflows/release.yml` from a `v<version>` tag until then,
     which still builds an AppImage and a `.deb` on Ubuntu 22.04 when
@@ -919,6 +922,16 @@ change, annotate, hand off to the agent, next round.
     the preview's subtitle counts the kinds ("2 comments · 1 question · 1
     suggestion", `previewSubtitle`), where it counted comments and files.
 
+37. **The app icon is Eclipse** (ADR 0038), drawn as `docs/icon/README.md`
+    gives it. `icons/app-icon.svg` is the flat source on the pre-26 macOS
+    grid, and `npx tauri icon src-tauri/icons/app-icon.svg -o
+    src-tauri/icons` in `app/` makes the desktop sizes `tauri.conf.json`
+    lists; the others it makes are not kept. `icons/Eclipse.icon` is the
+    Icon Composer bundle: a macOS build compiles it with `npm run
+    icon:glass` (`tauri.macos.conf.json`) into `gen/icon/Assets.car`,
+    copied into `Contents/Resources/`, and `Info.plist` names it, so macOS
+    26 draws it in glass. The developer's choice, 2026-10-26.
+
 ## Pitfalls
 
 - A load answers for the comments it was sent. One changed while it ran
@@ -940,6 +953,12 @@ change, annotate, hand off to the agent, next round.
 - Muda's predefined Cut, Copy, Paste and Select All do nothing on Linux
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
+
+## Progress (2026-10-26, the Eclipse icon)
+
+Step 17 landed: the flat icons made again from the new `app-icon.svg`,
+and the glass icon compiled into a macOS bundle and named in its
+`Info.plist`.
 
 ## Progress (2026-10-25, the kind as an enum)
 

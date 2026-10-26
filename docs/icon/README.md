@@ -20,13 +20,14 @@ for `#93ACFF`, the dark-mode accent: one fill change in Icon Composer.
 
 ## `Eclipse.icon`
 
-An Icon Composer bundle: `icon.json` plus the two flat, opaque, unmasked
-SVG layers in `Assets/`. The JSON lists its groups front to back, as
+The bundle is `app/src-tauri/icons/Eclipse.icon`, a build input since
+ADR 0038: `icon.json` plus the two flat, opaque, unmasked SVG layers in
+`Assets/`. The JSON lists its groups front to back, as
 Icon Composer's sidebar does, so `later` comes first. The ground, the
 fills per appearance, the glass, the shadow and the later disc's
 translucency are set in the JSON, as the guidelines ask, so the SVGs
-carry nothing but geometry. It compiles with Xcode 26.6's `actool`
-(checked 2026-10-26), which also renders the flat fallback `.icns`.
+carry nothing but geometry. It needs Xcode 26's `actool`, the first with
+Icon Composer; it was checked with 26.6, 2026-10-26.
 
 1. Open it: Xcode → Open Developer Tool → Icon Composer, or double-click
    the bundle.
@@ -37,13 +38,15 @@ carry nothing but geometry. It compiles with Xcode 26.6's `actool`
 3. For the light appearance, consider the System Light ground with the
    later disc turned light and the earlier disc in the accent; the JSON
    ships the dark look for both, since dark mode is what is marketed.
-4. Export from Icon Composer and drag the `.icon` into the Xcode target,
-   or compile it with `actool` into an `Assets.car`.
+4. Save it in place. A macOS build compiles it (`npm run icon:glass` in
+   `app/`, run by `tauri.macos.conf.json`) into the app's `Assets.car`.
 
-## Open task
+## The flat icons
 
-The Tauri build (`app/src-tauri/icons/`) still ships the flat icon
-compiled from `icon.png` and `icon.icns`. Carrying `Eclipse.icon` into the
-bundle for macOS 26 needs `actool` in the build and a flat fallback
-rendered from the same layers for earlier systems; that is a build change
-and is not done here.
+`app/src-tauri/icons/app-icon.svg` draws the same design flat on the
+pre-26 macOS grid, for Linux, Windows and macOS before 26. It cannot
+have the material, so it stands in for it: a light gradient on the
+earlier disc and a rim light on the later one, over the table's geometry
+scaled onto the tile. A change to the bundle's layers is made there too,
+then `npx tauri icon src-tauri/icons/app-icon.svg -o src-tauri/icons` in
+`app/` (ADR 0038 §2).

@@ -1,7 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="#FFFFFF" stroke="#E3E3E3"/>
-  <rect x="352" y="292" width="340" height="76" rx="38" fill="#D3D3D8"/>
-  <rect x="352" y="474" width="420" height="76" rx="38" fill="#2BC48A"/>
-  <rect x="352" y="656" width="280" height="76" rx="38" fill="#D3D3D8"/>
-  <circle cx="352" cy="512" r="100" fill="#2F2F32"/>
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A2A2E"/>
+      <stop offset="1" stop-color="#111113"/>
+    </linearGradient>
+    <linearGradient id="earlier" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#F8F8FA"/>
+      <stop offset="1" stop-color="#CDCDD4"/>
+    </linearGradient>
+    <linearGradient id="later" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#34343B"/>
+      <stop offset="1" stop-color="#1B1B1F"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <!-- The flat Eclipse (docs/icon/README.md) on the pre-26 macOS grid: the 1024 design scaled by 824/1024 onto the tile. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#ground)"/>
+  <circle cx="476.6" cy="518.4" r="206" fill="url(#earlier)"/>
+  <circle cx="560.3" cy="476.6" r="206" fill="url(#later)"/>
+  <circle cx="560.3" cy="476.6" r="203" fill="none" stroke="url(#rim)" stroke-width="6"/>
 </svg>

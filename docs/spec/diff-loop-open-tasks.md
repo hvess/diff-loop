@@ -5,7 +5,7 @@ Work that is known, understood and not done. Each entry says what was seen, wher
 **Status:** active — a ledger, not a spec. Nothing here blocks anything else.
 **Scope:** everything outstanding.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-25
+**Last Updated:** 2026-10-26
 
 An entry leaves this file by being done, or by being decided against — in
 which case the decision goes where it belongs (an ADR, or the spec it
@@ -99,3 +99,12 @@ contradicts) and the entry says so before it goes.
     release badge, which would not load for anyone else. Closes when
     releases are published somewhere public, or the developer decides
     they stay private.
+29. **The Release workflow's macOS job may not build the glass icon.**
+    A macOS build's `beforeBuildCommand` runs `npm run icon:glass`
+    (`app/src-tauri/tauri.macos.conf.json`, ADR 0038 §3), which needs
+    Xcode 26's `actool`; `.github/workflows/release.yml` runs that job on
+    `macos-15`, whose default Xcode has not been checked against an
+    `.icon`. If it cannot compile one, a hand-started run fails before
+    bundling. Closes when the job runs on an image with Xcode 26 (or
+    selects it) and a run is seen to pass, or the developer decides the
+    workflow no longer builds the `.dmg`.

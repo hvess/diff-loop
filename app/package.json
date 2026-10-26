@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "icon:glass": "mkdir -p src-tauri/gen/icon && xcrun actool src-tauri/icons/Eclipse.icon --compile src-tauri/gen/icon --platform macosx --minimum-deployment-target 10.13 --app-icon Eclipse --output-partial-info-plist src-tauri/gen/icon/partial.plist --errors --warnings --output-format human-readable-text",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
     "test": "vitest run",

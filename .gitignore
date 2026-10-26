@@ -37,3 +37,6 @@ Thumbs.db
 *.pem
 id_ed25519
 id_rsa
+
+# The glass app icon, compiled by actool on macOS (ADR 0038)
+/app/src-tauri/gen/icon/
