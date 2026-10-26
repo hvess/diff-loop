@@ -954,6 +954,14 @@ change, annotate, hand off to the agent, next round.
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
 
+## Progress (2026-10-26, the Eclipse icon refined)
+
+The icon redrawn after it was seen in the Dock: the front disc blue
+rather than dark glass, the pair larger and further apart, the ground a
+dark blue-grey (`docs/icon/README.md` gives why each). The flat icons
+are made again from it, and all six appearances were rendered with
+`ictool`.
+
 ## Progress (2026-10-26, the Eclipse icon)
 
 Step 17 landed: the flat icons made again from the new `app-icon.svg`,

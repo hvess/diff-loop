@@ -248,10 +248,11 @@ before reopening a decision they cover.
   `suggestion`; a file written before it reads its kind from those, still
   version 1.
 - **0038 — The app icon is Eclipse, in Liquid Glass on macOS.** Two
-  discs, the later in front, on the dark window's gradient; flat sizes
-  from `icons/app-icon.svg` by `tauri icon`, and on macOS the Icon
-  Composer bundle `icons/Eclipse.icon` compiled by `actool` into the
-  bundle's `Assets.car` at build time, so a macOS release needs Xcode 26.
+  discs, the later in blue in front of the earlier in white, on a dark
+  ground; flat sizes from `icons/app-icon.svg` by `tauri icon`, and on
+  macOS the Icon Composer bundle `icons/Eclipse.icon` compiled by
+  `actool` into the bundle's `Assets.car` at build time, so a macOS
+  release needs Xcode 26.
 
 ## Key Constraints (non-negotiable)
 

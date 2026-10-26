@@ -23,9 +23,10 @@ glass one.
 
 ## Decision
 
-1. **The icon is Eclipse**: two discs of the same size, the later in front
-   of the earlier, on the dark window's gradient (`docs/icon/README.md`
-   gives the construction). The developer's choice, 2026-10-26.
+1. **The icon is Eclipse**: two discs of the same size, the later, in
+   blue, in front of the earlier, in white, on a dark ground
+   (`docs/icon/README.md` gives the construction). The developer's
+   choice, 2026-10-26.
 2. **The flat icons are made from one source.** `icons/app-icon.svg` draws
    Eclipse on the pre-26 macOS grid, and `npx tauri icon
    src-tauri/icons/app-icon.svg -o src-tauri/icons` in `app/` makes the
