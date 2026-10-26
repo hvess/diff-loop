@@ -85,7 +85,7 @@ cargo run -q -p diff-loop-review -- begin
 ```
 
 **Capturing windows for the UI judge.** Run the app on a checkout that
-shows what changed (`cd app && npm run tauri dev -- -- <path>`), bring
+shows what changed (`cd app && npm run tauri dev -- -- -- <path>`: npm takes the first `--`, Tauri the second, Cargo the third), bring
 each view the diff alters into the state it changes — light and dark —
 and capture the window into `<run>/windows/` as PNG, one file per state,
 named for it (`sidebar-tree-dark.png`). On Linux `grim -g` with the

@@ -95,10 +95,11 @@ contradicts) and the entry says so before it goes.
     signs and notarizes with a Developer ID, or the developer decides the step
     is fine.
 13. **Releases reach only people with access to this repository**
-    (ADR 0009 §5); the README says so under Install, and carries no
-    release badge, which would not load for anyone else. Closes when
-    releases are published somewhere public, or the developer decides
-    they stay private.
+    (ADR 0009 §5). Since 2026-10-26 the README is written for a public
+    repository and no longer says so, and carries no release badge, which
+    would not load for anyone else while it is private. Closes when the
+    repository and its releases are public, or the developer decides they
+    stay private.
 29. **The Release workflow's macOS job may not build the glass icon.**
     A macOS build's `beforeBuildCommand` runs `npm run icon:glass`
     (`app/src-tauri/tauri.macos.conf.json`, ADR 0038 §3), which needs
