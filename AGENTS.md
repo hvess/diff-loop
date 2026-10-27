@@ -22,7 +22,9 @@ Shape (quality-gate §2):
 | `diff-loop-review` | `crates/review` | The review loop's commit gate; dev-only | `docs/spec/diff-loop-review.md` |
 
 The front end is `app/src` (React). Each new crate gets a spec in
-`docs/spec/`.
+`docs/spec/`. The website is `site/`: one static page, no build, drawn
+as "7a · Website" on the redesign canvas (ADR 0027) and built from it;
+`site/README.md` says how it is kept.
 
 Run it: `cd app && npm install && npm run tauri dev`. A built binary opens
 a folder given as its first argument (`diff-loop-app <path>`).

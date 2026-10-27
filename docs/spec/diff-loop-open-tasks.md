@@ -5,7 +5,7 @@ Work that is known, understood and not done. Each entry says what was seen, wher
 **Status:** active — a ledger, not a spec. Nothing here blocks anything else.
 **Scope:** everything outstanding.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-26
+**Last Updated:** 2026-10-27
 
 An entry leaves this file by being done, or by being decided against — in
 which case the decision goes where it belongs (an ADR, or the spec it
@@ -109,3 +109,8 @@ contradicts) and the entry says so before it goes.
     bundling. Closes when the job runs on an image with Xcode 26 (or
     selects it) and a run is seen to pass, or the developer decides the
     workflow no longer builds the `.dmg`.
+30. **The website is not deployed.** `site/` is the finished page, with no
+    host and no domain. Its `<head>` has no canonical URL, and its
+    `og:image` and `twitter:image` are relative, which link previews
+    ignore (`site/index.html`, the comment above them). Closes when the
+    developer picks a host and domain and the page names its absolute URLs.

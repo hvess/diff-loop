@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diff Loop: Review Your Coding Agent's Changes on Mac</title>
+<meta name="description" content="Free, open-source macOS app to review what Claude Code, Codex or any coding agent changed: a live diff per branch, comments, questions and suggested code, handed back as Markdown or over MCP.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f9f9f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#181818" media="(prefers-color-scheme: dark)">
+<!-- Once the site has its domain: add <link rel="canonical">, og:url, and make og:image and twitter:image absolute. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Diff Loop">
+<meta property="og:title" content="Diff Loop: read what your coding agent wrote, then tell it what to fix">
+<meta property="og:description" content="A free, open-source Mac app that shows a branch's diff live, takes your comments on the lines, and hands them back to Claude Code, Codex or any agent.">
+<meta property="og:image" content="img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="750">
+<meta property="og:image:alt" content="Diff Loop reviewing a branch, with two comments in the margin">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Diff Loop: read what your coding agent wrote, then tell it what to fix">
+<meta name="twitter:description" content="A free, open-source Mac app for reviewing a coding agent's diff and handing your comments back.">
+<meta name="twitter:image" content="img/og.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" as="image" href="img/review-dark.jpg" fetchpriority="high">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&amp;family=Geist+Mono:wght@400..600&amp;display=swap">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Diff Loop",
+  "description": "A desktop app for reviewing what a coding agent changed: one review per branch, its diff live from the worktree, comments on lines and ranges, questions and suggested code, handed back to the agent as Markdown instructions or over MCP.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS (Apple Silicon)",
+  "softwareVersion": "0.11.0",
+  "fileSize": "4.6 MB",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "downloadUrl": "https://github.com/hvess/diff-loop/releases/latest",
+  "codeRepository": "https://github.com/hvess/diff-loop",
+  "screenshot": "img/review-dark.jpg"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "Is this an AI reviewer?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. You review. The agent only reads your comments and marks what it dealt with, with a note." } },
+    { "@type": "Question", "name": "Which agents does it work with?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Any agent you can paste text into: the review is plain Markdown. Claude Code, Codex and other MCP clients can also read and resolve the review through the diff-loop server." } },
+    { "@type": "Question", "name": "Where does my code go?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Nowhere. Diff Loop runs git on your Mac and reads the results. There is no account, no server and nothing to sign in to." } },
+    { "@type": "Question", "name": "Does it change my repository?",
+      "acceptedAnswer": { "@type": "Answer", "text": "It never checks anything out. Its only writes are the review files, one per branch at .git/diff-loop/reviews/<branch>.json, shared by the repository's worktrees." } },
+    { "@type": "Question", "name": "What does it cost?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Nothing. MIT license, source on GitHub, no paid tier." } },
+    { "@type": "Question", "name": "Why does macOS refuse to open it?",
+      "acceptedAnswer": { "@type": "Answer", "text": "The app is ad-hoc signed, not notarized. Allow it once under Privacy & Security, or build it from source. There is no auto-updater yet: each release is downloaded by hand." } },
+    { "@type": "Question", "name": "Can I review from the keyboard?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. J and K move between files, C comments on the line, R resolves or accepts, ⌘⇧C copies the review, ⌘2 splits the diff, ⌘F finds in the file. Every shortcut is listed in the README." } },
+    { "@type": "Question", "name": "Does it work with pull requests?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. It reviews local branches and never reads or posts to GitHub. Open the pull request's branch in a worktree and review it there." } }
+  ]
+}
+</script>
+<style>
+/* The redesign canvas's "7a · Website" (ADR 0027): the app's own tokens, light, and dark from the system's setting. */
+body{margin:0}
+.site{--ground:#f9f9f9;--surface:#ffffff;--stage:#f3f3f3;--label:#0d0d0d;--sec:#6b6b6b;--ter:#6b6b6b;--lnum:#646464;--hair:#e3e3e3;--pop:#ffffff;--field:#f0f0f0;--chrome:#ffffff;--accent:#2f4fb8;--fill:#2f4fb8;--onfill:#ffffff;--addbg:#f0faf4;--addg:#e2f4ea;--addtx:#1a7f4b;--deltx:#b93838;--delbg:#fdf2f2;--delg:#f9e3e3;--sel:#e6ecfb;--selg:#c9d5f6;--selfg:#2f4fb8;--amber:#7a5d16;--amberbg:#fbf3df;--kw:#a3337e;--str:#1b6f52;--fn:#3b5bdb;--cmt:#6b6b6b;--shot:0 24px 60px rgba(0,0,0,.14);color-scheme:light;background:var(--ground);color:var(--label);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Geist",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+@media (prefers-color-scheme: dark){.site{--ground:#181818;--surface:#212121;--stage:#121212;--label:#ececec;--sec:#9a9a9a;--ter:#9a9a9a;--lnum:#a0a0a0;--hair:#2a2a2a;--pop:#232323;--field:#2e2e2e;--chrome:#262626;--accent:#93acff;--fill:#3b5bdb;--onfill:#ffffff;--addbg:rgba(43,196,138,.09);--addg:rgba(43,196,138,.14);--addtx:#5bd3a2;--deltx:#f08a8a;--delbg:rgba(240,96,96,.09);--delg:rgba(240,96,96,.14);--sel:rgba(110,140,255,.16);--selg:rgba(110,140,255,.3);--selfg:#b4c4ff;--amber:#e0b860;--amberbg:rgba(224,184,96,.12);--kw:#f08cc8;--str:#86d6ae;--fn:#93acff;--cmt:#9a9a9a;--shot:0 24px 60px rgba(0,0,0,.35);color-scheme:dark}}
+.site a{color:inherit;text-decoration:none}
+.site .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+.site .mono{font-family:ui-monospace,"Geist Mono",SFMono-Regular,monospace}
+.site .cap{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px;border-radius:18px;background:var(--chrome);box-shadow:inset 0 0 0 .5px var(--hair),0 1px 2px rgba(0,0,0,.06);font-size:13px;font-weight:500;color:var(--label);white-space:nowrap}
+.site .cap.p{background:var(--fill);color:var(--onfill);font-weight:600;box-shadow:none}
+.site .cap.l{height:40px;padding:0 18px;border-radius:20px;font-size:14px}
+.site :focus-visible{outline:2px solid var(--selfg);outline-offset:2px}
+.site .link{padding:8px 0;min-height:24px;display:inline-flex;align-items:center}
+.site .link{color:var(--sec);font-size:14px}
+.site .link:hover{color:var(--label)}
+.site h1,.site h2,.site h3{margin:0;font-weight:500;letter-spacing:-.024em}
+.site h2{font-size:36px;line-height:1.12;letter-spacing:-.02em}
+.site h3{font-size:19px;letter-spacing:-.012em}
+.site .lead{color:var(--sec)}
+.site .fig{font-size:13px;color:var(--ter)}
+.site .frame{border-radius:12px;overflow:hidden;background:var(--stage);box-shadow:inset 0 0 0 .5px var(--hair)}
+.site .frame img{display:block;width:100%;height:auto}
+.site .crop{aspect-ratio:625/360;overflow:hidden;position:relative}
+.site .crop img{position:absolute;left:0;top:0;width:160%;max-width:none;height:auto}
+.site section.wrap{padding-top:112px}
+.site .band{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:56px;align-items:center}
+.site .band.flip > :first-child{order:2}
+.site .steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.site .step{background:var(--surface);border-radius:12px;box-shadow:inset 0 0 0 .5px var(--hair);padding:22px 22px 24px;display:flex;flex-direction:column;gap:18px}
+.site .vig{min-height:168px;display:flex;align-items:center;justify-content:center}
+.site .card{width:100%;background:var(--pop);border-radius:10px;box-shadow:0 0 0 .5px var(--hair),0 6px 18px rgba(0,0,0,.12);overflow:hidden}
+.site .row{display:flex;font:11.5px/19px ui-monospace,"Geist Mono",monospace;white-space:pre}
+.site .row .n{width:30px;flex:none;padding-right:8px;text-align:right;color:var(--lnum);font-size:10px}
+.site .row.add{background:var(--addbg)}.site .row.add .n{background:var(--addg)}
+.site .row.sel{background:var(--sel)}.site .row.sel .n{background:var(--selg);color:var(--selfg)}
+.site .chip{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:9px;font-size:11px;font-weight:600}
+.site .btn-s{height:26px;padding:0 11px;border-radius:13px;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500}
+.site .trust{display:flex;flex-wrap:wrap;gap:10px 28px;padding:22px 0;border-top:.5px solid var(--hair);border-bottom:.5px solid var(--hair);font-size:14px;color:var(--sec)}
+.site .trust b{color:var(--label);font-weight:500}
+.site table{width:100%;border-collapse:collapse;font-size:15px}
+.site th,.site td{padding:16px 18px;text-align:left;vertical-align:top;border-top:.5px solid var(--hair)}
+.site th{font-weight:500;color:var(--ter);font-size:13px;border-top:0;padding-top:0}
+.site td:first-child{color:var(--sec);width:34%}
+.site td.y,.site td.n{color:var(--label)}
+.site .cmd{background:var(--stage);border-radius:10px;box-shadow:inset 0 0 0 .5px var(--hair);padding:10px 14px;font:12.5px/1.5 ui-monospace,"Geist Mono",monospace;color:var(--label);white-space:pre-wrap;word-break:break-all}
+.site .cmd span{display:block;margin-bottom:2px;font-family:-apple-system,BlinkMacSystemFont,"Geist",system-ui,sans-serif;font-size:12px;color:var(--sec)}
+.site .faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:40px 56px}
+.site .faq p{margin:8px 0 0;color:var(--sec);font-size:15px}
+.site kbd{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:5px;background:var(--field);box-shadow:inset 0 -1px 0 var(--hair),0 0 0 .5px var(--hair);font:500 11px -apple-system,BlinkMacSystemFont,"Geist",system-ui,sans-serif;color:var(--label)}
+@media (max-width:900px){.site .band,.site .faq{grid-template-columns:minmax(0,1fr)}.site .band.flip > :first-child{order:0}.site .steps{grid-template-columns:repeat(2,minmax(0,1fr))}.site section.wrap{padding-top:80px}.site h1{font-size:40px !important}.site h2{font-size:30px}.site .crop{aspect-ratio:625/360}.site td:first-child{width:auto}}
+.site .nav{display:flex;gap:22px;margin-left:16px}
+@media (max-width:560px){.site .steps{grid-template-columns:minmax(0,1fr)}.site .nav{display:none}}
+</style>
+</head>
+
+<body>
+<div class="site">
+
+<header class="wrap" style="height: 64px; display: flex; align-items: center; gap: 28px">
+<a href="#top" style="display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 15px"><img src="img/icon-256.png" alt="" width="26" height="26">Diff Loop</a>
+<nav aria-label="Primary" class="nav"><a class="link" href="#how">How It Works</a><a class="link" href="#install">Install</a><a class="link" href="#faq">FAQ</a></nav>
+<a class="link" href="https://github.com/hvess/diff-loop" style="margin-left: auto">GitHub</a>
+<a class="cap p" href="https://github.com/hvess/diff-loop/releases/latest">Download</a>
+</header>
+
+<main id="top">
+
+<section class="wrap" style="padding-top: 96px; text-align: center">
+<h1 style="margin: 0 auto; max-width: 960px; font-size: 56px; line-height: 1.08">Read what your coding agent wrote.<br><span style="color: var(--sec)">Then tell it what to fix.</span></h1>
+<p class="lead" style="margin: 22px auto 0; max-width: 560px; font-size: 17px">A free, open-source Mac app that shows a branch's diff live, takes your comments on the lines, and hands them back to Claude Code, Codex or any agent.</p>
+<div style="margin-top: 32px; display: flex; justify-content: center; flex-wrap: wrap; gap: 12px">
+<a class="cap p l" href="https://github.com/hvess/diff-loop/releases/latest"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M16.37 12.6c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.82-.81-3-.79-1.54.02-2.97.9-3.76 2.28-1.61 2.79-.41 6.91 1.15 9.17.77 1.1 1.68 2.34 2.87 2.3 1.15-.05 1.59-.74 2.98-.74 1.39 0 1.78.74 3 .72 1.24-.02 2.02-1.12 2.78-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.43-3.7ZM14.1 5.86c.63-.77 1.06-1.83.94-2.89-.91.04-2.02.61-2.67 1.37-.58.67-1.1 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28Z"></path></svg>Download for macOS</a>
+<a class="cap l" href="https://github.com/hvess/diff-loop">View on GitHub</a>
+</div>
+<p class="fig mono" style="margin: 18px 0 0; font-size: 12px">Apple Silicon · 4.6 MB · MIT · no account</p>
+
+<figure style="margin: 72px 0 0; text-align: left">
+<div class="frame" style="box-shadow: inset 0 0 0 .5px var(--hair), var(--shot)"><img src="img/review-dark.jpg" width="1600" height="1000" alt="Diff Loop reviewing the branch agent/share-rate-limit against main: the changed files on the left, the diff of handler.ts with two comments pinned in the margin, and Copy Review in the bottom bar"></div>
+<figcaption class="fig mono" style="margin-top: 14px; font-size: 12px">Fig. 1 · agent/share-rate-limit against main, two comments in the margin, nothing sent yet.</figcaption>
+</figure>
+</section>
+
+<section class="wrap" style="padding-top: 56px">
+<div class="trust">
+<span><b>Open source</b> · MIT</span>
+<span><b>Works with</b> Claude Code, Codex and any agent you can paste into</span>
+<span><b>Local</b> · runs git on your Mac; its only writes are the review files</span>
+<span><b>Small</b> · 4.6 MB, Rust and Tauri</span>
+</div>
+</section>
+
+<section class="wrap" id="how">
+<p class="fig mono" style="margin: 0 0 14px; font-size: 12px">How It Works</p>
+<h2 style="max-width: 620px">One loop, from the agent's diff back to the agent.</h2>
+<div class="steps" style="margin-top: 40px">
+
+<article class="step">
+<div class="vig"><div class="card">
+<div style="display: flex; align-items: baseline; gap: 8px; padding: 9px 12px; font-size: 12px"><b style="font-weight: 600">handler.ts</b><span style="color: var(--addtx); font-size: 11px">+10</span><span class="mono" style="margin-left: auto; font-size: 10px; color: var(--ter)">live</span></div>
+<div class="row"><span class="n">12</span><span>  <span style="color: var(--kw)">const</span> userId = req.user.id;</span></div>
+<div class="row add"><span class="n">13</span><span>  <span style="color: var(--kw)">const</span> ok = <span style="color: var(--kw)">await</span> <span style="color: var(--fn)">checkRateLimit</span>(userId);</span></div>
+<div class="row add"><span class="n">14</span><span>  <span style="color: var(--kw)">if</span> (!ok) {</span></div>
+<div class="row add"><span class="n">15</span><span>    res.<span style="color: var(--fn)">status</span>(429).<span style="color: var(--fn)">end</span>();</span></div>
+<div class="row add"><span class="n">16</span><span>  }</span></div>
+</div></div>
+<div><h3><span class="mono" style="font-size: 12px; color: var(--ter); margin-right: 10px">01</span>Read it live</h3><p class="lead" style="margin: 6px 0 0; font-size: 14px">Open the project. The branch's diff against any base follows the files as the agent edits them.</p></div>
+</article>
+
+<article class="step">
+<div class="vig" style="flex-direction: column; gap: 10px"><div class="card" style="position: relative">
+<div class="row add"><span class="n">13</span><span>  <span style="color: var(--kw)">const</span> ok = <span style="color: var(--kw)">await</span> <span style="color: var(--fn)">checkRateLimit</span>(userId);</span></div>
+<div class="row sel"><span class="n">14</span><span>  <span style="color: var(--kw)">if</span> (!ok) {</span></div>
+<div class="row sel"><span class="n">15</span><span>    res.<span style="color: var(--fn)">status</span>(429).<span style="color: var(--fn)">end</span>();</span></div>
+<span style="position: absolute; left: 3px; top: 21px; width: 3px; height: 36px; border-radius: 2px; background: var(--fill)"></span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; padding: 6px 11px; border-radius: 14px; background: var(--pop); box-shadow: 0 0 0 1px var(--fill), 0 6px 16px rgba(0,0,0,.16); font-size: 12px"><span style="width: 6px; height: 6px; border-radius: 3px; background: var(--fill); flex: none"></span>Should a failed share count against the limit?</div>
+</div>
+<div><h3><span class="mono" style="font-size: 12px; color: var(--ter); margin-right: 10px">02</span>Comment, Question or Suggestion</h3><p class="lead" style="margin: 6px 0 0; font-size: 14px">Click a line number or drag a range. A comment asks for a change, a question asks for an answer, a suggestion is the code you want.</p></div>
+</article>
+
+<article class="step">
+<div class="vig"><div class="card" style="padding: 12px 14px; box-sizing: border-box">
+<div class="mono" style="font-size: 10.5px; line-height: 1.65; color: var(--sec); white-space: pre-wrap"><span style="color: var(--label)">## 2. Answer these questions</span>
+Answer each one. Don't change any code for them.
+
+- L14 `if (!ok) {`: Should a failed share count against the limit? (id `e41b7c03`)</div>
+<div style="display: flex; justify-content: flex-end; margin-top: 8px"><span class="btn-s" style="background: var(--fill); color: #fff">Copy Review</span></div>
+</div></div>
+<div><h3><span class="mono" style="font-size: 12px; color: var(--ter); margin-right: 10px">03</span>Hand it back</h3><p class="lead" style="margin: 6px 0 0; font-size: 14px">Copy Review writes your comments as Markdown instructions. Paste them into the agent's session.</p></div>
+</article>
+
+<article class="step">
+<div class="vig"><div class="card" style="padding: 12px 14px; box-sizing: border-box">
+<div style="display: flex; align-items: center; gap: 8px"><span class="chip" style="background: var(--amberbg); color: var(--amber)">Resolved by agent</span><span class="mono" style="font-size: 10px; color: var(--ter)">L16</span></div>
+<p style="margin: 8px 0 2px; font-size: 12.5px">Don't log the raw userId. Hash it first.</p>
+<p style="margin: 0; font-size: 11.5px; color: var(--sec)">Agent: Logged <span class="mono">hashUserId(userId)</span> instead.</p>
+<div style="display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px"><span class="btn-s" style="background: var(--field)">Edit</span><span class="btn-s" style="background: var(--fill); color: #fff">Accept <span class="mono" style="font-size: 10px; opacity: .75">R</span></span></div>
+</div></div>
+<div><h3><span class="mono" style="font-size: 12px; color: var(--ter); margin-right: 10px">04</span>You have the last word</h3><p class="lead" style="margin: 6px 0 0; font-size: 14px">The agent marks each comment resolved with a note, over MCP or in the review file. You accept with R, or edit to reopen.</p></div>
+</article>
+
+</div>
+</section>
+
+<section class="wrap">
+<div class="band">
+<div>
+<h2>A review per branch, not per session.</h2>
+<p class="lead" style="margin: 16px 0 0">Comments stay with the branch between runs and across worktrees, in one file inside the repository's <span class="mono" style="font-size: 14px">.git</span>. Switch branches with ⌘K without checking anything out; compare with any branch, tag or commit, with only the last commit, or with only the uncommitted changes.</p>
+</div>
+<figure style="margin: 0"><div class="frame crop"><img src="img/base-picker-dark.jpg" loading="lazy" decoding="async" width="1600" height="1000" alt="The base picker open over the diff: Uncommitted Changes, Last Commit, main marked Default, and Local Branches" style="transform: translate(-18%, 0)"></div><figcaption class="fig mono" style="margin-top: 12px; font-size: 12px">Fig. 2 · the base picker</figcaption></figure>
+</div>
+</section>
+
+<section class="wrap">
+<div class="band flip">
+<div>
+<h2>Suggest the code, not a paraphrase of it.</h2>
+<p class="lead" style="margin: 16px 0 0">A suggestion holds the replacement lines themselves. The agent is told to put them in as written, or to leave them and say why. Questions go out under their own heading, with the instruction to answer and change nothing.</p>
+</div>
+<figure style="margin: 0"><div class="frame crop"><img src="img/suggestion-dark.jpg" loading="lazy" decoding="async" width="1600" height="1000" alt="A comment card on line 16 with its Suggested Change: the old log.warn line removed, the hashed one added" style="transform: translate(-17%, -29.5%)"></div><figcaption class="fig mono" style="margin-top: 12px; font-size: 12px">Fig. 3 · a suggestion, previewed in place</figcaption></figure>
+</div>
+</section>
+
+<section class="wrap">
+<div class="band">
+<div>
+<h2>The agent answers in the same file.</h2>
+<p class="lead" style="margin: 16px 0 0">The instructions name the review file and each comment's id. With the <span class="mono" style="font-size: 14px">diff-loop</span> MCP server the agent calls <span class="mono" style="font-size: 14px">resolve_comment</span>; without it, it edits the file. Either way the window shows the mark and the note as soon as they are saved, and nothing is accepted until you say so.</p>
+</div>
+<figure style="margin: 0"><div class="frame crop"><img src="img/instructions-dark.jpg" loading="lazy" decoding="async" width="1600" height="1000" alt="The Review Instructions sheet: numbered sections for comments, questions and suggestions, and Copy to Clipboard" style="transform: translate(-31%, -16%)"></div><figcaption class="fig mono" style="margin-top: 12px; font-size: 12px">Fig. 4 · the instructions, before they are copied</figcaption></figure>
+</div>
+</section>
+
+<section class="wrap">
+<h2 style="max-width: 640px">Compared with <span class="mono" style="font-size: 30px">git diff</span> and a chat window.</h2>
+<div style="margin-top: 40px; overflow-x: auto">
+<table>
+<thead><tr><th scope="col"></th><th scope="col"><span class="mono">git diff</span> and a chat window</th><th scope="col">Diff Loop</th></tr></thead>
+<tbody>
+<tr><td>Where a comment lives</td><td class="n">In the prompt you type, then gone</td><td class="y">On its line, kept with the branch</td></tr>
+<tr><td>While the agent edits</td><td class="n">Run the diff again</td><td class="y">The diff updates in place</td></tr>
+<tr><td>Replacement code</td><td class="n">Described in prose</td><td class="y">Written as a suggestion, quoted verbatim</td></tr>
+<tr><td>What the agent did with each point</td><td class="n">Read the next reply and guess</td><td class="y">A resolved mark and a note per comment, waiting for your accept</td></tr>
+<tr><td>Next round</td><td class="n">Start over</td><td class="y">Comments still open go out again with the next copy</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section class="wrap" id="install">
+<p class="fig mono" style="margin: 0 0 14px; font-size: 12px">Install</p>
+<h2>Download, open once, connect your agent.</h2>
+<div style="margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px">
+
+<div class="step" style="gap: 14px">
+<h3><span class="mono" style="font-size: 12px; color: var(--sec); margin-right: 10px">01</span>Download</h3>
+<p class="lead" style="margin: 0; font-size: 15px">Open the <span class="mono" style="font-size: 13px">.dmg</span> from the latest release and drag Diff Loop to Applications. Apple Silicon; no Intel or Windows build yet. Linux builds from source.</p>
+<a class="cap p" href="https://github.com/hvess/diff-loop/releases/latest" style="align-self: flex-start; margin-top: auto">Download for macOS</a>
+</div>
+
+<div class="step" style="gap: 14px">
+<h3><span class="mono" style="font-size: 12px; color: var(--sec); margin-right: 10px">02</span>Allow it once</h3>
+<p class="lead" style="margin: 0; font-size: 15px">macOS will say it can't verify Diff Loop: the build is ad-hoc signed, not signed with an Apple Developer ID or notarized. Open it, dismiss the warning, then in System Settings › Privacy &amp; Security click <b style="color: var(--label); font-weight: 500">Open Anyway</b>. Or clear the flag once:</p>
+<div class="cmd">xattr -dr com.apple.quarantine "/Applications/Diff Loop.app"</div>
+</div>
+
+<div class="step" style="gap: 14px">
+<h3><span class="mono" style="font-size: 12px; color: var(--sec); margin-right: 10px">03</span>Connect your agent <span class="fig" style="font-weight: 400">· optional</span></h3>
+<p class="lead" style="margin: 0; font-size: 15px">The copied instructions work with any agent. For the round trip, build the MCP server (it needs Rust, through rustup; it isn't in the installer yet) and register it. Start the agent in the repository you are reviewing, on a branch: the server reads that branch's review.</p>
+<div class="cmd">cargo build --release -p diff-loop-mcp</div>
+<div class="cmd"><span>Claude Code</span>claude mcp add diff-loop -- /path/to/diff-loop/target/release/diff-loop-mcp</div>
+<div class="cmd"><span>Codex</span>codex mcp add diff-loop -- /path/to/diff-loop/target/release/diff-loop-mcp</div>
+</div>
+
+</div>
+</section>
+
+<section class="wrap" id="faq">
+<p class="fig mono" style="margin: 0 0 14px; font-size: 12px">FAQ</p>
+<h2>Frequently asked questions.</h2>
+<div class="faq" style="margin-top: 40px">
+<div><h3>Is this an AI reviewer?</h3><p>No. You review. The agent only reads your comments and marks what it dealt with, with a note.</p></div>
+<div><h3>Which agents does it work with?</h3><p>Any agent you can paste text into: the review is plain Markdown. Claude Code, Codex and other MCP clients can also read and resolve the review through the <span class="mono" style="font-size: 13px">diff-loop</span> server.</p></div>
+<div><h3>Where does my code go?</h3><p>Nowhere. Diff Loop runs <span class="mono" style="font-size: 13px">git</span> on your Mac and reads the results. There is no account, no server and nothing to sign in to.</p></div>
+<div><h3>Does it change my repository?</h3><p>It never checks anything out. Its only writes are the review files, one per branch at <span class="mono" style="font-size: 13px">.git/diff-loop/reviews/&lt;branch&gt;.json</span>, shared by the repository's worktrees.</p></div>
+<div><h3>What does it cost?</h3><p>Nothing. MIT license, source on GitHub, no paid tier.</p></div>
+<div><h3>Why does macOS refuse to open it?</h3><p>The app is ad-hoc signed, not notarized. Allow it once under Privacy &amp; Security, or build it from source. There is no auto-updater yet: each release is downloaded by hand.</p></div>
+<div><h3>Can I review from the keyboard?</h3><p>Yes. <kbd>J</kbd> <kbd>K</kbd> move between files, <kbd>C</kbd> comments on the line, <kbd>R</kbd> resolves or accepts, <kbd>⌘ ⇧ C</kbd> copies the review, <kbd>⌘ 2</kbd> splits the diff, <kbd>⌘ F</kbd> finds in the file. Every shortcut is listed in the README.</p></div>
+<div><h3>Does it work with pull requests?</h3><p>No. It reviews local branches and never reads or posts to GitHub. Open the pull request's branch in a worktree and review it there.</p></div>
+</div>
+</section>
+
+<section class="wrap" style="padding-bottom: 120px">
+<div style="position: relative; overflow: hidden; text-align: center; background: var(--surface); border-radius: 18px; box-shadow: inset 0 0 0 .5px var(--hair); padding: 80px 24px">
+<img src="img/icon-256.png" alt="" width="96" height="96" loading="lazy" style="position: relative; display: block; margin: 0 auto 28px">
+<h2 style="position: relative">Review the branch<br><span style="color: var(--sec)">before it becomes a pull request.</span></h2>
+<div style="position: relative; margin-top: 32px; display: flex; justify-content: center; flex-wrap: wrap; gap: 12px">
+<a class="cap p l" href="https://github.com/hvess/diff-loop/releases/latest">Download for macOS</a>
+<a class="cap l" href="https://github.com/hvess/diff-loop">View on GitHub</a>
+</div>
+</div>
+</section>
+</main>
+
+<footer class="wrap" style="padding: 24px 24px 40px; border-top: .5px solid var(--hair); display: flex; flex-wrap: wrap; gap: 12px 28px; font-size: 13px; color: var(--ter)">
+<span>Diff Loop · MIT license</span>
+<nav aria-label="Footer" style="margin-left: auto; display: flex; gap: 20px"><a class="link" href="https://github.com/hvess/diff-loop" style="font-size: 13px">GitHub</a><a class="link" href="https://github.com/hvess/diff-loop/releases" style="font-size: 13px">Releases</a><a class="link" href="https://github.com/hvess/diff-loop#readme" style="font-size: 13px">README</a><a class="link" href="https://github.com/hvess/diff-loop/blob/main/CONTRIBUTING.md" style="font-size: 13px">Contributing</a></nav>
+</footer>
+
+</div>
+</body>
+</html>
