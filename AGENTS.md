@@ -117,7 +117,8 @@ before reopening a decision they cover.
 - **0009 — Releases for Linux and Apple Silicon.** A `v<version>` tag
   builds an AppImage, a `.deb` and an Apple Silicon `.dmg` into a draft
   GitHub Release in this private repository; macOS builds are ad-hoc
-  signed, not notarized. Built on the developer's Mac since 0028.
+  signed, not notarized. Built on the developer's Mac since 0028; an
+  Intel `.dmg` too since 0039.
 - **0010 — Native behaviour of the window.** Hidden until first paint,
   its state kept (`tauri-plugin-window-state`); a release profile with
   LTO; on Linux, shared-memory buffers under NVIDIA and the portal's
@@ -255,6 +256,9 @@ before reopening a decision they cover.
   macOS the Icon Composer bundle `icons/Eclipse.icon` compiled by
   `actool` into the bundle's `Assets.car` at build time, so a macOS
   release needs Xcode 26.
+- **0039 — Releases carry an Intel `.dmg` too.** From 0.12.0 each release
+  built here carries an Apple Silicon and an Intel `.dmg`, one build per
+  target, no universal binary; Linux installers stay chosen per release.
 
 ## Key Constraints (non-negotiable)
 

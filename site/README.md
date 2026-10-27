@@ -44,10 +44,11 @@ needs those percentages checked.
 
 ## What it states
 
-Every claim on the page is one the README makes: platforms, size, license,
-signing, what is written to a repository, the MCP server's commands. When
-a release changes one of them, change it here too, with the version and
-size in the structured data in `<head>`.
+Every claim on the page is one the README makes (platforms, license,
+signing, what is written to a repository, the MCP server's commands) or
+the latest release shows (the size of its `.dmg`s). When
+a release changes one of them, change it here too, with the version in
+the structured data in `<head>`.
 
 The page is not deployed yet; the open-tasks ledger (entry 30) says what
 deploying it needs.

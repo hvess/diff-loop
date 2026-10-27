@@ -24,14 +24,16 @@ their own Mac, 2026-10-23.
 2. **A release is built on the developer's Mac**: the version set and
    committed through the gate, then `npm run tauri build -- --target
    aarch64-apple-darwin --bundles app,dmg` in `app/` (cross-compiled from
-   an Intel Mac), ad-hoc signed as ADR 0009 §4 says, the tag `v<version>`
+   an Intel Mac; and for Intel too, by ADR 0039), ad-hoc signed as ADR
+   0009 §4 says, the tag `v<version>`
    pushed, and the files attached to a **draft** GitHub Release with the
    `gh` CLI, published by hand once checked (ADR 0009 §1).
 3. **Which installers a release carries is chosen per release.** 0.9.0
    carries only the Apple Silicon `.dmg` (the developer's call,
    2026-10-23); a Linux installer needs a Linux machine, or the Release
    workflow started by hand, which also builds and attaches a `.dmg` of
-   its own: started only for a release not built here.
+   its own: started only for a release not built here. (Amended by ADR
+   0039: from 0.12.0 a release built here carries an Intel `.dmg` too.)
 
 ## Consequences
 

@@ -84,17 +84,19 @@ hook lets the commit through.
 Maintainers build releases on a Mac, not with Actions (ADR 0028). Set the
 new version in `app/src-tauri/tauri.conf.json`, `app/src-tauri/Cargo.toml`
 and `app/package.json` (then `cargo check` and `npm install` update the
-lockfiles) and commit. Build the Apple Silicon installer, which needs
-Xcode 26 for the Liquid Glass icon:
+lockfiles) and commit. Build the Apple Silicon and Intel installers
+(ADR 0039), which need Xcode 26 for the Liquid Glass icon:
 
 ```sh
 cd app
 npm run tauri build -- --target aarch64-apple-darwin --bundles app,dmg
+npm run tauri build -- --target x86_64-apple-darwin --bundles app,dmg
 ```
 
 Push a tag `v<version>`, then attach
 `target/aarch64-apple-darwin/release/bundle/dmg/Diff Loop_<version>_aarch64.dmg`
-to a draft release (`gh release create v<version> --draft <file>`), and
-publish it once the file is checked. The Release workflow, started by
+and `target/x86_64-apple-darwin/release/bundle/dmg/Diff Loop_<version>_x64.dmg`
+to a draft release (`gh release create v<version> --draft <files>`), and
+publish it once the files are checked. The Release workflow, started by
 hand on the tag, also builds the Linux installers; its macOS job may not
 build the glass icon yet (`docs/spec/diff-loop-open-tasks.md`, task 29).

@@ -21,7 +21,8 @@ the desktop app and install it, for Linux and macOS, for now.
    and a `.dmg` for Apple Silicon only. The AppImage is the format for
    Arch and other distributions Tauri builds no package for; Intel Macs
    are not built for. The developer's call, 2026-10-13. (Amended by ADR
-   0028 §3: a release carries those of these chosen for it.)
+   0028 §3: a release carries those of these chosen for it; and by ADR
+   0039: from 0.12.0 a release built here also carries an Intel `.dmg`.)
 3. **Linux builds on Ubuntu 22.04**, the oldest Tauri supports, because an
    AppImage runs only where glibc is at least as new as the build's.
 4. **macOS builds are ad-hoc signed** (`bundle.macOS.signingIdentity`

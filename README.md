@@ -85,11 +85,12 @@ These are kept in `/Users/you/code/drive-web/.git/diff-loop/reviews/agent%2Fshar
 
 ## Install
 
-Each release on the Releases page carries an Apple Silicon `.dmg`,
-`Diff.Loop_<version>_aarch64.dmg`. It is ad-hoc signed, not signed with
-an Apple Developer ID, and not notarized. There is no build for Intel
-Macs or Windows, and no updater: download and install each new version
-by hand.
+Each release on the Releases page carries a `.dmg` for each kind of Mac:
+`Diff.Loop_<version>_aarch64.dmg` for Apple Silicon and
+`Diff.Loop_<version>_x64.dmg` for Intel (Intel since 0.12.0). Both are
+ad-hoc signed, not signed with an Apple Developer ID, and not notarized.
+There is no build for Windows, and no updater: download and install each
+new version by hand.
 
 **macOS.** Open the `.dmg` and drag Diff Loop to Applications. macOS
 refuses to open it the first time: choose **Open Anyway** in System
@@ -102,8 +103,8 @@ xattr -dr com.apple.quarantine "/Applications/Diff Loop.app"
 **Linux.** Build from source (see below), unless a release lists Linux
 files. A release built by the Release workflow carries
 `Diff.Loop_<version>_amd64.AppImage`, for any x86-64 Linux, and
-`Diff.Loop_<version>_amd64.deb`, for Debian and Ubuntu. 0.9.0 to 0.11.0
-carry only the `.dmg`.
+`Diff.Loop_<version>_amd64.deb`, for Debian and Ubuntu. 0.9.0 to 0.12.0
+carry no Linux files.
 
 - AppImage: make it executable and run it. It needs FUSE 2
   (`pacman -S fuse2` on Arch, `libfuse2` on Debian and Ubuntu).

@@ -1,6 +1,6 @@
 [package]
 name         = "diff-loop-app"
-version      = "0.11.0"
+version      = "0.12.0"
 description  = "Diff Loop's desktop app: Tauri commands around diff-loop-core, wired to diff-loop-git and diff-loop-store."
 edition.workspace      = true
 rust-version.workspace = true
