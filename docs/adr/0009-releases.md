@@ -28,8 +28,6 @@ the desktop app and install it, for Linux and macOS, for now.
 4. **macOS builds are ad-hoc signed** (`bundle.macOS.signingIdentity`
    `"-"`), not with a Developer ID, and not notarized: the README says how
    to open the app past Gatekeeper. The developer's call, 2026-10-13.
-5. **Releases stay in this private repository**, so only people with
-   access to it can download them. The developer's call, 2026-10-13.
 
 ## Consequences
 

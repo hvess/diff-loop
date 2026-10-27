@@ -116,7 +116,7 @@ before reopening a decision they cover.
   on.
 - **0009 — Releases for Linux and Apple Silicon.** A `v<version>` tag
   builds an AppImage, a `.deb` and an Apple Silicon `.dmg` into a draft
-  GitHub Release in this private repository; macOS builds are ad-hoc
+  GitHub Release; macOS builds are ad-hoc
   signed, not notarized. Built on the developer's Mac since 0028; an
   Intel `.dmg` too since 0039.
 - **0010 — Native behaviour of the window.** Hidden until first paint,
@@ -182,9 +182,7 @@ before reopening a decision they cover.
 - **0024 — CI checks macOS and Windows at a release** (superseded by
   0025).
 - **0025 — CI runs only for a release.** By hand (a `v*` tag until 0028), on
-  Linux, macOS and Windows; the local gate checks every commit between,
-  as Actions bills macOS at 10x and Windows at 2x on a private
-  repository.
+  Linux, macOS and Windows; the local gate checks every commit between.
 - **0026 — Reviews per branch.** A review is kept per branch of a
   project (its common git directory), starts with its first comment,
   keeps its base and where its branch was seen, and is shown live from

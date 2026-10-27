@@ -89,8 +89,8 @@ Each release on the Releases page carries a `.dmg` for each kind of Mac:
 `Diff.Loop_<version>_aarch64.dmg` for Apple Silicon and
 `Diff.Loop_<version>_x64.dmg` for Intel (Intel since 0.12.0). Both are
 ad-hoc signed, not signed with an Apple Developer ID, and not notarized.
-There is no build for Windows, and no updater: download and install each
-new version by hand.
+There is no build for Linux or Windows, and no updater: download and
+install each new version by hand.
 
 **macOS.** Open the `.dmg` and drag Diff Loop to Applications. macOS
 refuses to open it the first time: choose **Open Anyway** in System
@@ -99,23 +99,6 @@ Settings › Privacy & Security, or clear the quarantine flag once:
 ```sh
 xattr -dr com.apple.quarantine "/Applications/Diff Loop.app"
 ```
-
-**Linux.** Build from source (see below), unless a release lists Linux
-files. A release built by the Release workflow carries
-`Diff.Loop_<version>_amd64.AppImage`, for any x86-64 Linux, and
-`Diff.Loop_<version>_amd64.deb`, for Debian and Ubuntu. 0.9.0 to 0.12.0
-carry no Linux files.
-
-- AppImage: make it executable and run it. It needs FUSE 2
-  (`pacman -S fuse2` on Arch, `libfuse2` on Debian and Ubuntu).
-
-  ```sh
-  chmod +x Diff.Loop_*_amd64.AppImage
-  ./Diff.Loop_*_amd64.AppImage
-  ```
-
-- `.deb`: `sudo apt install ./Diff.Loop_*_amd64.deb`, then open Diff
-  Loop from the app launcher.
 
 ## Connect your agent
 
@@ -127,6 +110,8 @@ With the `diff-loop` MCP server it does so through `get_review` and
 build it from source:
 
 ```sh
+git clone https://github.com/hvess/diff-loop
+cd diff-loop
 cargo build --release -p diff-loop-mcp
 ```
 
@@ -199,7 +184,8 @@ You need:
   lack.
 
 ```sh
-cd app
+git clone https://github.com/hvess/diff-loop
+cd diff-loop/app
 npm install
 npm run tauri dev
 npm run tauri dev -- -- -- ~/code/my-repo   # open a repository on launch
@@ -230,4 +216,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE), copyright Diff Loop authors.
+[MIT](LICENSE), copyright Maximilian Hvesser-Lewis.
