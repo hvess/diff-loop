@@ -5,7 +5,7 @@ The domain: what changed on a checkout, review comments, and the instructions th
 **Status:** active — first version landed.
 **Scope:** `crates/core`. Excludes reading git (`diff-loop-git.md`) and the UI (`diff-loop-app.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-25
+**Last Updated:** 2026-10-28
 
 ## Why
 
@@ -127,7 +127,9 @@ Each is a pure function tested here.
     ends each branch's row with its age and lists the newest first. The
     developer's call, 2026-10-17. Until then `BaseRef::behind` counted
     the ref's commits the checkout lacks, `git status`'s sense (the
-    developer's call, 2026-10-13).
+    developer's call, 2026-10-13). A remote-tracking ref names its remote
+    (`BaseRef::remote`, read with `git remote`, so `team/fork` is one
+    remote), which the picker groups and prefixes by.
 14. **A sent comment is judged where it was sent** (ADR 0015 §3 and §8,
     `anchor::judge`): under the base and branch of its `Sent::place`,
     or for the uncommitted changes as ADR 0017 §1 says (below),

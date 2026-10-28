@@ -334,6 +334,7 @@ impl Repository for Git {
 
     fn refs(&self) -> Result<Vec<BaseRef>, RepoError> {
         let current = self.shows.shown_ref(&self.run)?;
+        let remotes = project::remotes(&self.run)?;
         // `creatordate` is a commit's committer date, or an annotated tag's
         // tagger date.
         let out = self.run.stdout(&[
@@ -358,9 +359,14 @@ impl Repository for Git {
                 ]
                 .into_iter()
                 .find_map(|(prefix, kind)| full.strip_prefix(prefix).map(|n| (kind, n)))?;
+                let remote = (kind == RefKind::Remote)
+                    .then(|| project::split_remote(name, &remotes))
+                    .flatten()
+                    .map(|(remote, _)| remote.to_owned());
                 Some(BaseRef {
                     name: name.to_owned(),
                     kind,
+                    remote,
                     updated: millis(date),
                 })
             })

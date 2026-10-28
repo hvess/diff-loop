@@ -14,6 +14,11 @@ name: string,
  */
 kind: RefKind, 
 /**
+ * The remote a remote-tracking branch is on (`team/fork` for
+ * `team/fork/fix`); `None` for a branch or tag of this repository.
+ */
+remote: string | null, 
+/**
  * When it last moved: its commit's committer date, or an annotated
  * tag's tagger date, in milliseconds since the Unix epoch. `None` when
  * git gives none.

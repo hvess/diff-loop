@@ -311,6 +311,7 @@ pub(crate) mod tests {
             Ok(vec![BaseRef {
                 name: "main".into(),
                 kind: RefKind::Branch,
+                remote: None,
                 updated: None,
             }])
         }

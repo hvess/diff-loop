@@ -49,12 +49,6 @@ const NOTHING_LISTED: Listing = { items: [], more: false };
 /** Most refs listed at once; typing narrows to the rest. */
 const SHOWN = 50;
 
-/** A remote-tracking branch's short name split into its remote and the rest. */
-export function remoteOf(name: string): [string, string] {
-  const slash = name.indexOf("/");
-  return slash < 0 ? ["", name] : [name.slice(0, slash), name.slice(slash + 1)];
-}
-
 /**
  * The lists the picker opens in place: local branches, then each remote by
  * name, then tags, each in `refs`' order. A list with nothing in it is left out.
@@ -67,7 +61,7 @@ export function groupsOf(refs: BaseRef[], current: string | null): Group[] {
     if (ref.kind === "branch") local.push(ref);
     else if (ref.kind === "tag") tags.push(ref);
     else {
-      const [remote] = remoteOf(ref.name);
+      const remote = ref.remote ?? "";
       const list = remotes.get(remote);
       if (list) list.push(ref);
       else remotes.set(remote, [ref]);
@@ -167,12 +161,11 @@ function lineTrail(counts: LineCounts | null): ReactNode {
 
 /** A ref's name, a remote's prefix faint (diff-loop-app.md Decision 32). */
 function refName(ref: BaseRef): ReactNode {
-  if (ref.kind !== "remote") return ref.name;
-  const [remote, rest] = remoteOf(ref.name);
+  if (ref.kind !== "remote" || ref.remote === null) return ref.name;
   return (
     <>
-      <span className="k">{remote}/</span>
-      {rest}
+      <span className="k">{ref.remote}/</span>
+      {ref.name.slice(ref.remote.length + 1)}
     </>
   );
 }

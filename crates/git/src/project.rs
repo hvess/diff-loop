@@ -63,6 +63,7 @@ impl GitProject {
         Ok(fold(
             refs.lines().filter_map(Ref::parse).collect(),
             &self.worktrees()?,
+            &remotes(&self.run)?,
         ))
     }
 
@@ -135,12 +136,40 @@ fn checked_out(porcelain: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
+/// The names of the repository's remotes, from `git remote`.
+pub(crate) fn remotes(run: &Runner) -> Result<Vec<String>, RepoError> {
+    Ok(run
+        .stdout(&["remote"])?
+        .lines()
+        .map(str::to_owned)
+        .collect())
+}
+
+/// A remote-tracking branch's short name (`team/fork/fix`) split into its
+/// remote and the rest. The longest of `remotes` that starts it wins, a
+/// remote's name having `/`s of its own; with none, as when the remote was
+/// removed but its branches were not, the first `/` ends the remote.
+pub(crate) fn split_remote<'a>(short: &'a str, remotes: &[String]) -> Option<(&'a str, &'a str)> {
+    remotes
+        .iter()
+        .filter_map(|remote| {
+            let rest = short.strip_prefix(remote.as_str())?.strip_prefix('/')?;
+            Some((&short[..remote.len()], rest))
+        })
+        .max_by_key(|(remote, _)| remote.len())
+        .or_else(|| short.split_once('/'))
+}
+
 /// The refs as branches, one per name (as [`Project::branches`]), in the
 /// refs' order: each local branch, its upstream folded into it; then each
 /// remote's branch that is no local one's upstream, named without its
-/// remote unless that name is taken. A remote's name ends at the first `/`,
-/// as the base picker splits it (open-tasks 24). O(refs).
-fn fold(refs: Vec<Ref<'_>>, worktrees: &BTreeMap<String, String>) -> Vec<(Branch, String)> {
+/// remote unless that name is taken. A remote's name is one of `remotes`
+/// (see [`split_remote`]). O(refs × remotes).
+fn fold(
+    refs: Vec<Ref<'_>>,
+    worktrees: &BTreeMap<String, String>,
+    remotes: &[String],
+) -> Vec<(Branch, String)> {
     let existing: HashSet<&str> = refs.iter().map(|r| r.refname).collect();
     let upstreams: HashSet<&str> = refs
         .iter()
@@ -148,7 +177,7 @@ fn fold(refs: Vec<Ref<'_>>, worktrees: &BTreeMap<String, String>) -> Vec<(Branch
         .map(|r| r.upstream)
         .collect();
     let remote_of = |refname: &str| -> Option<(String, String)> {
-        let (remote, name) = refname.strip_prefix("refs/remotes/")?.split_once('/')?;
+        let (remote, name) = split_remote(refname.strip_prefix("refs/remotes/")?, remotes)?;
         Some((remote.to_owned(), name.to_owned()))
     };
     let (locals, others): (Vec<_>, Vec<_>) = refs
@@ -227,6 +256,10 @@ fn fold(refs: Vec<Ref<'_>>, worktrees: &BTreeMap<String, String>) -> Vec<(Branch
 mod tests {
     use super::*;
 
+    fn remotes() -> Vec<String> {
+        ["origin", "up", "team/fork"].map(str::to_owned).to_vec()
+    }
+
     fn line(refname: &str, upstream: &str) -> String {
         format!("{refname}\0c-{refname}\0{upstream}\x001700000000")
     }
@@ -255,7 +288,7 @@ mod tests {
         ];
         let refs = lines.iter().filter_map(|l| Ref::parse(l)).collect();
         let worktrees = BTreeMap::from([("refs/heads/agent/x".to_owned(), "/wt/x".to_owned())]);
-        let branches = fold(refs, &worktrees);
+        let branches = fold(refs, &worktrees, &remotes());
         assert_eq!(
             names(&branches),
             [
@@ -282,7 +315,7 @@ mod tests {
             line("refs/remotes/up/fix", ""),
         ];
         let refs = lines.iter().filter_map(|l| Ref::parse(l)).collect();
-        let branches = fold(refs, &BTreeMap::new());
+        let branches = fold(refs, &BTreeMap::new(), &remotes());
         assert_eq!(
             names(&branches),
             [
@@ -304,7 +337,7 @@ mod tests {
         let lines = [line("refs/remotes/origin/fix", "")];
         let refs = lines.iter().filter_map(|l| Ref::parse(l)).collect();
         let worktrees = BTreeMap::from([("refs/heads/fix".to_owned(), "/wt".to_owned())]);
-        let branches = fold(refs, &worktrees);
+        let branches = fold(refs, &worktrees, &remotes());
         assert_eq!(
             names(&branches),
             [
@@ -327,15 +360,37 @@ mod tests {
             line("refs/remotes/team/fork/fix", ""),
         ];
         let refs = lines.iter().filter_map(|l| Ref::parse(l)).collect();
-        let branches = fold(refs, &BTreeMap::new());
+        let branches = fold(refs, &BTreeMap::new(), &remotes());
         assert_eq!(
             names(&branches),
             [(
-                "fork/fix",
+                "fix",
                 false,
-                Some("team"),
+                Some("team/fork"),
                 "refs/remotes/team/fork/fix"
             )]
+        );
+    }
+
+    #[test]
+    fn a_remote_named_with_a_slash_is_told_from_its_branch_by_the_remotes_list() {
+        let lines = [
+            line("refs/remotes/team/fork/fix", ""),
+            line("refs/remotes/team/other", ""),
+        ];
+        let refs = lines.iter().filter_map(|l| Ref::parse(l)).collect();
+        let branches = fold(refs, &BTreeMap::new(), &remotes());
+        assert_eq!(
+            names(&branches),
+            [
+                (
+                    "fix",
+                    false,
+                    Some("team/fork"),
+                    "refs/remotes/team/fork/fix"
+                ),
+                ("other", false, Some("team"), "refs/remotes/team/other"),
+            ]
         );
     }
 
@@ -343,7 +398,7 @@ mod tests {
     fn an_upstream_that_is_gone_is_no_remote() {
         let lines = [line("refs/heads/fix", "refs/remotes/origin/fix")];
         let refs = lines.iter().filter_map(|l| Ref::parse(l)).collect();
-        let branches = fold(refs, &BTreeMap::new());
+        let branches = fold(refs, &BTreeMap::new(), &remotes());
         assert_eq!(names(&branches), [("fix", true, None, "refs/heads/fix")]);
     }
 
