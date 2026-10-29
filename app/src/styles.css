@@ -269,11 +269,10 @@
   .fold:last-child { border-radius: 0 0 12px 12px; }
   .fold .ctx { font-size: 11px; margin-left: 6px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row { display: flex; align-items: stretch; min-height: 18px; font: 12px/18px var(--font-mono); }
-  /* The range's mini handles (the canvas's 3c), inside its end rows: each row is its own layer, so one hanging into the next would be painted over. */
-  .hdl { position: absolute; width: 12px; height: 4px; margin-left: -6px; border-radius: 2px; background: var(--accentfill); box-shadow: 0 0 0 1px var(--card), 0 1px 2px rgba(0, 0, 0, 0.22); cursor: ns-resize; z-index: 1; }
+  /* The range's handles, of one size whatever the pointer does, inside its end rows: each row is its own layer, so one hanging into the next would be painted over. */
+  .hdl { position: absolute; width: 20px; height: 8px; margin-left: -10px; border-radius: 4px; background: var(--accentfill); box-shadow: 0 0 0 1px var(--card), 0 1px 2px rgba(0, 0, 0, 0.22); cursor: ns-resize; z-index: 1; }
   .hdl.top { top: 0; }
   .hdl.bot { bottom: 0; }
-  .hdl:hover { width: 16px; margin-left: -8px; }
   .row .o, .row .n { width: 40px; flex: none; box-sizing: border-box; padding-right: 8px; text-align: right; color: var(--lnum); font-size: 11px; display: flex; align-items: center; justify-content: flex-end; }
   .row .bar { width: 2px; flex: none; margin-right: 14px; }
   .row code { white-space: pre; color: var(--label); font: inherit; }

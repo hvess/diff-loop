@@ -557,7 +557,7 @@ function SplitHalf(props: LineProps & { cell: Cell | null }) {
 
 /**
  * A row's numbers as one target: a drag over it keeps the side it started on. Under an open composer, the
- * range's first and last rows drag its ends, each marked by a mini handle on its number (the canvas's 3c).
+ * range's first and last rows drag its ends, each marked by a handle of one size on its number.
  */
 function Gutter({ cells, props, children }: { cells: (Cell | null)[]; props: LineProps; children: React.ReactNode }) {
   const line = gutterLine(cells);

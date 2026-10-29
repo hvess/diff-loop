@@ -5,7 +5,7 @@ The desktop app: Tauri commands around `diff-loop-core`, and the React front end
 **Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15, and flow 6, reviews per branch, since 2026-10-19 (step 15); the redesign (step 16) landed 2026-10-22.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-28
+**Last Updated:** 2026-10-29
 
 ## Why
 
@@ -421,8 +421,8 @@ change, annotate, hand off to the agent, next round.
     are built once per query. ⌘/Ctrl-F and Edit › Find… do nothing while
     a dialog is open (`dialogOpen`).
 28. **The composer's range has handles** (until Decision 35, which drags
-    its ends from the range's first and last gutter rows, marked by mini
-    handles again since 2026-10-25) at its first line's top edge and
+    its ends from the range's first and last gutter rows, marked by handles
+    again since 2026-10-25) at its first line's top edge and
     its last line's bottom edge, over the line numbers, while the
     composer is open on lines. Dragging one down the gutter moves that
     end, inside the hunk (Decision 6), past the other end too; the draft
@@ -434,7 +434,8 @@ change, annotate, hand off to the agent, next round.
     over the gutter with no button down, a drag-selection too. Each handle was a 4 px bar in a
     28 × 20 px target (HIG `accessibility`, minimum control size); the
     bar kept the design's look, the developer's call, 2026-10-14. Since
-    2026-10-25 each is a 12 × 4 px capsule on its line number, the
+    2026-10-25 each is a capsule on its line number (its size by
+    `diff-loop-app-range-handles.md` Decision 1), the
     whole 80 px gutter row its target (Decision 35). The
     header of the suggestion box says "Edit the + line" ("Edit the +
     lines" once the suggested code has more than one line), not the
@@ -871,9 +872,10 @@ change, annotate, hand off to the agent, next round.
       on that line's edge (7 px under it, where the canvas leaves 12), 400 px wide,
       520 with suggested code, 560 for a changed card. While the
       composer is open, the range's first and last gutter rows drag its
-      ends, with the resize cursor, each marked by a mini handle on its
-      line number, a 12 × 4 px accent capsule, 16 px wide on hover
-      (the canvas's 3c and 3f, 2026-10-25; none until then); the "Comment on
+      ends, with the resize cursor, each marked by a handle on its
+      line number, an accent capsule sized by
+      `diff-loop-app-range-handles.md` Decision 1, the same on hover
+      (the canvas's 3c and 3f, 2026-10-25, departed from there; none until then); the "Comment on
       lines" pill is gone, as the canvas draws none: a range is
       commented on by releasing a drag, C, the context menu or the menu
       bar, and a lost draft is placed by clicking a line or Return.
@@ -956,6 +958,12 @@ change, annotate, hand off to the agent, next round.
   under Wayland (they send keys through libxdo, X11 only), so a context
   menu for text keeps the webview's own (Decision 19).
 
+## Progress (2026-10-29, the range's handles of one size)
+
+The range's handles are 20 × 8 px capsules and keep their size on hover
+(`.hdl`), departing from the canvas's 3c
+(`diff-loop-app-range-handles.md`, Decision 35).
+
 ## Progress (2026-10-26, the Eclipse icon refined)
 
 The icon redrawn after it was seen in the Dock: the front disc blue
@@ -993,7 +1001,8 @@ and `LiveDot` are gone.
 ## Progress (2026-10-25, the canvas's sidebar and range changes)
 
 The sidebar loses Other Reviews and its tree no longer scrolls sideways,
-long names ending in an ellipsis; the range's ends get mini handles; margin
+long names ending in an ellipsis; the range's ends get handles (their size
+by `diff-loop-app-range-handles.md` Decision 1); margin
 notes lose their amber stripe (Decision 35, the canvas of 2026-10-25).
 
 ## Progress (2026-10-25, the welcome screen lists projects)
