@@ -5,7 +5,7 @@ The desktop app: Tauri commands around `diff-loop-core`, and the React front end
 **Status:** active — flows 1–5 of the design landed, with its rounds since 2026-10-15, and flow 6, reviews per branch, since 2026-10-19 (step 15); the redesign (step 16) landed 2026-10-22.
 **Scope:** `app/` and `app/src-tauri/`. Excludes domain logic (`diff-loop-core.md`) and git (`diff-loop-git.md`).
 **Owner:** Maximilian
-**Last Updated:** 2026-10-27
+**Last Updated:** 2026-10-28
 
 ## Why
 
@@ -648,7 +648,8 @@ change, annotate, hand off to the agent, next round.
       "1d", "2w", "3mo", "1y"; `age` in `format.ts`) and its date in
       full on hover. Local branches lists the checked-out one first,
       dimmed, "Current", not to be picked; a remote's rows show its
-      prefix faint ("origin/main"). Tags have a list of their own (the
+      prefix faint ("origin/main"), the remote being the one `BaseRef::remote`
+      names, whatever slashes its name holds. Tags have a list of their own (the
       developer's call, 2026-10-17); the design draws no row for them.
     - **Typing in the first list's search** ("Search branches, tags or
       commits", where the design says "SHAs": the developer's call,

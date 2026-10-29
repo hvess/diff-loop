@@ -5,7 +5,7 @@ The `Repository` and `Project` adapters over the `git` command line.
 **Status:** active — first version landed.
 **Scope:** `crates/git`. Excludes everything the core decides.
 **Owner:** Maximilian
-**Last Updated:** 2026-10-25
+**Last Updated:** 2026-10-28
 
 ## Why
 
@@ -136,8 +136,11 @@ ADR 0001 §4: the app reads git as the terminal does, with no native library.
     in its common git directory: local branches first, each with its
     upstream folded in when that ref exists, then each remote's branch
     that is no local branch's upstream, named without its remote unless
-    the name is taken (as `origin/fix`), a remote's name ending at the
-    first `/` as the base picker's does (open-tasks 24); `HEAD` refs are left out, and so is a
+    the name is taken (as `origin/fix`), a remote being the longest of
+    `git remote`'s names that starts the ref (a remote may have a `/`, as
+    `team/fork`; with none left, as after `git remote remove`, the first
+    `/` ends it). `Repository::refs` names it the same way in
+    `BaseRef::remote`. `HEAD` refs are left out, and so is a
     worktree whose folder is gone (`prunable`), while a branch a worktree
     has checked out before its first commit, which has no ref, is listed
     with no commit. Each says where it is

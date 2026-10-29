@@ -31,6 +31,9 @@ pub struct BaseRef {
     pub name: String,
     /// Where it lives.
     pub kind: RefKind,
+    /// The remote a remote-tracking branch is on (`team/fork` for
+    /// `team/fork/fix`); `None` for a branch or tag of this repository.
+    pub remote: Option<String>,
     /// When it last moved: its commit's committer date, or an annotated
     /// tag's tagger date, in milliseconds since the Unix epoch. `None` when
     /// git gives none.
@@ -124,6 +127,7 @@ mod tests {
                 } else {
                     RefKind::Branch
                 },
+                remote: n.split_once('/').map(|(remote, _)| remote.to_owned()),
                 updated: None,
             })
             .collect()

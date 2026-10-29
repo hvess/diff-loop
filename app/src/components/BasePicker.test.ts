@@ -11,7 +11,6 @@ import {
   matching,
   picks,
   refTrail,
-  remoteOf,
   type Item,
 } from "./BasePicker";
 
@@ -20,6 +19,8 @@ const HOUR = 60 * 60 * 1000;
 const ref = (name: string, kind: BaseRef["kind"], updated: number | null = NOW - HOUR): BaseRef => ({
   name,
   kind,
+  // The tests' remotes are `origin`, `upstream` and `team/fork`.
+  remote: kind === "remote" ? (["team/fork", "origin", "upstream"].find((r) => name.startsWith(`${r}/`)) ?? null) : null,
   updated,
 });
 
@@ -140,6 +141,11 @@ describe("the lists it opens in place", () => {
     expect(groupsOf([], "main").map((g) => [g.key, groupSize(g)])).toEqual([["local", 1]]);
   });
 
+  it("list a remote named with a slash under the whole name", () => {
+    const keys = groupsOf([ref("team/fork/fix", "remote")], null).map((g) => g.key);
+    expect(keys).toEqual(["remote:team/fork"]);
+  });
+
   it("search only their own refs", () => {
     const origin = groups[1]!;
     const listed = listItems({
@@ -195,11 +201,6 @@ describe("a ref's trail", () => {
     expect(refTrail(ref("x", "branch", null), NOW, false)).toEqual({
       trail: "",
     });
-  });
-
-  it("splits a remote's name at its first slash", () => {
-    expect(remoteOf("origin/agent/x")).toEqual(["origin", "agent/x"]);
-    expect(remoteOf("main")).toEqual(["", "main"]);
   });
 });
 
